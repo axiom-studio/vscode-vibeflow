@@ -10,6 +10,7 @@ import { createSessionStatusBar } from './statusBar/sessionStatus.js';
 import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
 import { ProjectDetector } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
+import { registerChatParticipant } from './chat/participant.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -138,6 +139,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionStatusBar,
     workSummaryStatusBar,
   );
+
+  // --- @vibeflow Chat Participant ---
+  // Gracefully no-ops if Copilot isn't installed
+  registerChatParticipant(context, client, detector);
 
   // --- Spike: simulate activity feed data ---
   // Push 500 historical entries on activation, then stream 1 new entry every 3s.

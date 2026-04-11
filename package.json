@@ -55,6 +55,25 @@
         }
       ]
     },
+    "chatParticipants": [
+      {
+        "id": "vibeflow.chat",
+        "name": "vibeflow",
+        "fullName": "VibeFlow",
+        "description": "AI agent orchestration and project management",
+        "isSticky": false,
+        "commands": [
+          {
+            "name": "status",
+            "description": "Check project, feature, and session status"
+          },
+          {
+            "name": "create",
+            "description": "Create a feature, todo, or issue"
+          }
+        ]
+      }
+    ],
     "commands": [
       {
         "command": "vibeflow.login",
