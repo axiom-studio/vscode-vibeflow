@@ -1,4 +1,7 @@
 import * as vscode from 'vscode';
+import { AuthService } from './auth/AuthService.js';
+import { VibeFlowUriHandler } from './auth/UriHandler.js';
+import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
@@ -7,8 +10,21 @@ import { createSessionStatusBar } from './statusBar/sessionStatus.js';
 import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
-export function activate(context: vscode.ExtensionContext): void {
-  // TreeView data providers
+export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // --- Auth ---
+  const authService = new AuthService(context.secrets);
+  await authService.initialize();
+
+  const uriHandler = new VibeFlowUriHandler(authService);
+  context.subscriptions.push(
+    vscode.window.registerUriHandler(uriHandler),
+    authService,
+  );
+
+  // --- API Client ---
+  const _client = new VibeFlowClient(authService);
+
+  // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri);
@@ -38,15 +54,14 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
   );
 
-  // Status bar items
-  const sessionStatusBar = createSessionStatusBar();
+  // --- Status bar items ---
+  const sessionStatusBar = createSessionStatusBar(authService);
   const workSummaryStatusBar = createWorkSummaryStatusBar();
 
-  // Register commands
+  // --- Commands ---
   context.subscriptions.push(
-    vscode.commands.registerCommand('vibeflow.login', () => {
-      vscode.window.showInformationMessage('VibeFlow: Login — coming soon');
-    }),
+    vscode.commands.registerCommand('vibeflow.login', () => authService.login()),
+    vscode.commands.registerCommand('vibeflow.logout', () => authService.logout()),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
       vscode.window.showInformationMessage('VibeFlow: Launch Session — coming soon');
     }),
@@ -69,7 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Add disposables
+  // --- Disposables ---
   context.subscriptions.push(
     sessionsView,
     workItemsView,
