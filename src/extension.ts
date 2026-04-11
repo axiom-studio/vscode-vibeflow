@@ -9,6 +9,7 @@ import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.j
 import { createSessionStatusBar } from './statusBar/sessionStatus.js';
 import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
 import { ProjectDetector } from './project/ProjectDetector.js';
+import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -61,6 +62,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   });
 
+  // --- Prompt Notifications ---
+  const promptNotifier = new PromptNotifier();
+  context.subscriptions.push(promptNotifier);
+
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
@@ -92,7 +97,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- Status bar items ---
-  const sessionStatusBar = createSessionStatusBar(authService);
+  const sessionStatusBar = createSessionStatusBar(authService, promptNotifier);
   const workSummaryStatusBar = createWorkSummaryStatusBar();
 
   // --- Commands ---
@@ -109,7 +114,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');
     }),
     vscode.commands.registerCommand('vibeflow.respondToPrompt', () => {
-      vscode.window.showInformationMessage('VibeFlow: Respond to Prompt — coming soon');
+      // Show Quick Pick of all pending prompts
+      // In production, this would fetch current pending prompts from the API
+      promptNotifier.showPendingPromptsQuickPick([]);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
