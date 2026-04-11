@@ -61,6 +61,10 @@
         "title": "VibeFlow: Login"
       },
       {
+        "command": "vibeflow.logout",
+        "title": "VibeFlow: Logout"
+      },
+      {
         "command": "vibeflow.launchSession",
         "title": "VibeFlow: Launch Session",
         "icon": "$(play)"
