@@ -1,0 +1,191 @@
+{
+  "name": "vscode-vibeflow",
+  "displayName": "VibeFlow",
+  "description": "AI agent orchestration, project management, and governance for VSCode",
+  "version": "0.1.0",
+  "publisher": "axiom-studio",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git@bitbucket.org:axiom-studio/vscode-vibeflow.git"
+  },
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:.vibeflow-session-*",
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vibeflow",
+          "title": "VibeFlow",
+          "icon": "media/vibeflow-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "vibeflow": [
+        {
+          "id": "vibeflow.agentFleet",
+          "name": "Agent Fleet",
+          "type": "tree"
+        },
+        {
+          "id": "vibeflow.workItems",
+          "name": "Work Items",
+          "type": "tree"
+        },
+        {
+          "id": "vibeflow.activityFeed",
+          "name": "Activity Feed",
+          "type": "webview"
+        },
+        {
+          "id": "vibeflow.documents",
+          "name": "Documents",
+          "type": "tree",
+          "visibility": "collapsed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vibeflow.login",
+        "title": "VibeFlow: Login"
+      },
+      {
+        "command": "vibeflow.launchSession",
+        "title": "VibeFlow: Launch Session",
+        "icon": "$(play)"
+      },
+      {
+        "command": "vibeflow.createWorkItem",
+        "title": "VibeFlow: Create Work Item",
+        "icon": "$(add)"
+      },
+      {
+        "command": "vibeflow.viewSessions",
+        "title": "VibeFlow: View Sessions"
+      },
+      {
+        "command": "vibeflow.respondToPrompt",
+        "title": "VibeFlow: Respond to Prompt"
+      },
+      {
+        "command": "vibeflow.openDashboard",
+        "title": "VibeFlow: Open Dashboard"
+      },
+      {
+        "command": "vibeflow.refresh",
+        "title": "VibeFlow: Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vibeflow.launchSession",
+          "when": "view == vibeflow.agentFleet",
+          "group": "navigation"
+        },
+        {
+          "command": "vibeflow.refresh",
+          "when": "view == vibeflow.agentFleet",
+          "group": "navigation"
+        },
+        {
+          "command": "vibeflow.createWorkItem",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation"
+        },
+        {
+          "command": "vibeflow.refresh",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "VibeFlow",
+      "properties": {
+        "vibeflow.serverUrl": {
+          "type": "string",
+          "default": "https://cloud.axiomstudio.ai",
+          "description": "VibeFlow server URL"
+        },
+        "vibeflow.defaultPersona": {
+          "type": "string",
+          "default": "developer",
+          "enum": [
+            "developer",
+            "architect",
+            "principal_engineer",
+            "security_lead",
+            "qa_lead",
+            "product_manager",
+            "project_manager",
+            "ux_designer",
+            "customer"
+          ],
+          "description": "Default persona for new sessions"
+        },
+        "vibeflow.defaultProvider": {
+          "type": "string",
+          "default": "claude",
+          "description": "Default agent provider"
+        },
+        "vibeflow.autoDetectProject": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-match git remote to VibeFlow project"
+        },
+        "vibeflow.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show VibeFlow status bar items"
+        },
+        "vibeflow.polling.interval": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "maximum": 300,
+          "description": "UI refresh interval in seconds"
+        },
+        "vibeflow.notifications.agentPrompts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for agent prompts"
+        },
+        "vibeflow.notifications.workItemComplete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when work items complete"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn build",
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "dev": "node esbuild.mjs --watch",
+    "lint": "eslint src/",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.93.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "esbuild": "^0.24.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.6.0"
+  }
+}
