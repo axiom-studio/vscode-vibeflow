@@ -11,6 +11,7 @@ import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
 import { ProjectDetector } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
+import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -106,7 +107,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.login', () => authService.login()),
     vscode.commands.registerCommand('vibeflow.logout', () => authService.logout()),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      vscode.window.showInformationMessage('VibeFlow: Launch Session — coming soon');
+      launchSession(client, detector, sessionsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.killSession', (node: { session?: { sid: number; personaName: string; gitBranch: string } }) => {
+      if (node?.session) {
+        killSession(client, node.session as import('./api/types.js').VibeFlowSession, sessionsProvider);
+      }
+    }),
+    vscode.commands.registerCommand('vibeflow.restartSession', (node: { session?: { sid: number; personaKey: string; agentType: string; gitBranch: string; personaName: string } }) => {
+      if (node?.session) {
+        restartSession(client, node.session as import('./api/types.js').VibeFlowSession, detector, sessionsProvider);
+      }
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       vscode.window.showInformationMessage('VibeFlow: Create Work Item — coming soon');

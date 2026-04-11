@@ -109,9 +109,31 @@
         "command": "vibeflow.refresh",
         "title": "VibeFlow: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "vibeflow.killSession",
+        "title": "VibeFlow: Kill Session",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "vibeflow.restartSession",
+        "title": "VibeFlow: Restart Session",
+        "icon": "$(debug-restart)"
       }
     ],
     "menus": {
+      "view/item/context": [
+        {
+          "command": "vibeflow.killSession",
+          "when": "view == vibeflow.agentFleet && viewItem == activeSession",
+          "group": "session@1"
+        },
+        {
+          "command": "vibeflow.restartSession",
+          "when": "view == vibeflow.agentFleet && viewItem == activeSession",
+          "group": "session@2"
+        }
+      ],
       "view/title": [
         {
           "command": "vibeflow.launchSession",
