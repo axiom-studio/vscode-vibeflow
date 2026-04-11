@@ -177,6 +177,47 @@ export class VibeFlowClient {
     });
   }
 
+  // --- QA & Security Review ---
+
+  async qaVerify(type: 'todo' | 'issue', id: number): Promise<void> {
+    const tool = type === 'todo' ? 'verify_todo_qa' : 'verify_issue_qa';
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ tool, arguments: { id } }),
+    });
+  }
+
+  async qaReject(type: 'todo' | 'issue', id: number, comment: string): Promise<void> {
+    const tool = type === 'todo' ? 'reject_todo_qa' : 'reject_issue_qa';
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ tool, arguments: { id, rejection_comment: comment } }),
+    });
+  }
+
+  async securityVerify(type: 'todo' | 'issue', _id: number): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ tool: 'verify_security_review', arguments: { entity_type: type, entity_id: _id } }),
+    });
+  }
+
+  async securityReject(type: 'todo' | 'issue', _id: number, comment: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ tool: 'reject_security_review', arguments: { entity_type: type, entity_id: _id, rejection_comment: comment } }),
+    });
+  }
+
+  // --- Branch Review Status ---
+
+  async checkBranchReviewStatus(projectId: number, branch: string): Promise<{ ready: boolean; needsQA: number; needsSecurity: number }> {
+    return this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({ tool: 'check_branch_review_status', arguments: { project_id: projectId, branch } }),
+    });
+  }
+
   // --- Work Item Logs ---
 
   async getWorkItemLogs(
