@@ -73,7 +73,7 @@ function Content({ entry }: { entry: ActivityEntry }) {
         <div className="text-xs mt-0.5">
           <span className="text-[var(--feed-success)]">committed</span>{' '}
           <span className="opacity-80">{entry.content}</span>
-          {entry.metadata?.files && (
+          {Array.isArray(entry.metadata?.files) && (
             <div className="mt-0.5 opacity-60 text-[11px]">
               {(entry.metadata.files as string[]).join(', ')}
             </div>
