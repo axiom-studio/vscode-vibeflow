@@ -44,6 +44,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   ).then(project => {
     if (project) {
+      // Wire TreeViews to live data now that we know the project
+      sessionsProvider.connect(client, project.projectId);
       vscode.window.showInformationMessage(
         `VibeFlow: Connected to "${project.projectName}" (${project.gitBranch})`,
       );
@@ -120,6 +122,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Disposables ---
   context.subscriptions.push(
+    sessionsProvider,
     sessionsView,
     workItemsView,
     documentsView,

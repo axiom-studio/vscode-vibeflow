@@ -10,8 +10,7 @@ import type {
 } from './types.js';
 
 /**
- * HTTP client for the VibeFlow MCP REST API.
- * Wraps the 72 MCP tools as typed async methods.
+ * HTTP client for the VibeFlow REST API.
  * Token sourced from AuthService (Secrets API).
  */
 export class VibeFlowClient {
@@ -48,32 +47,57 @@ export class VibeFlowClient {
     return response.json() as Promise<T>;
   }
 
-  // --- Placeholder methods (will be fully implemented when wiring TreeViews) ---
+  // --- Projects ---
 
   async listProjects(): Promise<VibeFlowProject[]> {
-    return this.request('/rest/v1/vibeflow/mcp', {
-      method: 'POST',
-      body: JSON.stringify({ tool: 'list_projects', arguments: {} }),
-    });
+    const data = await this.request<{ projects: VibeFlowProject[] }>(
+      '/rest/v1/vibeflow/projects',
+    );
+    return data.projects ?? [];
   }
 
-  async listSessions(_projectId: number): Promise<VibeFlowSession[]> {
-    return [];
+  // --- Sessions ---
+
+  async listSessions(projectId: number): Promise<VibeFlowSession[]> {
+    const data = await this.request<{ sessions: VibeFlowSession[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/sessions`,
+    );
+    return data.sessions ?? [];
   }
 
-  async listFeatures(_projectId: number): Promise<VibeFlowFeature[]> {
-    return [];
+  // --- Features ---
+
+  async listFeatures(projectId: number): Promise<VibeFlowFeature[]> {
+    const data = await this.request<{ features: VibeFlowFeature[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/features`,
+    );
+    return data.features ?? [];
   }
 
-  async listTodos(_featureId: number): Promise<VibeFlowTodo[]> {
-    return [];
+  // --- Todos ---
+
+  async listTodos(featureId: number): Promise<VibeFlowTodo[]> {
+    const data = await this.request<{ todos: VibeFlowTodo[] }>(
+      `/rest/v1/vibeflow/features/${featureId}/todos`,
+    );
+    return data.todos ?? [];
   }
 
-  async listIssues(_projectId: number): Promise<VibeFlowIssue[]> {
-    return [];
+  // --- Issues ---
+
+  async listIssues(projectId: number): Promise<VibeFlowIssue[]> {
+    const data = await this.request<{ issues: VibeFlowIssue[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/issues`,
+    );
+    return data.issues ?? [];
   }
 
-  async listDocuments(_projectId: number): Promise<VibeFlowDocument[]> {
-    return [];
+  // --- Documents ---
+
+  async listDocuments(projectId: number): Promise<VibeFlowDocument[]> {
+    const data = await this.request<{ documents: VibeFlowDocument[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/documents`,
+    );
+    return data.documents ?? [];
   }
 }
