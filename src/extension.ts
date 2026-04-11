@@ -8,6 +8,7 @@ import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { createSessionStatusBar } from './statusBar/sessionStatus.js';
 import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
+import { ProjectDetector } from './project/ProjectDetector.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -22,7 +23,40 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- API Client ---
-  const _client = new VibeFlowClient(authService);
+  const client = new VibeFlowClient(authService);
+
+  // --- Project Detection ---
+  const detector = new ProjectDetector(context.workspaceState);
+  // Run detection asynchronously — don't block activation
+  detector.detect(
+    async (remoteUrl) => {
+      if (!client.isAuthenticated()) { return undefined; }
+      try {
+        const projects = await client.listProjects();
+        return projects.find(p => p.gitRemoteUrl === remoteUrl);
+      } catch { return undefined; }
+    },
+    async () => {
+      if (!client.isAuthenticated()) { return []; }
+      try {
+        return await client.listProjects();
+      } catch { return []; }
+    },
+  ).then(project => {
+    if (project) {
+      vscode.window.showInformationMessage(
+        `VibeFlow: Connected to "${project.projectName}" (${project.gitBranch})`,
+      );
+    }
+  });
+
+  // Also detect existing session files
+  detector.detectSessionFiles().then(personas => {
+    if (personas.length > 0) {
+      // Session files found — sessions are active or were recently active
+      // This info will be used by the Agent Fleet TreeView when wired to live data
+    }
+  });
 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();

@@ -64,6 +64,7 @@ export interface VibeFlowProject {
   id: number;
   name: string;
   status: string;
+  gitRemoteUrl?: string;
 }
 
 export interface VibeFlowSession {
