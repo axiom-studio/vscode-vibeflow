@@ -65,6 +65,41 @@ export class VibeFlowClient {
     return data.sessions ?? [];
   }
 
+  async sessionInit(params: {
+    projectName: string;
+    workingDirectory: string;
+    gitBranch: string;
+    gitRemoteUrl: string;
+    persona: string;
+    agentType: string;
+  }): Promise<{ sessionId: string; projectId: number }> {
+    return this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'session_init',
+        arguments: {
+          project_name: params.projectName,
+          working_directory: params.workingDirectory,
+          git_branch: params.gitBranch,
+          git_remote_url: params.gitRemoteUrl,
+          persona: params.persona,
+          agent_type: params.agentType,
+          agent_model: 'vscode-extension',
+        },
+      }),
+    });
+  }
+
+  async killSession(sid: number): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'session_kill',
+        arguments: { sid },
+      }),
+    });
+  }
+
   // --- Features ---
 
   async listFeatures(projectId: number): Promise<VibeFlowFeature[]> {
