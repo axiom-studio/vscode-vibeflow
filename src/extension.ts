@@ -12,6 +12,7 @@ import { ProjectDetector } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
+import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -120,7 +121,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
-      vscode.window.showInformationMessage('VibeFlow: Create Work Item — coming soon');
+      createWorkItem(client, detector, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.changeStatus', (itemType: string, itemId: number, currentStatus: string) => {
+      changeStatus(client, itemType as 'todo' | 'issue', itemId, currentStatus, workItemsProvider);
     }),
     vscode.commands.registerCommand('vibeflow.viewSessions', () => {
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');

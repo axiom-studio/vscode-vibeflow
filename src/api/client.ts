@@ -109,6 +109,16 @@ export class VibeFlowClient {
     return data.features ?? [];
   }
 
+  async createFeature(projectId: number, name: string, priority: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'create_feature',
+        arguments: { project_id: projectId, name, priority },
+      }),
+    });
+  }
+
   // --- Todos ---
 
   async listTodos(featureId: number): Promise<VibeFlowTodo[]> {
@@ -118,6 +128,26 @@ export class VibeFlowClient {
     return data.todos ?? [];
   }
 
+  async createTodo(featureId: number, title: string, priority: string, targetBranch: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'create_todo',
+        arguments: { feature_id: featureId, title, priority, target_branch: targetBranch },
+      }),
+    });
+  }
+
+  async updateTodoStatus(todoId: number, status: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'update_todo_status',
+        arguments: { id: todoId, status },
+      }),
+    });
+  }
+
   // --- Issues ---
 
   async listIssues(projectId: number): Promise<VibeFlowIssue[]> {
@@ -125,6 +155,26 @@ export class VibeFlowClient {
       `/rest/v1/vibeflow/projects/${projectId}/issues`,
     );
     return data.issues ?? [];
+  }
+
+  async createIssue(projectId: number, title: string, priority: string, targetBranch: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'create_issue',
+        arguments: { project_id: projectId, title, priority, target_branch: targetBranch },
+      }),
+    });
+  }
+
+  async updateIssueStatus(issueId: number, status: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'update_issue_status',
+        arguments: { id: issueId, status },
+      }),
+    });
   }
 
   // --- Documents ---
