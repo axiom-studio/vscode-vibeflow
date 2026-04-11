@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/*
+ * Map VSCode theme tokens to Tailwind-consumable CSS variables.
+ * This ensures the webview respects light/dark/high-contrast themes.
+ */
+:root {
+  --feed-bg: var(--vscode-sideBar-background);
+  --feed-fg: var(--vscode-foreground);
+  --feed-muted: var(--vscode-descriptionForeground);
+  --feed-border: var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+  --feed-link: var(--vscode-textLink-foreground);
+  --feed-badge-bg: var(--vscode-badge-background);
+  --feed-badge-fg: var(--vscode-badge-foreground);
+  --feed-input-bg: var(--vscode-input-background);
+  --feed-input-border: var(--vscode-input-border, transparent);
+  --feed-button-bg: var(--vscode-button-background);
+  --feed-button-fg: var(--vscode-button-foreground);
+  --feed-button-hover: var(--vscode-button-hoverBackground);
+  --feed-error: var(--vscode-errorForeground, #f44747);
+  --feed-success: var(--vscode-terminal-ansiGreen, #4ec86e);
+  --feed-warning: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--feed-bg);
+  color: var(--feed-fg);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: 1.4;
+  overflow: hidden;
+}

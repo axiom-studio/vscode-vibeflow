@@ -5,6 +5,7 @@ import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { createSessionStatusBar } from './statusBar/sessionStatus.js';
 import { createWorkSummaryStatusBar } from './statusBar/workSummary.js';
+import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export function activate(context: vscode.ExtensionContext): void {
   // TreeView data providers
@@ -76,6 +77,17 @@ export function activate(context: vscode.ExtensionContext): void {
     sessionStatusBar,
     workSummaryStatusBar,
   );
+
+  // --- Spike: simulate activity feed data ---
+  // Push 500 historical entries on activation, then stream 1 new entry every 3s.
+  // Remove this block once wired to real MCP polling.
+  activityFeedProvider.pushEntries(generateBatch(500));
+
+  const simulationTimer = setInterval(() => {
+    activityFeedProvider.pushEntry(generateOne());
+  }, 3000);
+
+  context.subscriptions.push({ dispose: () => clearInterval(simulationTimer) });
 }
 
 export function deactivate(): void {
