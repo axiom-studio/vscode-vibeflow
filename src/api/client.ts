@@ -56,6 +56,13 @@ export class VibeFlowClient {
     return data.projects ?? [];
   }
 
+  async createProject(name: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/projects', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   // --- Sessions ---
 
   async listSessions(projectId: number): Promise<VibeFlowSession[]> {

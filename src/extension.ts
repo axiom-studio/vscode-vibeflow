@@ -130,6 +130,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await config.update('serverUrl', serverUrl, vscode.ConfigurationTarget.Global);
     }
 
+    // Validate server reachability
+    try {
+      const resp = await fetch(`${serverUrl}/rest/v1/vibeflow/projects`, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(5000),
+      });
+      // 401 is expected (no token yet) — means server is reachable
+      if (!resp.ok && resp.status !== 401) {
+        vscode.window.showWarningMessage(`VibeFlow: Server returned ${resp.status} — continuing anyway`);
+      }
+    } catch {
+      const proceed = await vscode.window.showWarningMessage(
+        `VibeFlow: Could not reach ${serverUrl}. Continue anyway?`,
+        'Continue', 'Cancel',
+      );
+      if (proceed !== 'Continue') { return; }
+    }
+
     // Step 2: API Key
     const apiKey = await vscode.window.showInputBox({
       prompt: 'Paste your VibeFlow API key (from Account > API Keys)',
@@ -165,19 +183,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       ? projects.find(p => p.gitRemoteUrl === remoteUrl)
       : undefined;
 
-    let selectedProject: { id: number; name: string };
+    let selectedProject: { id: number; name: string } | undefined;
 
     if (autoMatch) {
-      // Auto-matched — confirm
       const confirm = await vscode.window.showQuickPick(
         [
-          { label: `$(check) ${autoMatch.name}`, description: 'Matched from git remote', project: autoMatch },
-          { label: '$(list-flat) Choose different project...', description: '', project: undefined as unknown as typeof autoMatch },
+          { label: `$(check) ${autoMatch.name}`, description: 'Matched from git remote', value: 'accept' as const },
+          { label: '$(list-flat) Choose different project...', description: '', value: 'pick' as const },
         ],
         { placeHolder: `Detected project "${autoMatch.name}" from git remote`, title: 'VibeFlow Setup (3/3)' },
       );
       if (!confirm) { return; }
-      selectedProject = confirm.project ?? await pickProject(projects);
+      selectedProject = confirm.value === 'accept' ? autoMatch : await pickProject(projects);
     } else {
       selectedProject = await pickProject(projects);
     }
@@ -198,12 +215,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.showInformationMessage(`VibeFlow: Connected to "${selectedProject.name}"`);
   }
 
-  async function pickProject(projects: { id: number; name: string }[]): Promise<{ id: number; name: string }> {
-    const picked = await vscode.window.showQuickPick(
-      projects.map(p => ({ label: p.name, description: `ID: ${p.id}`, project: p })),
-      { placeHolder: 'Select a VibeFlow project', title: 'VibeFlow Setup (3/3)' },
-    );
-    return picked?.project as { id: number; name: string };
+  async function pickProject(projects: { id: number; name: string }[]): Promise<{ id: number; name: string } | undefined> {
+    const items = [
+      ...projects.map(p => ({ label: p.name, description: `ID: ${p.id}`, project: p as { id: number; name: string } | undefined })),
+      { label: '$(add) Create New Project', description: '', project: undefined as { id: number; name: string } | undefined },
+    ];
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select a VibeFlow project',
+      title: 'VibeFlow Setup (3/3)',
+    });
+
+    if (!picked) { return undefined; }
+
+    if (picked.project) {
+      return picked.project;
+    }
+
+    // Create new project
+    const name = await vscode.window.showInputBox({
+      prompt: 'New project name',
+      placeHolder: 'my-project',
+      ignoreFocusOut: true,
+    });
+    if (!name) { return undefined; }
+
+    try {
+      await client.createProject(name);
+      // Re-fetch to get the created project with its ID
+      const refreshed = await client.listProjects();
+      const created = refreshed.find(p => p.name === name);
+      if (created) {
+        vscode.window.showInformationMessage(`VibeFlow: Project "${name}" created`);
+        return { id: created.id, name: created.name };
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`VibeFlow: Failed to create project — ${err}`);
+    }
+    return undefined;
   }
 
   // --- React to auth state changes ---
