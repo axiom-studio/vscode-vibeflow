@@ -13,6 +13,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
+import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -31,37 +32,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Project Detection ---
   const detector = new ProjectDetector(context.workspaceState);
-  // Run detection asynchronously — don't block activation
-  detector.detect(
-    async (remoteUrl) => {
-      if (!client.isAuthenticated()) { return undefined; }
-      try {
-        const projects = await client.listProjects();
-        return projects.find(p => p.gitRemoteUrl === remoteUrl);
-      } catch { return undefined; }
-    },
-    async () => {
-      if (!client.isAuthenticated()) { return []; }
-      try {
-        return await client.listProjects();
-      } catch { return []; }
-    },
-  ).then(project => {
+  // Run detection asynchronously — don't block activation.
+  // Single detection call wires TreeViews + Activity Feed poller.
+  let activityPoller: ActivityPoller | undefined;
+  const matchFn = async (remoteUrl: string) => {
+    if (!client.isAuthenticated()) { return undefined; }
+    try {
+      const projects = await client.listProjects();
+      return projects.find(p => p.gitRemoteUrl === remoteUrl);
+    } catch { return undefined; }
+  };
+  const listFn = async () => {
+    if (!client.isAuthenticated()) { return []; }
+    try { return await client.listProjects(); } catch { return []; }
+  };
+
+  detector.detect(matchFn, listFn).then(project => {
     if (project) {
-      // Wire TreeViews to live data now that we know the project
+      // Wire TreeViews to live data
       sessionsProvider.connect(client, project.projectId);
       workItemsProvider.connect(client, project.projectId);
+
+      // Start real Activity Feed polling
+      activityPoller = new ActivityPoller(client, activityFeedProvider, promptNotifier, project.projectId);
+      activityPoller.start();
+
       vscode.window.showInformationMessage(
         `VibeFlow: Connected to "${project.projectName}" (${project.gitBranch})`,
       );
-    }
-  });
-
-  // Also detect existing session files
-  detector.detectSessionFiles().then(personas => {
-    if (personas.length > 0) {
-      // Session files found — sessions are active or were recently active
-      // This info will be used by the Agent Fleet TreeView when wired to live data
+    } else {
+      // Demo mode: simulated data when not connected
+      activityFeedProvider.pushEntries(generateBatch(500));
+      const simTimer = setInterval(() => activityFeedProvider.pushEntry(generateOne()), 3000);
+      context.subscriptions.push({ dispose: () => clearInterval(simTimer) });
     }
   });
 
@@ -159,16 +162,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Gracefully no-ops if Copilot isn't installed
   registerChatParticipant(context, client, detector);
 
-  // --- Spike: simulate activity feed data ---
-  // Push 500 historical entries on activation, then stream 1 new entry every 3s.
-  // Remove this block once wired to real MCP polling.
-  activityFeedProvider.pushEntries(generateBatch(500));
-
-  const simulationTimer = setInterval(() => {
-    activityFeedProvider.pushEntry(generateOne());
-  }, 3000);
-
-  context.subscriptions.push({ dispose: () => clearInterval(simulationTimer) });
+  // Cleanup poller on deactivation
+  context.subscriptions.push({ dispose: () => activityPoller?.stop() });
 }
 
 export function deactivate(): void {
