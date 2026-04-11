@@ -13,6 +13,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
+import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
@@ -162,6 +163,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Show Quick Pick of all pending prompts
       // In production, this would fetch current pending prompts from the API
       promptNotifier.showPendingPromptsQuickPick([]);
+    }),
+    vscode.commands.registerCommand('vibeflow.qaVerify', (_type: string, _id: number) => {
+      qaVerify(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.qaReject', (_type: string, _id: number) => {
+      qaReject(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.securityApprove', (_type: string, _id: number) => {
+      securityApprove(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.securityReject', (_type: string, _id: number) => {
+      securityReject(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.checkBranchStatus', () => {
+      checkBranchReviewStatus(client, detector);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
