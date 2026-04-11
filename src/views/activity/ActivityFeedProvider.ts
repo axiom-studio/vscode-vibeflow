@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { ActivityEntry, WebviewToExtensionMessage } from '../../api/types.js';
+import { getNonce } from '../../utils/nonce.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -118,11 +119,3 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   }
 }
 
-function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let nonce = '';
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
-}
