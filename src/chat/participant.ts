@@ -13,7 +13,6 @@ export function registerChatParticipant(
   client: VibeFlowClient,
   detector: ProjectDetector,
 ): void {
-  // Chat Participant API may not be available
   if (!vscode.chat?.createChatParticipant) {
     return;
   }
@@ -42,10 +41,7 @@ class ChatHandler {
   ): Promise<void> {
     if (!this.client.isAuthenticated()) {
       stream.markdown('**Not logged in.** Run `VibeFlow: Login` first.\n\n');
-      stream.button({
-        command: 'vibeflow.login',
-        title: 'Login to VibeFlow',
-      });
+      stream.button({ command: 'vibeflow.login', title: 'Login to VibeFlow' });
       return;
     }
 
@@ -55,14 +51,21 @@ class ChatHandler {
       return;
     }
 
-    const command = request.command;
-
-    switch (command) {
+    switch (request.command) {
       case 'status':
-        await this.handleStatus(project, request, stream);
+        await this.handleStatus(project, stream);
         break;
       case 'create':
         await this.handleCreate(project, request, stream);
+        break;
+      case 'review':
+        await this.handleReview(project, stream);
+        break;
+      case 'summary':
+        await this.handleSummary(project, stream);
+        break;
+      case 'launch':
+        await this.handleLaunch(request, stream);
         break;
       default:
         await this.handleFreeform(project, request, stream);
@@ -72,18 +75,30 @@ class ChatHandler {
 
   private async handleStatus(
     project: DetectedProject,
-    _request: vscode.ChatRequest,
     stream: vscode.ChatResponseStream,
   ): Promise<void> {
     stream.markdown(`## ${project.projectName}\n\n`);
 
     try {
-      const [features, issues] = await Promise.all([
+      const [features, issues, sessions] = await Promise.all([
         this.client.listFeatures(project.projectId),
         this.client.listIssues(project.projectId),
+        this.client.listSessions(project.projectId),
       ]);
 
-      // Features table
+      // Active sessions
+      const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'idle');
+      if (activeSessions.length > 0) {
+        stream.markdown(`### Active Sessions (${activeSessions.length})\n\n`);
+        stream.markdown('| Persona | Branch | Status | Task |\n|---------|--------|--------|------|\n');
+        for (const s of activeSessions) {
+          const task = s.currentWorkItem ? `${s.currentWorkItem.type} #${s.currentWorkItem.id}` : '—';
+          stream.markdown(`| ${s.personaName ?? s.personaKey} | ${s.gitBranch} | ${s.status} | ${task} |\n`);
+        }
+        stream.markdown('\n');
+      }
+
+      // Features
       if (features.length > 0) {
         stream.markdown('### Features\n\n');
         stream.markdown('| Feature | Status | Priority |\n|---------|--------|----------|\n');
@@ -93,7 +108,7 @@ class ChatHandler {
         stream.markdown('\n');
       }
 
-      // Issues table
+      // Open Issues
       const openIssues = issues.filter(i => i.status !== 'done');
       if (openIssues.length > 0) {
         stream.markdown('### Open Issues\n\n');
@@ -104,17 +119,126 @@ class ChatHandler {
         stream.markdown('\n');
       }
 
-      if (features.length === 0 && openIssues.length === 0) {
-        stream.markdown('No features or open issues found.\n');
+      if (features.length === 0 && openIssues.length === 0 && activeSessions.length === 0) {
+        stream.markdown('No activity found.\n');
       }
 
-      // Follow-ups
-      stream.markdown('\n');
       stream.button({ command: 'vibeflow.createWorkItem', title: 'Create Work Item' });
       stream.button({ command: 'vibeflow.refresh', title: 'Refresh' });
     } catch (err) {
       stream.markdown(`**Error**: ${err}\n`);
     }
+  }
+
+  private async handleReview(
+    project: DetectedProject,
+    stream: vscode.ChatResponseStream,
+  ): Promise<void> {
+    stream.markdown('## Items Needing Review\n\n');
+
+    try {
+      const [features, issues] = await Promise.all([
+        this.client.listFeatures(project.projectId),
+        this.client.listIssues(project.projectId),
+      ]);
+
+      // Get todos for all features — filter for done + not reviewed
+      const allTodos = [];
+      for (const f of features) {
+        const todos = await this.client.listTodos(f.id);
+        for (const t of todos) {
+          allTodos.push({ ...t, featureName: f.name });
+        }
+      }
+
+      const needsQA = [
+        ...allTodos.filter(t => t.status === 'done' && !t.qaVerified),
+        ...issues.filter(i => i.status === 'done' && !i.qaVerified),
+      ];
+
+      const needsSecurity = [
+        ...allTodos.filter(t => t.status === 'done' && !t.securityReviewed),
+        ...issues.filter(i => i.status === 'done' && !i.securityReviewed),
+      ];
+
+      if (needsQA.length > 0) {
+        stream.markdown(`### QA Review (${needsQA.length})\n\n`);
+        stream.markdown('| # | Title | Type |\n|---|-------|------|\n');
+        for (const item of needsQA) {
+          const type = 'featureName' in item ? 'todo' : 'issue';
+          stream.markdown(`| ${item.id} | ${item.title} | ${type} |\n`);
+        }
+        stream.markdown('\n');
+      }
+
+      if (needsSecurity.length > 0) {
+        stream.markdown(`### Security Review (${needsSecurity.length})\n\n`);
+        stream.markdown('| # | Title | Type |\n|---|-------|------|\n');
+        for (const item of needsSecurity) {
+          const type = 'featureName' in item ? 'todo' : 'issue';
+          stream.markdown(`| ${item.id} | ${item.title} | ${type} |\n`);
+        }
+        stream.markdown('\n');
+      }
+
+      if (needsQA.length === 0 && needsSecurity.length === 0) {
+        stream.markdown('All done items are reviewed. Nothing pending.\n');
+      }
+    } catch (err) {
+      stream.markdown(`**Error**: ${err}\n`);
+    }
+  }
+
+  private async handleSummary(
+    project: DetectedProject,
+    stream: vscode.ChatResponseStream,
+  ): Promise<void> {
+    stream.markdown(`## Work Summary — ${project.projectName}\n\n`);
+
+    try {
+      const [features, issues, sessions] = await Promise.all([
+        this.client.listFeatures(project.projectId),
+        this.client.listIssues(project.projectId),
+        this.client.listSessions(project.projectId),
+      ]);
+
+      const doneFeatures = features.filter(f => f.status === 'done').length;
+      const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'idle').length;
+      const doneIssues = issues.filter(i => i.status === 'done').length;
+      const openIssues = issues.filter(i => i.status !== 'done').length;
+
+      stream.markdown('| Metric | Count |\n|--------|-------|\n');
+      stream.markdown(`| Features | ${features.length} (${doneFeatures} done) |\n`);
+      stream.markdown(`| Issues | ${issues.length} (${doneIssues} done, ${openIssues} open) |\n`);
+      stream.markdown(`| Active Sessions | ${activeSessions} / ${sessions.length} |\n`);
+      stream.markdown('\n');
+
+      stream.button({ command: 'vibeflow.openDashboard', title: 'Open Dashboard' });
+    } catch (err) {
+      stream.markdown(`**Error**: ${err}\n`);
+    }
+  }
+
+  private async handleLaunch(
+    request: vscode.ChatRequest,
+    stream: vscode.ChatResponseStream,
+  ): Promise<void> {
+    const prompt = request.prompt.trim().toLowerCase();
+
+    // Parse persona from natural language
+    const personas = ['developer', 'architect', 'principal_engineer', 'security_lead', 'qa_lead', 'product_manager', 'project_manager', 'ux_designer', 'customer'];
+    const matchedPersona = personas.find(p => prompt.includes(p.replace('_', ' ')) || prompt.includes(p));
+
+    if (matchedPersona) {
+      stream.markdown(`Launching **${matchedPersona}** session...\n\n`);
+      stream.markdown('Use the button below to complete the launch wizard:\n\n');
+    } else {
+      stream.markdown('Launch a new agent session.\n\nExamples:\n');
+      stream.markdown('- `@vibeflow /launch developer on main`\n');
+      stream.markdown('- `@vibeflow /launch architect on feature/auth`\n\n');
+    }
+
+    stream.button({ command: 'vibeflow.launchSession', title: 'Launch Session' });
   }
 
   private async handleCreate(
@@ -134,7 +258,6 @@ class ChatHandler {
       return;
     }
 
-    // Parse intent from natural language
     const lower = prompt.toLowerCase();
     let itemType: 'issue' | 'todo' | 'feature' = 'issue';
     if (lower.includes('feature')) {
@@ -143,12 +266,9 @@ class ChatHandler {
       itemType = 'todo';
     }
 
-    // For now, guide the user to the Quick Pick wizard
-    // Full natural language creation will be added when API client is complete
     stream.markdown(
       `I'd create a **${itemType}** from: "${prompt}"\n\n` +
-      `Project: **${project.projectName}** (branch: ${project.gitBranch})\n\n` +
-      `Use the command below to create it with the full wizard:\n\n`,
+      `Project: **${project.projectName}** (branch: ${project.gitBranch})\n\n`,
     );
     stream.button({ command: 'vibeflow.createWorkItem', title: `Create ${itemType}` });
   }
@@ -161,14 +281,27 @@ class ChatHandler {
     const prompt = request.prompt.trim().toLowerCase();
 
     if (prompt.includes('status') || prompt.includes('what') || prompt.includes('how')) {
-      await this.handleStatus(project, request, stream);
+      await this.handleStatus(project, stream);
+      return;
+    }
+
+    if (prompt.includes('review') || prompt.includes('qa') || prompt.includes('security')) {
+      await this.handleReview(project, stream);
+      return;
+    }
+
+    if (prompt.includes('summary') || prompt.includes('stats') || prompt.includes('metrics')) {
+      await this.handleSummary(project, stream);
       return;
     }
 
     stream.markdown(
-      `I can help with **${project.projectName}**. Try these commands:\n\n` +
-      '- `/status` — project status, features, and issues\n' +
-      '- `/create <description>` — create a work item\n\n' +
+      `I can help with **${project.projectName}**. Available commands:\n\n` +
+      '- `/status` — project status, sessions, features, issues\n' +
+      '- `/create <description>` — create a work item\n' +
+      '- `/review` — items needing QA or security review\n' +
+      '- `/summary` — work summary and metrics\n' +
+      '- `/launch` — launch an agent session\n\n' +
       'Or ask me anything about the project.\n',
     );
   }

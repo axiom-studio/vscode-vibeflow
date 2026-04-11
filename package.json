@@ -70,6 +70,18 @@
           {
             "name": "create",
             "description": "Create a feature, todo, or issue"
+          },
+          {
+            "name": "review",
+            "description": "View items needing QA or security review"
+          },
+          {
+            "name": "summary",
+            "description": "Get work summary and metrics"
+          },
+          {
+            "name": "launch",
+            "description": "Launch an agent session"
           }
         ]
       }
