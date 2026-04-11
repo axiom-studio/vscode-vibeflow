@@ -111,6 +111,10 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "vibeflow.openSessionPanel",
+        "title": "VibeFlow: View Session Details"
+      },
+      {
         "command": "vibeflow.killSession",
         "title": "VibeFlow: Kill Session",
         "icon": "$(stop)"

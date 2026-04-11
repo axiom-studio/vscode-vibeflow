@@ -13,6 +13,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
+import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
@@ -72,6 +73,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const promptNotifier = new PromptNotifier();
   context.subscriptions.push(promptNotifier);
 
+  // --- Session Focus Panels ---
+  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
+  context.subscriptions.push(sessionPanelManager);
+
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
@@ -128,6 +133,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.changeStatus', (itemType: string, itemId: number, currentStatus: string) => {
       changeStatus(client, itemType as 'todo' | 'issue', itemId, currentStatus, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.openSessionPanel', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
+      if (node?.session) {
+        sessionPanelManager.open(node.session);
+      }
     }),
     vscode.commands.registerCommand('vibeflow.viewSessions', () => {
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');

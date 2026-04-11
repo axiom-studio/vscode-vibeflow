@@ -107,6 +107,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       );
     }
 
+    // Click a session node → open Focus Panel
+    if (element.type === 'session' && element.session) {
+      item.command = {
+        command: 'vibeflow.openSessionPanel',
+        title: 'View Session Details',
+        arguments: [element],
+      };
+    }
+
     return item;
   }
 
