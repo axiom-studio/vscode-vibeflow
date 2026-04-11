@@ -363,6 +363,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.openDocumentViewer', (docId: number, docTitle: string) => {
       openDocumentViewer(client, docId, docTitle);
     }),
+    vscode.commands.registerCommand('vibeflow.openSettings', () => {
+      activityFeedProvider.showSettings();
+    }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
     }),

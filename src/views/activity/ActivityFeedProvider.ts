@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { ActivityEntry, WebviewToExtensionMessage } from '../../api/types.js';
+import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 
 /**
@@ -9,6 +9,7 @@ import { getNonce } from '../../utils/nonce.js';
 export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private pendingEntries: ActivityEntry[] = [];
+  settingsHandler: ((message: unknown) => void) | undefined;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -28,18 +29,30 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
-    webviewView.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => {
+    webviewView.webview.onDidReceiveMessage((message: { type: string; payload?: unknown }) => {
       switch (message.type) {
         case 'ready':
-          // Flush any entries that arrived before the webview was ready
           if (this.pendingEntries.length > 0) {
             this.postMessage({ type: 'activityEntries', payload: this.pendingEntries });
             this.pendingEntries = [];
           }
           break;
         case 'respondToPrompt':
-          // Open Quick Pick for prompt response
-          this.handlePromptResponse(message.payload.promptId);
+          this.handlePromptResponse((message.payload as { promptId: string }).promptId);
+          break;
+        case 'closeSettings':
+          this.postMessage({ type: 'showActivity' });
+          break;
+        case 'getSetting':
+        case 'updateSetting':
+        case 'validateServerUrl':
+        case 'validateApiKey':
+        case 'setApiKey':
+        case 'setProviderToken':
+        case 'selectProject':
+        case 'refreshProjects':
+          // Settings commands — delegated to extension host via event
+          this.settingsHandler?.(message);
           break;
       }
     });
@@ -69,6 +82,16 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'activityEntries', payload: entries });
     } else {
       this.pendingEntries.push(...entries);
+    }
+  }
+
+  /**
+   * Toggle the webview to show the Settings panel.
+   */
+  showSettings(): void {
+    if (this.view) {
+      this.view.show(true);
+      this.postMessage({ type: 'showSettings' });
     }
   }
 
