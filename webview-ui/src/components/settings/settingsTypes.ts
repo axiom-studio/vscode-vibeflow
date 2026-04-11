@@ -1,0 +1,66 @@
+// Settings data model — mirrors CLI config.go
+
+export interface ProviderConfig {
+  key: string;
+  name: string;
+  binary: string;
+  available: boolean;
+  vibeflowIntegrated: boolean;
+  llmGatewayEnabled: boolean;
+  envTokenName?: string; // e.g., "MCP_TOKEN" for codex, "GEMINI_API_KEY" for gemini
+  envTokenSet: boolean;
+}
+
+export interface SettingsData {
+  // Connection
+  serverUrl: string;
+  serverReachable: boolean | null; // null = not checked
+  apiKeySet: boolean;
+  apiKeyValid: boolean | null;
+  projectId: number | null;
+  projectName: string | null;
+  projects: { id: number; name: string }[];
+
+  // Providers
+  defaultProvider: string;
+  providers: ProviderConfig[];
+
+  // Worktree
+  worktreeBaseDir: string;
+  worktreeAutoCreate: boolean;
+  worktreeCleanupOnKill: 'ask' | 'always' | 'never';
+
+  // Session
+  pollInterval: number;
+  viewMode: 'flat' | 'grouped';
+  skipPermissions: boolean;
+
+  // Advanced
+  errorRecoveryEnabled: boolean;
+  errorRecoveryMaxRetries: number;
+  errorRecoveryDebounce: number;
+  notifyAgentPrompts: boolean;
+  notifyWorkComplete: boolean;
+  debugSimulateActivity: boolean;
+  debugVerboseLogging: boolean;
+
+  // About
+  version: string;
+}
+
+// Extension -> Webview
+export type SettingsMessage =
+  | { type: 'settingsData'; payload: SettingsData }
+  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
+
+// Webview -> Extension
+export type SettingsCommand =
+  | { type: 'getSetting' }
+  | { type: 'updateSetting'; payload: { key: string; value: unknown } }
+  | { type: 'validateServerUrl'; payload: string }
+  | { type: 'validateApiKey'; payload: string }
+  | { type: 'setApiKey'; payload: string }
+  | { type: 'setProviderToken'; payload: { provider: string; token: string } }
+  | { type: 'selectProject'; payload: number }
+  | { type: 'refreshProjects' }
+  | { type: 'closeSettings' };

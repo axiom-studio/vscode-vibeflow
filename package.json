@@ -127,6 +127,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "vibeflow.openSettings",
+        "title": "VibeFlow: Settings",
+        "icon": "$(gear)"
+      },
+      {
         "command": "vibeflow.openSessionPanel",
         "title": "VibeFlow: View Session Details"
       },
@@ -173,6 +178,11 @@
         {
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.workItems",
+          "group": "navigation"
+        },
+        {
+          "command": "vibeflow.openSettings",
+          "when": "view == vibeflow.activityFeed",
           "group": "navigation"
         }
       ]
