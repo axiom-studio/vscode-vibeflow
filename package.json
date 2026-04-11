@@ -88,6 +88,10 @@
     ],
     "commands": [
       {
+        "command": "vibeflow.setup",
+        "title": "VibeFlow: Setup"
+      },
+      {
         "command": "vibeflow.login",
         "title": "VibeFlow: Login"
       },
