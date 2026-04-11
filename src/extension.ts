@@ -14,6 +14,7 @@ import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
+import { createPR, openDocumentViewer } from './commands/prCommands.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
@@ -55,6 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Wire TreeViews to live data
       sessionsProvider.connect(client, project.projectId);
       workItemsProvider.connect(client, project.projectId);
+      documentsProvider.connect(client, project.projectId);
 
       // Start real Activity Feed polling
       activityPoller = new ActivityPoller(client, activityFeedProvider, promptNotifier, project.projectId);
@@ -179,6 +181,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.checkBranchStatus', () => {
       checkBranchReviewStatus(client, detector);
     }),
+    vscode.commands.registerCommand('vibeflow.createPR', () => {
+      createPR(client, detector);
+    }),
+    vscode.commands.registerCommand('vibeflow.openDocumentViewer', (docId: number, docTitle: string) => {
+      openDocumentViewer(client, docId, docTitle);
+    }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
     }),
@@ -193,6 +201,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     sessionsProvider,
     workItemsProvider,
+    documentsProvider,
     sessionsView,
     workItemsView,
     documentsView,

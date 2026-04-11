@@ -247,4 +247,23 @@ export class VibeFlowClient {
     );
     return data.documents ?? [];
   }
+
+  async getDocument(docId: number): Promise<{ id: number; title: string; content: string }> {
+    return this.request(`/rest/v1/vibeflow/mcp`, {
+      method: 'POST',
+      body: JSON.stringify({ tool: 'get_document', arguments: { id: docId } }),
+    });
+  }
+
+  // --- PR Creation ---
+
+  async createPR(projectId: number, params: { title: string; head: string; base: string }): Promise<{ url?: string }> {
+    return this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'create_pr',
+        arguments: { project_id: projectId, title: params.title, head: params.head, base: params.base },
+      }),
+    });
+  }
 }
