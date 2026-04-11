@@ -14,6 +14,7 @@ import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
+import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
@@ -73,9 +74,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const promptNotifier = new PromptNotifier();
   context.subscriptions.push(promptNotifier);
 
-  // --- Session Focus Panels ---
+  // --- Focus Panels ---
   const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
-  context.subscriptions.push(sessionPanelManager);
+  const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client);
+  context.subscriptions.push(sessionPanelManager, workItemPanelManager);
 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
@@ -130,6 +132,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (node: { type?: string; id?: string; label?: string; description?: string }) => {
+      if (node?.type === 'todo' || node?.type === 'issue') {
+        const idMatch = node.id?.match(/^(todo|issue)-(\d+)$/);
+        if (idMatch) {
+          workItemPanelManager.open({
+            type: idMatch[1] as 'todo' | 'issue',
+            id: parseInt(idMatch[2]),
+            title: node.label?.replace(/^#\d+:\s*/, '') ?? '',
+            status: node.description ?? '',
+            priority: 'medium',
+          });
+        }
+      }
     }),
     vscode.commands.registerCommand('vibeflow.changeStatus', (itemType: string, itemId: number, currentStatus: string) => {
       changeStatus(client, itemType as 'todo' | 'issue', itemId, currentStatus, workItemsProvider);
