@@ -102,6 +102,8 @@ export interface VibeFlowTodo {
   featureId: number;
   targetBranch: string;
   claimedBy?: string;
+  qaVerified?: boolean;
+  securityReviewed?: boolean;
 }
 
 export interface VibeFlowIssue {
@@ -113,6 +115,8 @@ export interface VibeFlowIssue {
   targetBranch: string;
   featureId?: number;
   claimedBy?: string;
+  qaVerified?: boolean;
+  securityReviewed?: boolean;
 }
 
 export interface VibeFlowDocument {
