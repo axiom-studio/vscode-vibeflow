@@ -177,6 +177,27 @@ export class VibeFlowClient {
     });
   }
 
+  // --- Work Item Logs ---
+
+  async getWorkItemLogs(
+    type: 'todo' | 'issue',
+    id: number,
+  ): Promise<{ id?: number; content: string; message_type?: string; created_at: string }[]> {
+    const tool = type === 'todo' ? 'get_todo_logs' : 'get_issue_logs';
+    const idKey = type === 'todo' ? 'todo_id' : 'issue_id';
+    const data = await this.request<{ logs: { id?: number; content: string; message_type?: string; created_at: string }[] }>(
+      '/rest/v1/vibeflow/mcp',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          tool,
+          arguments: { [idKey]: id },
+        }),
+      },
+    );
+    return data.logs ?? [];
+  }
+
   // --- Documents ---
 
   async listDocuments(projectId: number): Promise<VibeFlowDocument[]> {
