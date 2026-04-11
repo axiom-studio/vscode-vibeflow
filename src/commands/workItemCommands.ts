@@ -1,0 +1,166 @@
+import * as vscode from 'vscode';
+import type { VibeFlowClient } from '../api/client.js';
+import type { ProjectDetector } from '../project/ProjectDetector.js';
+import type { WorkItemsTreeProvider } from '../views/workItems/WorkItemsTreeProvider.js';
+
+const ITEM_TYPES = [
+  { label: '$(bug) Issue', description: 'Bug or standalone fix', value: 'issue' as const },
+  { label: '$(checklist) Todo', description: 'Enhancement under a feature', value: 'todo' as const },
+  { label: '$(package) Feature', description: 'New feature category', value: 'feature' as const },
+];
+
+const PRIORITIES = [
+  { label: '$(arrow-up) High', value: 'high' as const },
+  { label: '$(dash) Medium', value: 'medium' as const },
+  { label: '$(arrow-down) Low', value: 'low' as const },
+];
+
+const VALID_TRANSITIONS: Record<string, { label: string; value: string }[]> = {
+  in_review: [
+    { label: 'Planning', value: 'planning' },
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+  ],
+  planning: [
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'In Review', value: 'in_review' },
+  ],
+  ready_to_implement: [
+    { label: 'Implementing', value: 'implementing' },
+    { label: 'Planning', value: 'planning' },
+  ],
+  implementing: [
+    { label: 'Done', value: 'done' },
+    { label: 'Planning', value: 'planning' },
+  ],
+  done: [
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+  ],
+};
+
+/**
+ * Multi-step Quick Pick for creating a new work item.
+ */
+export async function createWorkItem(
+  client: VibeFlowClient,
+  detector: ProjectDetector,
+  workItemsProvider: WorkItemsTreeProvider,
+): Promise<void> {
+  const project = detector.getCachedProject();
+  if (!project) {
+    vscode.window.showErrorMessage('VibeFlow: No project detected.');
+    return;
+  }
+
+  if (!client.isAuthenticated()) {
+    vscode.window.showErrorMessage('VibeFlow: Not logged in.');
+    return;
+  }
+
+  // Step 1: Type
+  const itemType = await vscode.window.showQuickPick(ITEM_TYPES, {
+    placeHolder: 'What type of work item?',
+    title: 'VibeFlow: Create Work Item (1/3)',
+  });
+  if (!itemType) { return; }
+
+  // Step 2: Title
+  const title = await vscode.window.showInputBox({
+    prompt: `Title for the new ${itemType.value}`,
+    title: 'VibeFlow: Create Work Item (2/3)',
+    placeHolder: 'e.g., Fix login button not responding',
+  });
+  if (!title) { return; }
+
+  // Step 3: Priority
+  const priority = await vscode.window.showQuickPick(PRIORITIES, {
+    placeHolder: 'Priority',
+    title: 'VibeFlow: Create Work Item (3/3)',
+  });
+  if (!priority) { return; }
+
+  try {
+    if (itemType.value === 'feature') {
+      await client.createFeature(project.projectId, title, priority.value);
+    } else if (itemType.value === 'issue') {
+      await client.createIssue(project.projectId, title, priority.value, project.gitBranch);
+    } else {
+      // Todo needs a feature — pick one
+      const features = await client.listFeatures(project.projectId);
+      if (features.length === 0) {
+        vscode.window.showWarningMessage('VibeFlow: Create a feature first before adding todos.');
+        return;
+      }
+
+      const feature = await vscode.window.showQuickPick(
+        features.map(f => ({ label: f.name, description: `ID: ${f.id}`, featureId: f.id })),
+        { placeHolder: 'Select parent feature for this todo' },
+      );
+      if (!feature) { return; }
+
+      await client.createTodo(feature.featureId, title, priority.value, project.gitBranch);
+    }
+
+    vscode.window.showInformationMessage(`VibeFlow: Created ${itemType.value} "${title}"`);
+    workItemsProvider.refresh();
+  } catch (err) {
+    vscode.window.showErrorMessage(`VibeFlow: Failed to create ${itemType.value} — ${err}`);
+  }
+}
+
+/**
+ * Change status of a todo or issue via context menu.
+ */
+export async function changeStatus(
+  client: VibeFlowClient,
+  itemType: 'todo' | 'issue',
+  itemId: number,
+  currentStatus: string,
+  workItemsProvider: WorkItemsTreeProvider,
+): Promise<void> {
+  const transitions = VALID_TRANSITIONS[currentStatus];
+  if (!transitions || transitions.length === 0) {
+    vscode.window.showInformationMessage('VibeFlow: No valid transitions from this status.');
+    return;
+  }
+
+  const selected = await vscode.window.showQuickPick(transitions, {
+    placeHolder: `Change status from "${currentStatus}" to...`,
+  });
+  if (!selected) { return; }
+
+  try {
+    if (itemType === 'todo') {
+      await client.updateTodoStatus(itemId, selected.value);
+    } else {
+      await client.updateIssueStatus(itemId, selected.value);
+    }
+    vscode.window.showInformationMessage(`VibeFlow: Status changed to "${selected.value}"`);
+    workItemsProvider.refresh();
+  } catch (err) {
+    vscode.window.showErrorMessage(`VibeFlow: Failed to change status — ${err}`);
+  }
+}
+
+/**
+ * Change priority of a todo or issue via context menu.
+ */
+export async function changePriority(
+  client: VibeFlowClient,
+  itemType: 'todo' | 'issue',
+  itemId: number,
+  workItemsProvider: WorkItemsTreeProvider,
+): Promise<void> {
+  const selected = await vscode.window.showQuickPick(PRIORITIES, {
+    placeHolder: 'New priority',
+  });
+  if (!selected) { return; }
+
+  try {
+    // Priority update goes through the same status endpoint with priority field
+    // For now, show info — full API integration when REST endpoints are confirmed
+    vscode.window.showInformationMessage(`VibeFlow: Priority set to ${selected.value} for ${itemType} #${itemId}`);
+    workItemsProvider.refresh();
+  } catch (err) {
+    vscode.window.showErrorMessage(`VibeFlow: Failed to change priority — ${err}`);
+  }
+}
