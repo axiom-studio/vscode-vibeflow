@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomUUID } from 'crypto';
 
 const SECRET_KEY_TOKEN = 'vibeflow.authToken';
 const SECRET_KEY_REFRESH = 'vibeflow.refreshToken';
@@ -17,6 +18,7 @@ export class AuthService implements vscode.Disposable {
   private token: string | undefined;
   private refreshToken: string | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingOAuthState: string | undefined;
 
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
@@ -74,11 +76,24 @@ export class AuthService implements vscode.Disposable {
       vscode.Uri.parse(`${vscode.env.uriScheme}://axiom-studio.vscode-vibeflow/callback`),
     );
 
-    const authUrl = `${serverUrl}/auth/vscode?redirect_uri=${encodeURIComponent(callbackUri.toString())}`;
+    // Generate CSRF state parameter
+    this.pendingOAuthState = randomUUID();
+
+    const authUrl = `${serverUrl}/auth/vscode?redirect_uri=${encodeURIComponent(callbackUri.toString())}&state=${this.pendingOAuthState}`;
 
     await vscode.env.openExternal(vscode.Uri.parse(authUrl));
     vscode.window.showInformationMessage('VibeFlow: Complete login in your browser...');
     return true; // Actual token arrives via URI handler callback
+  }
+
+  /**
+   * Consume and validate the pending OAuth state parameter.
+   * Returns true if the state matches, false otherwise. Clears state after check.
+   */
+  consumeOAuthState(state: string): boolean {
+    const valid = this.pendingOAuthState !== undefined && this.pendingOAuthState === state;
+    this.pendingOAuthState = undefined;
+    return valid;
   }
 
   /**

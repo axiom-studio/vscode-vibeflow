@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
+import { getNonce } from '../../utils/nonce.js';
+import { escapeHtml } from '../../utils/html.js';
 
 interface WorkItemInfo {
   type: 'todo' | 'issue';
@@ -154,12 +156,12 @@ export class WorkItemPanelManager implements vscode.Disposable {
 </head>
 <body>
   <div class="header">
-    <h1>${item.type} #${item.id}: ${escHtml(item.title)}</h1>
+    <h1>${item.type} #${item.id}: ${escapeHtml(item.title)}</h1>
     <div class="meta">
       ${statusBadge(item.status, 'badge-background')}
       <span>Priority: ${item.priority}</span>
-      ${item.featureName ? `<span>Feature: ${escHtml(item.featureName)}</span>` : ''}
-      ${item.claimedBy ? `<span>Claimed: ${escHtml(item.claimedBy)}</span>` : ''}
+      ${item.featureName ? `<span>Feature: ${escapeHtml(item.featureName)}</span>` : ''}
+      ${item.claimedBy ? `<span>Claimed: ${escapeHtml(item.claimedBy)}</span>` : ''}
     </div>
   </div>
 
@@ -234,13 +236,3 @@ export class WorkItemPanelManager implements vscode.Disposable {
   }
 }
 
-function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let nonce = '';
-  for (let i = 0; i < 32; i++) { nonce += chars.charAt(Math.floor(Math.random() * chars.length)); }
-  return nonce;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}

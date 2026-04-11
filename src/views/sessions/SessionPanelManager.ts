@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
+import { getNonce } from '../../utils/nonce.js';
+import { escapeHtml } from '../../utils/html.js';
 
 /**
  * Manages Focus View Webview Panels for individual agent sessions.
@@ -143,19 +145,19 @@ export class SessionPanelManager implements vscode.Disposable {
 </head>
 <body>
   <div class="header">
-    <h1>${personaName}</h1>
+    <h1>${escapeHtml(personaName)}</h1>
     <span class="meta">
-      <span>${model}</span>
-      <span>${branch}</span>
-      <span>${status}</span>
+      <span>${escapeHtml(model)}</span>
+      <span>${escapeHtml(branch)}</span>
+      <span>${escapeHtml(status)}</span>
     </span>
   </div>
 
   <div class="section">
     <h2>Current Task</h2>
     <div class="task-card">
-      <span class="title">${taskType ? `${taskType} #${taskId}: ` : ''}${taskTitle}</span>
-      ${taskStatus ? `<span class="badge">${taskStatus}</span>` : ''}
+      <span class="title">${taskType ? `${escapeHtml(taskType)} #${taskId}: ` : ''}${escapeHtml(taskTitle)}</span>
+      ${taskStatus ? `<span class="badge">${escapeHtml(taskStatus)}</span>` : ''}
     </div>
   </div>
 
@@ -212,11 +214,3 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 }
 
-function getNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let nonce = '';
-  for (let i = 0; i < 32; i++) {
-    nonce += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return nonce;
-}
