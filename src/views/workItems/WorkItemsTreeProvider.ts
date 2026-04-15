@@ -90,10 +90,9 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       this.features = features;
       this.issues = issues;
 
-      // Fetch todos for all non-done features
-      const activeFeatues = features.filter(f => f.status !== 'done');
+      // Fetch todos for ALL features (some todos may be active even if feature is done)
       const todoLists = await Promise.all(
-        activeFeatues.map(f => this.client!.listTodos(f.id)),
+        features.map(f => this.client!.listTodos(f.id).catch(() => [])),
       );
       this.todos = todoLists.flat();
     } catch {
@@ -118,6 +117,15 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
         element.iconId,
         element.iconColor,
       );
+    }
+
+    // Click a todo/issue → open Work Item Detail Panel
+    if (element.type === 'todo' || element.type === 'issue') {
+      item.command = {
+        command: 'vibeflow.openWorkItemPanel',
+        title: 'View Details',
+        arguments: [element],
+      };
     }
 
     return item;

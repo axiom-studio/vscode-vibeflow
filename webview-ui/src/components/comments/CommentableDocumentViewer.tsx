@@ -7,6 +7,7 @@ import { CommentPopover } from './CommentPopover';
 import { CommentList } from './CommentList';
 import { SaveAndNotifyButton } from './SaveAndNotifyButton';
 import type { VibeFlowComment, CommentEvent, CommentMessage } from './types';
+import { getVsCodeApi } from '../../vscodeApi';
 
 interface CommentableDocumentViewerProps {
   content: string;
@@ -17,9 +18,9 @@ interface CommentableDocumentViewerProps {
   currentUserId: number | undefined;
 }
 
-const vscode = (window as unknown as {
-  acquireVsCodeApi: () => { postMessage: (msg: CommentMessage | { type: 'commentsSaveAndNotify'; payload: unknown }) => void };
-}).acquireVsCodeApi();
+const vscode = getVsCodeApi() as {
+  postMessage: (msg: CommentMessage | { type: 'commentsSaveAndNotify'; payload: unknown }) => void;
+};
 
 /**
  * Top-level document viewer with inline comments.

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
 
-type NodeType = 'branch' | 'session' | 'workItem' | 'inactive' | 'placeholder';
+type NodeType = 'branch' | 'session' | 'placeholder';
 
 interface SessionNode {
   id: string;
@@ -18,11 +18,21 @@ interface SessionNode {
   session?: VibeFlowSession;
 }
 
-const STATUS_ICONS: Record<VibeFlowSession['status'], { icon: string; color: string }> = {
+/**
+ * Derive a display status from the server-side `active` and `stale` flags.
+ * The server uses a Redis heartbeat: `active: true, stale: false` → green,
+ * `active: true, stale: true` → yellow (heartbeat expired), `active: false` → gray.
+ */
+function deriveStatus(s: VibeFlowSession): 'active' | 'stale' | 'inactive' {
+  if (!s.active) { return 'inactive'; }
+  if (s.stale) { return 'stale'; }
+  return 'active';
+}
+
+const STATUS_ICONS: Record<ReturnType<typeof deriveStatus>, { icon: string; color: string }> = {
   active: { icon: 'circle-filled', color: 'testing.iconPassed' },
-  idle: { icon: 'circle-filled', color: 'editorWarning.foreground' },
-  error: { icon: 'circle-filled', color: 'testing.iconFailed' },
-  stopped: { icon: 'circle-outline', color: 'disabledForeground' },
+  stale: { icon: 'circle-filled', color: 'editorWarning.foreground' },
+  inactive: { icon: 'circle-outline', color: 'disabledForeground' },
 };
 
 const PERSONA_LABELS: Record<string, string> = {
@@ -38,8 +48,8 @@ const PERSONA_LABELS: Record<string, string> = {
 };
 
 /**
- * Agent Fleet TreeView — sessions grouped by branch with live data from the API.
- * Falls back to placeholder tree when no project is detected or not authenticated.
+ * Agent Fleet TreeView — sessions grouped by branch with live data from
+ * `/rest/v1/vibeflow/sessions/active?project_id=...` (axiomcloud REST).
  */
 export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode>, vscode.Disposable {
   private _onDidChangeTreeData = new vscode.EventEmitter<SessionNode | undefined | null | void>();
@@ -51,12 +61,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private pollTimer: ReturnType<typeof setInterval> | undefined;
 
   refresh(): void {
-    this._onDidChangeTreeData.fire();
+    this.fetchAndRefresh();
   }
 
-  /**
-   * Connect to a project and start polling.
-   */
   connect(client: VibeFlowClient, projectId: number): void {
     this.client = client;
     this.projectId = projectId;
@@ -79,9 +86,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private async fetchAndRefresh(): Promise<void> {
-    if (!this.client || !this.projectId) {
-      return;
-    }
+    if (!this.client || !this.projectId) { return; }
     try {
       this.sessions = await this.client.listSessions(this.projectId);
     } catch {
@@ -96,15 +101,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     item.description = element.description;
     item.contextValue = element.contextValue;
 
-    if (element.tooltip) {
-      item.tooltip = element.tooltip;
-    }
-
+    if (element.tooltip) { item.tooltip = element.tooltip; }
     if (element.iconId) {
-      item.iconPath = new vscode.ThemeIcon(
-        element.iconId,
-        element.iconColor,
-      );
+      item.iconPath = new vscode.ThemeIcon(element.iconId, element.iconColor);
     }
 
     // Click a session node → open Focus Panel
@@ -120,21 +119,17 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   getChildren(element?: SessionNode): SessionNode[] {
-    if (!element) {
-      return this.buildTree();
-    }
+    if (!element) { return this.buildTree(); }
     return element.children ?? [];
   }
 
   private buildTree(): SessionNode[] {
-    if (this.sessions.length === 0) {
-      return this.buildPlaceholderTree();
-    }
+    if (this.sessions.length === 0) { return this.buildPlaceholderTree(); }
 
     // Group sessions by branch
     const byBranch = new Map<string, VibeFlowSession[]>();
     for (const s of this.sessions) {
-      const branch = s.gitBranch || 'unknown';
+      const branch = s.git_branch || 'unknown';
       const list = byBranch.get(branch) ?? [];
       list.push(s);
       byBranch.set(branch, list);
@@ -142,7 +137,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
     const nodes: SessionNode[] = [];
     for (const [branch, branchSessions] of byBranch) {
-      const activeCount = branchSessions.filter(s => s.status === 'active' || s.status === 'idle').length;
+      const activeCount = branchSessions.filter(s => s.active && !s.stale).length;
       nodes.push({
         id: `branch-${branch}`,
         type: 'branch',
@@ -158,53 +153,38 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildSessionNode(session: VibeFlowSession): SessionNode {
-    const statusInfo = STATUS_ICONS[session.status];
-    const personaLabel = PERSONA_LABELS[session.personaKey] ?? session.personaKey;
+    const status = deriveStatus(session);
+    const statusInfo = STATUS_ICONS[status];
+    const personaLabel = PERSONA_LABELS[session.persona_key] ?? session.persona_name ?? session.persona_key;
 
-    const taskDesc = session.currentWorkItem
-      ? `${session.currentWorkItem.status} "${session.currentWorkItem.title}"`
-      : session.status;
+    const description = session.last_message
+      ? truncate(session.last_message, 60)
+      : status;
 
     const tooltip = new vscode.MarkdownString();
-    tooltip.appendMarkdown(`**${personaLabel}** (${session.agentModel})\n\n`);
-    tooltip.appendMarkdown(`- Status: ${session.status}\n`);
-    if (session.currentWorkItem) {
-      tooltip.appendMarkdown(`- Task: ${session.currentWorkItem.title}\n`);
+    tooltip.appendMarkdown(`**${personaLabel}** (${session.agent_model})\n\n`);
+    tooltip.appendMarkdown(`- Session: \`${session.session_id}\`\n`);
+    tooltip.appendMarkdown(`- Branch: ${session.git_branch}\n`);
+    tooltip.appendMarkdown(`- Status: ${status}\n`);
+    if (session.last_message_at) {
+      tooltip.appendMarkdown(`- Last activity: ${new Date(session.last_message_at).toLocaleString()}\n`);
     }
-    if (session.heartbeatAt) {
-      tooltip.appendMarkdown(`- Last heartbeat: ${new Date(session.heartbeatAt).toLocaleTimeString()}\n`);
+    if (session.last_message) {
+      tooltip.appendMarkdown(`\n> ${session.last_message}\n`);
     }
 
-    const node: SessionNode = {
-      id: `session-${session.sid}`,
+    return {
+      id: `session-${session.session_id}`,
       type: 'session',
       label: personaLabel,
-      description: taskDesc,
+      description,
       tooltip,
       iconId: statusInfo.icon,
       iconColor: new vscode.ThemeColor(statusInfo.color),
-      collapsibleState: session.currentWorkItem
-        ? vscode.TreeItemCollapsibleState.Collapsed
-        : vscode.TreeItemCollapsibleState.None,
-      contextValue: session.status === 'active' ? 'activeSession' : 'inactiveSession',
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextValue: status === 'active' ? 'activeSession' : 'inactiveSession',
       session,
     };
-
-    if (session.currentWorkItem) {
-      node.children = [
-        {
-          id: `workitem-${session.currentWorkItem.type}-${session.currentWorkItem.id}`,
-          type: 'workItem',
-          label: `#${session.currentWorkItem.id}: ${session.currentWorkItem.title}`,
-          description: session.currentWorkItem.status,
-          iconId: session.currentWorkItem.type === 'todo' ? 'checklist' : 'bug',
-          collapsibleState: vscode.TreeItemCollapsibleState.None,
-          contextValue: 'workItem',
-        },
-      ];
-    }
-
-    return node;
   }
 
   private buildPlaceholderTree(): SessionNode[] {
@@ -235,4 +215,8 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     this.stopPolling();
     this._onDidChangeTreeData.dispose();
   }
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + '…';
 }

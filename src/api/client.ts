@@ -66,11 +66,11 @@ export class VibeFlowClient {
 
   async listSessions(projectId: number): Promise<VibeFlowSession[]> {
     try {
-      return await this.request<VibeFlowSession[]>(
-        `/rest/v1/vibeflow/projects/${projectId}/sessions`,
+      const data = await this.request<{ sessions: VibeFlowSession[] }>(
+        `/rest/v1/vibeflow/sessions/active?project_id=${projectId}`,
       );
+      return data.sessions ?? [];
     } catch {
-      // Sessions endpoint may not exist as REST — return empty
       return [];
     }
   }
@@ -82,31 +82,47 @@ export class VibeFlowClient {
     gitRemoteUrl: string;
     persona: string;
     agentType: string;
-  }): Promise<{ sessionId: string; projectId: number }> {
-    return this.request('/rest/v1/vibeflow/mcp', {
+  }): Promise<{ session_id: string; project_id: number; project_name: string; prompt?: string; session_reused?: boolean }> {
+    // Dedicated REST endpoint — NOT the MCP wrapper. Matches vibeflow-cli.
+    return this.request('/rest/v1/vibeflow/sessions/init', {
       method: 'POST',
       body: JSON.stringify({
-        tool: 'session_init',
-        arguments: {
-          project_name: params.projectName,
-          working_directory: params.workingDirectory,
-          git_branch: params.gitBranch,
-          git_remote_url: params.gitRemoteUrl,
-          persona: params.persona,
-          agent_type: params.agentType,
-          agent_model: 'vscode-extension',
-        },
+        project_name: params.projectName,
+        working_directory: params.workingDirectory,
+        git_branch: params.gitBranch,
+        persona: params.persona,
+        agent_type: params.agentType,
+        agent_model: 'vscode-extension',
       }),
     });
   }
 
-  async killSession(sid: number): Promise<void> {
-    await this.request('/rest/v1/vibeflow/mcp', {
+  async sessionRegister(params: {
+    sessionId: string;
+    projectId: number;
+    workingDirectory: string;
+    gitBranch: string;
+    gitRemoteUrl?: string;
+  }): Promise<void> {
+    await this.request('/rest/v1/vibeflow/sessions/register', {
       method: 'POST',
       body: JSON.stringify({
-        tool: 'session_kill',
-        arguments: { sid },
+        session_id: params.sessionId,
+        project_id: params.projectId,
+        working_directory: params.workingDirectory,
+        git_branch: params.gitBranch,
+        git_remote_url: params.gitRemoteUrl,
       }),
+    });
+  }
+
+  /**
+   * Delete a session from the server via DELETE /rest/v1/vibeflow/sessions/{session_id}.
+   * Does NOT kill the local agent process — that's done by closing the terminal.
+   */
+  async killSession(sessionId: string): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/sessions/${sessionId}`, {
+      method: 'DELETE',
     });
   }
 

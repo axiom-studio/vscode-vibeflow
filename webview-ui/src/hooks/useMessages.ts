@@ -1,14 +1,14 @@
 import { useEffect, useCallback, useRef } from 'react';
 import type { ActivityEntry, ExtensionMessage, WebviewMessage } from '../types';
+import { getVsCodeApi } from '../vscodeApi';
 
 const MAX_ENTRIES = 500;
 
-// Acquire the VS Code API once at module level
-const vscode = (window as unknown as { acquireVsCodeApi: () => {
+const vscode = getVsCodeApi() as {
   postMessage: (msg: WebviewMessage) => void;
   getState: () => unknown;
   setState: (state: unknown) => void;
-} }).acquireVsCodeApi();
+};
 
 /**
  * Typed postMessage hook — the abstraction layer between the webview and extension host.
