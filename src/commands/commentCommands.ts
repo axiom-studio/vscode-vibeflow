@@ -106,9 +106,9 @@ export async function pickPersonaForNotification(
   // Group sessions by persona to know which have active sessions
   const activeByPersona = new Map<string, VibeFlowSession>();
   for (const s of sessions) {
-    if (s.status === 'active' || s.status === 'idle') {
-      if (!activeByPersona.has(s.personaKey)) {
-        activeByPersona.set(s.personaKey, s);
+    if (s.active && !s.stale) {
+      if (!activeByPersona.has(s.persona_key)) {
+        activeByPersona.set(s.persona_key, s);
       }
     }
   }
@@ -126,7 +126,7 @@ export async function pickPersonaForNotification(
     const active = activeByPersona.get(p.key);
     items.push({
       label: active ? `$(pulse) ${p.label}` : `$(circle-outline) ${p.label}`,
-      description: active ? `active on ${active.gitBranch}` : 'no active session',
+      description: active ? `active on ${active.git_branch}` : 'no active session',
       detail: p.description,
       value: p.key,
     });
@@ -175,7 +175,7 @@ export async function saveAndNotify(
   // 4. Notify if a persona was picked (not _save_only)
   if (pickedPersona !== '_save_only') {
     const activeSession = sessions.find(
-      s => s.personaKey === pickedPersona && (s.status === 'active' || s.status === 'idle'),
+      s => s.persona_key === pickedPersona && s.active && !s.stale,
     );
 
     if (!activeSession) {
@@ -187,7 +187,7 @@ export async function saveAndNotify(
 
     const promptText = buildPromptText(documentTitle, drafts, sections);
     try {
-      await client.promptUser(projectId, activeSession.id, promptText);
+      await client.promptUser(projectId, activeSession.session_id, promptText);
       vscode.window.showInformationMessage(
         `VibeFlow: Saved ${created.length} comment(s) and notified ${pickedPersona}`,
       );

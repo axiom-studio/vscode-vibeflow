@@ -3,10 +3,9 @@ import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsT
 import { ConnectionTab } from './ConnectionTab';
 import { ProvidersTab } from './ProvidersTab';
 import { SessionTab } from './SessionTab';
+import { getVsCodeApi } from '../../vscodeApi';
 
-const vscode = (window as unknown as {
-  acquireVsCodeApi: () => { postMessage: (msg: SettingsCommand) => void };
-}).acquireVsCodeApi();
+const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
 
 const TABS = [
   { id: 'connection', label: 'Connection', icon: '🔗' },

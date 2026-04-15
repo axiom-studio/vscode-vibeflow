@@ -129,7 +129,10 @@
       {
         "command": "vibeflow.openSettings",
         "title": "VibeFlow: Settings",
-        "icon": "$(gear)"
+        "icon": {
+          "light": "media/settings.svg",
+          "dark": "media/settings.svg"
+        }
       },
       {
         "command": "vibeflow.openSessionPanel",
@@ -161,6 +164,11 @@
       ],
       "view/title": [
         {
+          "command": "vibeflow.openSettings",
+          "when": "view =~ /^vibeflow\\./",
+          "group": "navigation@99"
+        },
+        {
           "command": "vibeflow.launchSession",
           "when": "view == vibeflow.agentFleet",
           "group": "navigation"
@@ -178,11 +186,6 @@
         {
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.workItems",
-          "group": "navigation"
-        },
-        {
-          "command": "vibeflow.openSettings",
-          "when": "view == vibeflow.activityFeed",
           "group": "navigation"
         }
       ]
@@ -242,6 +245,16 @@
           "type": "boolean",
           "default": true,
           "description": "Show notifications when work items complete"
+        },
+        "vibeflow.debug.simulateActivity": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fill the Activity Feed with simulated dummy data (for development/testing)"
+        },
+        "vibeflow.devMode.workspaceFolder": {
+          "type": "string",
+          "default": "",
+          "description": "DEV ONLY: Absolute path to a folder to auto-open when the extension activates with no workspace. Use for F5 debugging."
         }
       }
     }

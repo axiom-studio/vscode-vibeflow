@@ -5,9 +5,9 @@ import * as fs from 'fs';
 
 const execAsync = promisify(exec);
 
-const WORKSPACE_KEY_PROJECT_ID = 'vibeflow.projectId';
-const WORKSPACE_KEY_PROJECT_NAME = 'vibeflow.projectName';
-const WORKSPACE_KEY_GIT_REMOTE = 'vibeflow.gitRemoteUrl';
+const KEY_PROJECT_ID = 'vibeflow.projectId';
+const KEY_PROJECT_NAME = 'vibeflow.projectName';
+const KEY_GIT_REMOTE = 'vibeflow.gitRemoteUrl';
 
 export interface DetectedProject {
   projectId: number;
@@ -26,37 +26,41 @@ export interface ProjectMatchResult {
  * the git remote URL against known projects.
  */
 export class ProjectDetector {
-  constructor(private readonly workspaceState: vscode.Memento) {}
+  /**
+   * Use globalState so the project persists across F5 launches and survives
+   * dev host windows that don't have a workspace folder loaded.
+   */
+  constructor(private readonly globalState: vscode.Memento) {}
 
   /**
-   * Get the cached project from workspace state, if any.
+   * Get the cached project from global state, if any.
    */
   getCachedProject(): DetectedProject | undefined {
-    const projectId = this.workspaceState.get<number>(WORKSPACE_KEY_PROJECT_ID);
-    const projectName = this.workspaceState.get<string>(WORKSPACE_KEY_PROJECT_NAME);
-    const gitRemoteUrl = this.workspaceState.get<string>(WORKSPACE_KEY_GIT_REMOTE);
-    if (projectId && projectName && gitRemoteUrl) {
-      return { projectId, projectName, gitRemoteUrl, gitBranch: '' };
+    const projectId = this.globalState.get<number>(KEY_PROJECT_ID);
+    const projectName = this.globalState.get<string>(KEY_PROJECT_NAME);
+    const gitRemoteUrl = this.globalState.get<string>(KEY_GIT_REMOTE);
+    if (projectId && projectName) {
+      return { projectId, projectName, gitRemoteUrl: gitRemoteUrl ?? '', gitBranch: '' };
     }
     return undefined;
   }
 
   /**
-   * Cache detected project in workspace state.
+   * Cache detected project in global state.
    */
   async cacheProject(project: DetectedProject): Promise<void> {
-    await this.workspaceState.update(WORKSPACE_KEY_PROJECT_ID, project.projectId);
-    await this.workspaceState.update(WORKSPACE_KEY_PROJECT_NAME, project.projectName);
-    await this.workspaceState.update(WORKSPACE_KEY_GIT_REMOTE, project.gitRemoteUrl);
+    await this.globalState.update(KEY_PROJECT_ID, project.projectId);
+    await this.globalState.update(KEY_PROJECT_NAME, project.projectName);
+    await this.globalState.update(KEY_GIT_REMOTE, project.gitRemoteUrl);
   }
 
   /**
    * Clear cached project.
    */
   async clearCache(): Promise<void> {
-    await this.workspaceState.update(WORKSPACE_KEY_PROJECT_ID, undefined);
-    await this.workspaceState.update(WORKSPACE_KEY_PROJECT_NAME, undefined);
-    await this.workspaceState.update(WORKSPACE_KEY_GIT_REMOTE, undefined);
+    await this.globalState.update(KEY_PROJECT_ID, undefined);
+    await this.globalState.update(KEY_PROJECT_NAME, undefined);
+    await this.globalState.update(KEY_GIT_REMOTE, undefined);
   }
 
   /**
@@ -145,27 +149,23 @@ export class ProjectDetector {
       return { ...cached, gitBranch: branch };
     }
 
-    // 2. Get git remote
+    // 2. Get git remote (optional — skip auto-match if not available)
     const remoteUrl = await this.getGitRemoteUrl();
-    if (!remoteUrl) {
-      vscode.window.showInformationMessage(
-        'VibeFlow: No git remote found. Open a git repository to get started.',
-      );
-      return undefined;
-    }
 
-    // 3. Try auto-match
-    const matched = await matchFn(remoteUrl);
-    if (matched) {
-      const branch = await this.getGitBranch();
-      const project: DetectedProject = {
-        projectId: matched.id,
-        projectName: matched.name,
-        gitRemoteUrl: remoteUrl,
-        gitBranch: branch,
-      };
-      await this.cacheProject(project);
-      return project;
+    // 3. Try auto-match (only if remote URL is available)
+    if (remoteUrl) {
+      const matched = await matchFn(remoteUrl);
+      if (matched) {
+        const branch = await this.getGitBranch();
+        const project: DetectedProject = {
+          projectId: matched.id,
+          projectName: matched.name,
+          gitRemoteUrl: remoteUrl,
+          gitBranch: branch,
+        };
+        await this.cacheProject(project);
+        return project;
+      }
     }
 
     // 4. No match — prompt user
@@ -175,7 +175,7 @@ export class ProjectDetector {
         { label: '$(add) Create New Project', value: 'create' as const },
         { label: '$(close) Skip', value: 'skip' as const },
       ],
-      { placeHolder: `No VibeFlow project found for ${remoteUrl}` },
+      { placeHolder: remoteUrl ? `No VibeFlow project matched ${remoteUrl}` : 'Select a VibeFlow project' },
     );
 
     if (!choice || choice.value === 'skip') {
@@ -202,7 +202,7 @@ export class ProjectDetector {
       const project: DetectedProject = {
         projectId: selected.project.id,
         projectName: selected.project.name,
-        gitRemoteUrl: remoteUrl,
+        gitRemoteUrl: remoteUrl ?? '',
         gitBranch: branch,
       };
       await this.cacheProject(project);

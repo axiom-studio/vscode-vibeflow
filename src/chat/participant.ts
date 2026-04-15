@@ -86,14 +86,14 @@ class ChatHandler {
         this.client.listSessions(project.projectId),
       ]);
 
-      // Active sessions
-      const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'idle');
+      // Active sessions (those with a live heartbeat in Redis)
+      const activeSessions = sessions.filter(s => s.active && !s.stale);
       if (activeSessions.length > 0) {
         stream.markdown(`### Active Sessions (${activeSessions.length})\n\n`);
-        stream.markdown('| Persona | Branch | Status | Task |\n|---------|--------|--------|------|\n');
+        stream.markdown('| Persona | Branch | Last Activity |\n|---------|--------|---------------|\n');
         for (const s of activeSessions) {
-          const task = s.currentWorkItem ? `${s.currentWorkItem.type} #${s.currentWorkItem.id}` : '—';
-          stream.markdown(`| ${s.personaName ?? s.personaKey} | ${s.gitBranch} | ${s.status} | ${task} |\n`);
+          const when = s.last_message_at ? new Date(s.last_message_at).toLocaleTimeString() : '—';
+          stream.markdown(`| ${s.persona_name ?? s.persona_key} | ${s.git_branch} | ${when} |\n`);
         }
         stream.markdown('\n');
       }
@@ -203,7 +203,7 @@ class ChatHandler {
       ]);
 
       const doneFeatures = features.filter(f => f.status === 'done').length;
-      const activeSessions = sessions.filter(s => s.status === 'active' || s.status === 'idle').length;
+      const activeSessions = sessions.filter(s => s.active && !s.stale).length;
       const doneIssues = issues.filter(i => i.status === 'done').length;
       const openIssues = issues.filter(i => i.status !== 'done').length;
 
