@@ -312,6 +312,24 @@ export class VibeFlowClient {
     });
   }
 
+  /**
+   * Send a prompt to a specific session via the MCP prompt_user tool.
+   * Used by the comment notification flow to hand off feedback to another persona.
+   */
+  async promptUser(projectId: number, sessionId: string, promptText: string): Promise<void> {
+    await this.request('/rest/v1/vibeflow/mcp', {
+      method: 'POST',
+      body: JSON.stringify({
+        tool: 'prompt_user',
+        arguments: {
+          project_id: projectId,
+          session_id: sessionId,
+          prompt_text: promptText,
+        },
+      }),
+    });
+  }
+
   // --- PR Creation ---
 
   async createPR(projectId: number, params: { title: string; head: string; base: string }): Promise<{ url?: string }> {
