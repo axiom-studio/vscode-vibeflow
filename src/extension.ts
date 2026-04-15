@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AuthService } from './auth/AuthService.js';
+import { readCliConfig } from './auth/cliConfig.js';
 import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
@@ -19,11 +20,12 @@ import { createPR, openDocumentViewer } from './commands/prCommands.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
+import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // --- Core services ---
   const authService = new AuthService(context.secrets);
-  const detector = new ProjectDetector(context.workspaceState);
+  const detector = new ProjectDetector(context.globalState);
   const promptNotifier = new PromptNotifier();
 
   // --- Status bar (created early so it reflects state immediately) ---
@@ -85,26 +87,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * Called on activation and after login.
    */
   async function tryAutoConnect(): Promise<DetectedProject | undefined> {
+    console.log('[VibeFlow] tryAutoConnect: authState=', authService.getState());
     if (!client.isAuthenticated()) {
+      console.log('[VibeFlow] tryAutoConnect: not authenticated, skipping');
       return undefined;
     }
 
-    try {
-      const project = await detector.detect(
-        async (remoteUrl) => {
-          const projects = await client.listProjects();
-          return projects.find(p => p.gitRemoteUrl === remoteUrl);
-        },
-        async () => client.listProjects(),
-      );
+    // Check cache first
+    const cached = detector.getCachedProject();
+    console.log('[VibeFlow] tryAutoConnect: cached=', cached);
+    if (cached) {
+      const branch = await detector.getGitBranch();
+      const project = { ...cached, gitBranch: branch };
+      console.log('[VibeFlow] tryAutoConnect: connecting to', project.projectName);
+      connectToProject(project);
+      return project;
+    }
 
-      if (project) {
+    // Try silent auto-match from git remote — no prompts
+    try {
+      const remoteUrl = await detector.getGitRemoteUrl();
+      if (!remoteUrl) { return undefined; }
+
+      const projects = await client.listProjects();
+      const matched = projects.find(p => p.gitRemoteUrl === remoteUrl);
+      if (matched) {
+        const branch = await detector.getGitBranch();
+        const project: DetectedProject = {
+          projectId: matched.id,
+          projectName: matched.name,
+          gitRemoteUrl: remoteUrl,
+          gitBranch: branch,
+        };
+        await detector.cacheProject(project);
         connectToProject(project);
         return project;
       }
     } catch {
-      // Token might be invalid
-      sessionStatusBar.setError('Could not connect — API key may be invalid');
+      // Silent failure — user can run Setup manually
     }
 
     return undefined;
@@ -130,16 +150,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await config.update('serverUrl', serverUrl, vscode.ConfigurationTarget.Global);
     }
 
-    // Validate server reachability
+    // Validate server reachability — any HTTP response means server is up.
+    // Matches CLI behavior: only fail on network errors, not status codes.
     try {
-      const resp = await fetch(`${serverUrl}/rest/v1/vibeflow/projects`, {
+      await fetch(`${serverUrl}/rest/v1/vibeflow/projects`, {
         method: 'HEAD',
         signal: AbortSignal.timeout(5000),
       });
-      // 401 is expected (no token yet) — means server is reachable
-      if (!resp.ok && resp.status !== 401) {
-        vscode.window.showWarningMessage(`VibeFlow: Server returned ${resp.status} — continuing anyway`);
-      }
+      // Any response (200, 401, 404) = server is reachable
     } catch {
       const proceed = await vscode.window.showWarningMessage(
         `VibeFlow: Could not reach ${serverUrl}. Continue anyway?`,
@@ -361,7 +379,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       createPR(client, detector);
     }),
     vscode.commands.registerCommand('vibeflow.openDocumentViewer', (docId: number, docTitle: string) => {
-      openDocumentViewer(client, docId, docTitle);
+      openDocumentViewer(client, detector, context.extensionUri, docId, docTitle);
     }),
     vscode.commands.registerCommand('vibeflow.openSettings', () => {
       activityFeedProvider.showSettings();
@@ -403,8 +421,81 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ACTIVATION: try auto-connect with stored credentials
   // =============================================
 
+  // --- Dev mode: add workspace folder in-place (doesn't reload window) ---
+  // Uses updateWorkspaceFolders to add a folder to the current workspace without
+  // closing/reopening. The extension stays active. Only runs in dev mode.
+  if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+    const devFolder = vscode.workspace.getConfiguration('vibeflow').get<string>('devMode.workspaceFolder');
+    if (devFolder) {
+      try {
+        const uri = vscode.Uri.file(devFolder);
+        vscode.workspace.updateWorkspaceFolders(0, 0, { uri, name: 'vscode-vibeflow' });
+        console.log('[VibeFlow] Added dev workspace folder:', devFolder);
+      } catch (err) {
+        console.log('[VibeFlow] Failed to add workspace folder:', err);
+      }
+    }
+  }
+
   await authService.initialize();
+
+  // Import credentials/project from vibeflow-cli config
+  const cliConfig = readCliConfig();
+  console.log('[VibeFlow] CLI config:', cliConfig ? `found (project=${cliConfig.defaultProject}, hasToken=${!!cliConfig.apiToken})` : 'not found');
+  console.log('[VibeFlow] Auth state on activation:', authService.getState());
+  console.log('[VibeFlow] Cached project on activation:', detector.getCachedProject());
+
+  // Step 1: Ensure we have a token (force-import from CLI if not already set)
+  if (authService.getState() === 'unauthenticated' && cliConfig?.apiToken) {
+    console.log('[VibeFlow] Importing token from CLI config');
+    await authService.setToken(cliConfig.apiToken);
+  }
+
+  // Step 2: Always sync project from CLI config if present (overrides stale cache)
+  if (authService.getState() === 'authenticated' && cliConfig?.defaultProject) {
+    if (cliConfig.serverUrl) {
+      const config = vscode.workspace.getConfiguration('vibeflow');
+      await config.update('serverUrl', cliConfig.serverUrl, vscode.ConfigurationTarget.Global);
+    }
+    const cached = detector.getCachedProject();
+    if (!cached || cached.projectName !== cliConfig.defaultProject) {
+      console.log('[VibeFlow] Fetching projects to find CLI default:', cliConfig.defaultProject);
+      try {
+        const projects = await client.listProjects();
+        console.log('[VibeFlow] Got projects:', projects.length);
+        const matched = projects.find(p => p.name === cliConfig.defaultProject);
+        if (matched) {
+          console.log('[VibeFlow] Caching CLI default project:', matched.name, 'id:', matched.id);
+          await detector.cacheProject({
+            projectId: matched.id,
+            projectName: matched.name,
+            gitRemoteUrl: matched.gitRemoteUrl ?? '',
+            gitBranch: 'main',
+          });
+        } else {
+          console.log('[VibeFlow] CLI default project not found in API list:', cliConfig.defaultProject);
+        }
+      } catch (err) {
+        console.log('[VibeFlow] Failed to fetch projects for CLI import:', err);
+      }
+    } else {
+      console.log('[VibeFlow] Cached project already matches CLI default, skipping');
+    }
+  }
+
   await tryAutoConnect();
+
+  // --- Activity Feed simulation (debug mode) ---
+  // Fills the Activity Feed with dummy data so the UI is testable without real sessions.
+  // Toggle off via setting: vibeflow.debug.simulateActivity = false
+  const debugConfig = vscode.workspace.getConfiguration('vibeflow');
+  if (debugConfig.get<boolean>('debug.simulateActivity', true)) {
+    activityFeedProvider.pushEntries(generateBatch(500));
+    const simTimer = setInterval(() => {
+      activityFeedProvider.pushEntry(generateOne());
+    }, 3000);
+    context.subscriptions.push({ dispose: () => clearInterval(simTimer) });
+  }
 }
 
 export function deactivate(): void {
