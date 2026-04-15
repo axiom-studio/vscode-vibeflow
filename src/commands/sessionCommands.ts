@@ -4,6 +4,28 @@ import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
 import type { VibeFlowSession } from '../api/types.js';
+import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
+
+const SESSION_MODES = [
+  {
+    label: '$(shield) Vanilla',
+    description: 'Normal mode — Claude asks permission before each action',
+    detail: 'Safest. Use for sensitive or exploratory work.',
+    value: 'vanilla',
+  },
+  {
+    label: '$(sparkle) Auto Mode',
+    description: 'Classifier-approved actions run without prompts',
+    detail: 'Safer middle ground. Requires Claude Team/Enterprise/API + Sonnet 4.6+. (--enable-auto-mode)',
+    value: 'auto',
+  },
+  {
+    label: '$(rocket) VibeFlow Mode',
+    description: 'YOLO — all permissions bypassed',
+    detail: 'Dangerous. Use only in isolated environments. (--dangerously-skip-permissions)',
+    value: 'vibeflow',
+  },
+] as const;
 
 // Code agents: only 1 per branch (they modify git)
 const CODE_AGENTS = [
@@ -38,6 +60,7 @@ export async function launchSession(
   client: VibeFlowClient,
   detector: ProjectDetector,
   sessionsProvider: SessionsTreeProvider,
+  extensionUri: vscode.Uri,
 ): Promise<void> {
   const project = detector.getCachedProject();
   if (!project) {
@@ -49,22 +72,30 @@ export async function launchSession(
     return;
   }
 
+  // Step 1: Session Mode
+  const modePick = await vscode.window.showQuickPick([...SESSION_MODES], {
+    placeHolder: 'Select session mode',
+    title: 'VibeFlow: Launch Session (1/8) — Session Mode',
+  });
+  if (!modePick) { return; }
+  const sessionMode = modePick.value;
+
   const personas: string[] = [];
 
-  // Step 1: Code Agent (single select — max 1 per branch)
+  // Step 2: Code Agent (single select — max 1 per branch)
   const codeAgent = await vscode.window.showQuickPick(CODE_AGENTS, {
     placeHolder: 'Select code agent (max 1 per branch)',
-    title: 'VibeFlow: Launch Session (1/7) — Code Agent',
+    title: 'VibeFlow: Launch Session (2/8) — Code Agent',
   });
   if (!codeAgent) { return; }
   if (codeAgent.value !== '_skip') {
     personas.push(codeAgent.value);
   }
 
-  // Step 2: Advisory Agents (multi-select)
+  // Step 3: Advisory Agents (multi-select)
   const advisoryPicks = await vscode.window.showQuickPick(ADVISORY_AGENTS, {
     placeHolder: 'Select advisory agents (optional, multi-select)',
-    title: 'VibeFlow: Launch Session (2/7) — Advisory Agents',
+    title: 'VibeFlow: Launch Session (3/8) — Advisory Agents',
     canPickMany: true,
   });
   if (advisoryPicks === undefined) { return; }
@@ -77,21 +108,21 @@ export async function launchSession(
     return;
   }
 
-  // Step 3: Provider
+  // Step 4: Provider
   const provider = await vscode.window.showQuickPick(PROVIDERS, {
     placeHolder: 'Select AI provider',
-    title: 'VibeFlow: Launch Session (3/7) — Provider',
+    title: 'VibeFlow: Launch Session (4/8) — Provider',
   });
   if (!provider) { return; }
 
-  // Step 4: Environment Token (conditional — codex/gemini need API keys)
+  // Step 5: Environment Token (conditional — codex/gemini need API keys)
   const envVars: Record<string, string> = {};
   if (provider.value === 'codex') {
     const token = await vscode.window.showInputBox({
       prompt: 'Codex MCP Token (or press Enter to skip if already configured)',
       placeHolder: 'MCP_TOKEN value',
       password: true,
-      title: 'VibeFlow: Launch Session (4/7) — Codex Token',
+      title: 'VibeFlow: Launch Session (5/8) — Codex Token',
       ignoreFocusOut: true,
     });
     if (token === undefined) { return; }
@@ -101,14 +132,14 @@ export async function launchSession(
       prompt: 'Gemini API Key (or press Enter to skip if already configured)',
       placeHolder: 'GEMINI_API_KEY value',
       password: true,
-      title: 'VibeFlow: Launch Session (4/7) — Gemini Key',
+      title: 'VibeFlow: Launch Session (5/8) — Gemini Key',
       ignoreFocusOut: true,
     });
     if (token === undefined) { return; }
     if (token) { envVars['GEMINI_API_KEY'] = token; }
   }
 
-  // Step 5: LLM Gateway (conditional)
+  // Step 6: LLM Gateway (conditional)
   const config = vscode.workspace.getConfiguration('vibeflow');
   let _llmGateway = false;
   if (config.get<boolean>('llmGateway.show', false)) {
@@ -117,7 +148,7 @@ export async function launchSession(
         { label: '$(cloud) Route through LLM Gateway', description: 'Axiom Cloud proxy', value: true },
         { label: '$(plug) Direct to provider', description: 'No proxy', value: false },
       ],
-      { placeHolder: 'LLM Gateway', title: 'VibeFlow: Launch Session (5/7) — LLM Gateway' },
+      { placeHolder: 'LLM Gateway', title: 'VibeFlow: Launch Session (6/8) — LLM Gateway' },
     );
     if (gatewayChoice === undefined) { return; }
     _llmGateway = gatewayChoice.value;
@@ -149,7 +180,7 @@ export async function launchSession(
 
   const branchPick = await vscode.window.showQuickPick(branchItems, {
     placeHolder: 'Select branch',
-    title: 'VibeFlow: Launch Session (6/7) — Branch',
+    title: 'VibeFlow: Launch Session (7/8) — Branch',
   });
   if (!branchPick) { return; }
 
@@ -172,7 +203,7 @@ export async function launchSession(
         { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' },
         { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' },
       ],
-      { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session (7/7) — Worktree' },
+      { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session (8/8) — Worktree' },
     );
     if (!wtPick) { return; }
     _worktreeChoice = wtPick.value;
@@ -180,27 +211,125 @@ export async function launchSession(
 
   // Launch sessions for each persona
   const workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
+  // Write agent instruction docs (CLAUDE.md / AGENTS.md / GEMINI.md) into workDir.
+  // The agent reads these on startup and calls session_init itself via MCP.
+  // Matches CLI EnsureAllAgentDocs behavior.
+  if (workDir) {
+    ensureAllAgentDocs(extensionUri, workDir);
+  }
+
+  // Note: we do NOT call session_init from the extension. That's an MCP tool
+  // (not a REST endpoint), and the agent binary itself will call it when it
+  // starts up via its configured MCP server. We just spawn the terminal with
+  // the right env vars and the agent handles the rest — same behavior as the
+  // CLI's `vibeflow launch` command.
   for (const persona of personas) {
     try {
-      await client.sessionInit({
-        projectName: project.projectName,
-        workingDirectory: workDir,
-        gitBranch: branch,
-        gitRemoteUrl: project.gitRemoteUrl,
+      spawnAgentTerminal({
         persona,
-        agentType: provider.value,
+        provider: provider.value,
+        branch,
+        workDir,
+        envVars,
+        serverUrl,
+        sessionMode,
       });
     } catch (err) {
       vscode.window.showErrorMessage(`VibeFlow: Failed to launch ${persona} — ${err}`);
     }
   }
 
-  const names = personas.join(', ');
   vscode.window.showInformationMessage(
-    `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${names}`,
+    `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${personas.join(', ')}`,
   );
   sessionsProvider.refresh();
+}
+
+/**
+ * Spawn an integrated VSCode terminal with the agent binary running.
+ * The terminal IS the session — closing it kills the agent.
+ */
+function spawnAgentTerminal(opts: {
+  persona: string;
+  provider: string;
+  branch: string;
+  workDir: string;
+  envVars: Record<string, string>;
+  serverUrl: string;
+  sessionMode: string;
+}): void {
+  const personaLabel = opts.persona.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const terminalName = `VibeFlow · ${personaLabel} · ${opts.branch}`;
+
+  // Provider binary mapping (matches CLI defaults)
+  const binaries: Record<string, string> = {
+    claude: 'claude',
+    codex: 'codex',
+    gemini: 'gemini',
+    cursor: 'agent',
+  };
+  const binary = binaries[opts.provider] ?? 'claude';
+
+  // Build the launch command with mode-specific flags
+  const command = buildLaunchCommand(binary, opts.provider, opts.sessionMode);
+
+  // Build env: provider env vars + VibeFlow context
+  const env: Record<string, string> = {
+    ...opts.envVars,
+    VIBEFLOW_SERVER_URL: opts.serverUrl,
+    VIBEFLOW_PERSONA: opts.persona,
+    VIBEFLOW_BRANCH: opts.branch,
+  };
+
+  const terminal = vscode.window.createTerminal({
+    name: terminalName,
+    cwd: opts.workDir,
+    env,
+    iconPath: new vscode.ThemeIcon('hubot'),
+  });
+
+  terminal.show(true);
+  terminal.sendText(command, true);
+
+  // Note: we do not send an init prompt after claude starts.
+  // Claude's TUI reads the CLAUDE.md in workDir on startup, and the user
+  // can ask it to initialize the vibeflow session in their first message.
+  // Sending text via sendText after the TUI is live doesn't execute
+  // reliably — the text goes into the input box but requires manual Enter.
+}
+
+/**
+ * Build the agent binary launch command with session mode flags.
+ * vanilla  → no flags (normal claude with permission prompts)
+ * auto     → --enable-auto-mode (claude only, requires Team/Enterprise/API)
+ * vibeflow → --dangerously-skip-permissions (claude) / --yolo (codex/gemini)
+ */
+function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
+  if (sessionMode === 'vanilla') {
+    return binary;
+  }
+
+  if (sessionMode === 'auto') {
+    // Auto mode is a Claude Code feature; other providers fall back to vanilla
+    if (provider === 'claude') {
+      return `${binary} --enable-auto-mode`;
+    }
+    return binary;
+  }
+
+  // vibeflow mode = YOLO / skip permissions
+  if (provider === 'claude') {
+    return `${binary} --dangerously-skip-permissions`;
+  }
+  if (provider === 'codex' || provider === 'gemini') {
+    return `${binary} --yolo`;
+  }
+  if (provider === 'cursor') {
+    return `${binary} --yolo --approve-mcps`;
+  }
+  return binary;
 }
 
 /**
@@ -212,14 +341,14 @@ export async function killSession(
   sessionsProvider: SessionsTreeProvider,
 ): Promise<void> {
   const confirm = await vscode.window.showWarningMessage(
-    `Kill ${session.personaName ?? session.personaKey} session on ${session.gitBranch}?`,
+    `Kill ${session.persona_name ?? session.persona_key} session on ${session.git_branch}?`,
     { modal: true },
     'Kill Session',
   );
   if (confirm !== 'Kill Session') { return; }
 
   try {
-    await client.killSession(session.sid);
+    await client.killSession(session.session_id);
     vscode.window.showInformationMessage('VibeFlow: Session killed');
     sessionsProvider.refresh();
   } catch (err) {
@@ -237,28 +366,20 @@ export async function restartSession(
   sessionsProvider: SessionsTreeProvider,
 ): Promise<void> {
   const confirm = await vscode.window.showWarningMessage(
-    `Restart ${session.personaName ?? session.personaKey} session on ${session.gitBranch}?`,
+    `Restart ${session.persona_name ?? session.persona_key} session on ${session.git_branch}?`,
     { modal: true },
     'Restart',
   );
   if (confirm !== 'Restart') { return; }
 
   try {
-    await client.killSession(session.sid);
-
-    const project = detector.getCachedProject();
-    if (!project) { return; }
-
-    await client.sessionInit({
-      projectName: project.projectName,
-      workingDirectory: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
-      gitBranch: session.gitBranch,
-      gitRemoteUrl: project.gitRemoteUrl,
-      persona: session.personaKey,
-      agentType: session.agentType,
-    });
-
-    vscode.window.showInformationMessage('VibeFlow: Session restarted');
+    await client.killSession(session.session_id);
+    // For full restart, user should re-run VibeFlow: Launch Session.
+    // A full programmatic restart needs session_init via MCP, which we
+    // deliberately don't call from the extension (see P3-B docs).
+    vscode.window.showInformationMessage(
+      `VibeFlow: Session ${session.persona_key} removed. Run "Launch Session" to spawn a new one.`,
+    );
     sessionsProvider.refresh();
   } catch (err) {
     vscode.window.showErrorMessage(`VibeFlow: Failed to restart session — ${err}`);
