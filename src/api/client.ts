@@ -7,6 +7,8 @@ import type {
   VibeFlowTodo,
   VibeFlowIssue,
   VibeFlowDocument,
+  VibeFlowComment,
+  CreateCommentInput,
 } from './types.js';
 
 /**
@@ -50,10 +52,7 @@ export class VibeFlowClient {
   // --- Projects ---
 
   async listProjects(): Promise<VibeFlowProject[]> {
-    const data = await this.request<{ projects: VibeFlowProject[] }>(
-      '/rest/v1/vibeflow/projects',
-    );
-    return data.projects ?? [];
+    return this.request<VibeFlowProject[]>('/rest/v1/vibeflow/projects');
   }
 
   async createProject(name: string): Promise<void> {
@@ -66,10 +65,14 @@ export class VibeFlowClient {
   // --- Sessions ---
 
   async listSessions(projectId: number): Promise<VibeFlowSession[]> {
-    const data = await this.request<{ sessions: VibeFlowSession[] }>(
-      `/rest/v1/vibeflow/projects/${projectId}/sessions`,
-    );
-    return data.sessions ?? [];
+    try {
+      return await this.request<VibeFlowSession[]>(
+        `/rest/v1/vibeflow/projects/${projectId}/sessions`,
+      );
+    } catch {
+      // Sessions endpoint may not exist as REST — return empty
+      return [];
+    }
   }
 
   async sessionInit(params: {
@@ -110,10 +113,9 @@ export class VibeFlowClient {
   // --- Features ---
 
   async listFeatures(projectId: number): Promise<VibeFlowFeature[]> {
-    const data = await this.request<{ features: VibeFlowFeature[] }>(
+    return this.request<VibeFlowFeature[]>(
       `/rest/v1/vibeflow/projects/${projectId}/features`,
     );
-    return data.features ?? [];
   }
 
   async createFeature(projectId: number, name: string, priority: string): Promise<void> {
@@ -129,10 +131,9 @@ export class VibeFlowClient {
   // --- Todos ---
 
   async listTodos(featureId: number): Promise<VibeFlowTodo[]> {
-    const data = await this.request<{ todos: VibeFlowTodo[] }>(
+    return this.request<VibeFlowTodo[]>(
       `/rest/v1/vibeflow/features/${featureId}/todos`,
     );
-    return data.todos ?? [];
   }
 
   async createTodo(featureId: number, title: string, priority: string, targetBranch: string): Promise<void> {
@@ -158,10 +159,9 @@ export class VibeFlowClient {
   // --- Issues ---
 
   async listIssues(projectId: number): Promise<VibeFlowIssue[]> {
-    const data = await this.request<{ issues: VibeFlowIssue[] }>(
+    return this.request<VibeFlowIssue[]>(
       `/rest/v1/vibeflow/projects/${projectId}/issues`,
     );
-    return data.issues ?? [];
   }
 
   async createIssue(projectId: number, title: string, priority: string, targetBranch: string): Promise<void> {
@@ -231,34 +231,84 @@ export class VibeFlowClient {
     type: 'todo' | 'issue',
     id: number,
   ): Promise<{ id?: number; content: string; message_type?: string; created_at: string }[]> {
-    const tool = type === 'todo' ? 'get_todo_logs' : 'get_issue_logs';
-    const idKey = type === 'todo' ? 'todo_id' : 'issue_id';
-    const data = await this.request<{ logs: { id?: number; content: string; message_type?: string; created_at: string }[] }>(
-      '/rest/v1/vibeflow/mcp',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          tool,
-          arguments: { [idKey]: id },
-        }),
-      },
-    );
-    return data.logs ?? [];
+    try {
+      const data = await this.request<{ logs: string }>(
+        `/rest/v1/vibeflow/${type}s/${id}/logs`,
+      );
+      // Server returns logs as a single concatenated string, parse into entries
+      return parseLogString(data.logs ?? '');
+    } catch {
+      return [];
+    }
   }
 
   // --- Documents ---
 
   async listDocuments(projectId: number): Promise<VibeFlowDocument[]> {
-    const data = await this.request<{ documents: VibeFlowDocument[] }>(
-      `/rest/v1/vibeflow/projects/${projectId}/documents`,
-    );
-    return data.documents ?? [];
+    try {
+      return await this.request<VibeFlowDocument[]>(
+        `/rest/v1/vibeflow/documents?project_id=${projectId}`,
+      );
+    } catch {
+      return [];
+    }
   }
 
   async getDocument(docId: number): Promise<{ id: number; title: string; content: string }> {
-    return this.request(`/rest/v1/vibeflow/mcp`, {
+    return this.request(`/rest/v1/vibeflow/documents/${docId}`);
+  }
+
+  // --- Comments ---
+
+  /**
+   * List comments for a specific entity (document or context).
+   * Returns plain array (axiomcloud REST convention).
+   */
+  async listComments(entityType: 'document' | 'context', entityId: number): Promise<VibeFlowComment[]> {
+    try {
+      return await this.request<VibeFlowComment[]>(
+        `/rest/v1/vibeflow/comments?entity_type=${entityType}&entity_id=${entityId}`,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * List all comments for a project (across all entities).
+   */
+  async listCommentsByProject(projectId: number): Promise<VibeFlowComment[]> {
+    try {
+      return await this.request<VibeFlowComment[]>(
+        `/rest/v1/vibeflow/comments?project_id=${projectId}`,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Create a new comment tied to a specific section of a document/context.
+   */
+  async createComment(input: CreateCommentInput): Promise<VibeFlowComment> {
+    return this.request<VibeFlowComment>('/rest/v1/vibeflow/comments', {
       method: 'POST',
-      body: JSON.stringify({ tool: 'get_document', arguments: { id: docId } }),
+      body: JSON.stringify({
+        entity_type: input.entityType,
+        entity_id: input.entityId,
+        project_id: input.projectId,
+        section_heading: input.sectionHeading,
+        content: input.content,
+      }),
+    });
+  }
+
+  /**
+   * Delete a comment. Only the author can delete (403 otherwise).
+   */
+  async deleteComment(commentId: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/comments/${commentId}`, {
+      method: 'DELETE',
     });
   }
 
@@ -273,4 +323,44 @@ export class VibeFlowClient {
       }),
     });
   }
+}
+
+/**
+ * Parse the concatenated log string returned by the server into individual entries.
+ * Server format: "*[timestamp | session-id]*\n\nlog content\n\n*[next entry]*..."
+ */
+function parseLogString(raw: string): { id?: number; content: string; message_type?: string; created_at: string }[] {
+  if (!raw.trim()) { return []; }
+
+  const entries: { content: string; created_at: string; message_type?: string }[] = [];
+  // Split on the timestamp marker pattern
+  const parts = raw.split(/\n*\*\[([^|]+)\s*\|\s*[^\]]+\]\*\n+/);
+
+  // parts is interleaved: [pre-text, timestamp1, content1, timestamp2, content2, ...]
+  // Skip parts[0] if it's empty (text before first marker)
+  let i = parts[0].trim() ? 0 : 1;
+
+  while (i < parts.length - 1) {
+    const timestamp = parts[i]?.trim();
+    const content = parts[i + 1]?.trim();
+    if (timestamp && content) {
+      // Detect message type from emoji prefix
+      let messageType = 'action';
+      if (content.startsWith('🤔')) { messageType = 'thinking'; }
+      else if (content.startsWith('👁')) { messageType = 'observation'; }
+      else if (content.startsWith('⚡')) { messageType = 'action'; }
+      else if (content.startsWith('📋')) { messageType = 'summary'; }
+      else if (content.startsWith('📝')) { messageType = 'diff'; }
+      else if (content.startsWith('✅') || content.startsWith('❌')) { messageType = 'test_result'; }
+
+      entries.push({
+        created_at: timestamp,
+        content,
+        message_type: messageType,
+      });
+    }
+    i += 2;
+  }
+
+  return entries;
 }
