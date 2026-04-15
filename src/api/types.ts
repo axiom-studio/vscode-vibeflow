@@ -125,3 +125,24 @@ export interface VibeFlowDocument {
   type: 'prd' | 'architecture' | 'style_guide' | 'design_system' | 'general';
   projectId: number;
 }
+
+export interface VibeFlowComment {
+  id: number;
+  entity_type: 'document' | 'context';
+  entity_id: number;
+  project_id: number;
+  section_heading: string;
+  content: string;
+  user_id: number;
+  user_email?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateCommentInput {
+  entityType: 'document' | 'context';
+  entityId: number;
+  projectId: number;
+  sectionHeading: string;
+  content: string;
+}
