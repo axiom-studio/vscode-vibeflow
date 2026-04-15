@@ -28,8 +28,7 @@ const LOG_TYPE_MAP: Record<string, ActivityEntry['messageType']> = {
  */
 export class ActivityPoller {
   private timer: ReturnType<typeof setInterval> | undefined;
-  private lastSeenLogId = 0;
-  private lastSeenEventId = '';
+  private seenEventIds = new Set<string>();
   private entryCounter = 0;
 
   constructor(
@@ -72,41 +71,28 @@ export class ActivityPoller {
     const events: SessionEvent[] = [];
 
     try {
-      // Fetch active sessions to get their logs
+      // Fetch active sessions — only show activity from live sessions
       const sessions = await this.client.listSessions(this.projectId);
 
+      // For each active session with a last_message, create an activity event
+      // from the session's latest state. Log-level streaming will be re-added
+      // once we have a stable work-item-id field on the session response.
       for (const session of sessions) {
-        if (session.status !== 'active' && session.status !== 'idle') {
-          continue;
-        }
+        if (!session.active || session.stale) { continue; }
+        if (!session.last_message || !session.last_message_at) { continue; }
 
-        // Fetch logs for current work item if any
-        if (session.currentWorkItem) {
-          try {
-            const logs = await this.client.getWorkItemLogs(
-              session.currentWorkItem.type,
-              session.currentWorkItem.id,
-            );
+        const eventId = `session-${session.session_id}-${session.last_message_at}`;
+        if (this.seenEventIds.has(eventId)) { continue; }
+        this.seenEventIds.add(eventId);
 
-            for (const log of logs) {
-              const logId = log.id ?? 0;
-              if (logId > this.lastSeenLogId) {
-                this.lastSeenLogId = logId;
-                events.push({
-                  type: 'status_change',
-                  id: `log-${logId}`,
-                  timestamp: log.created_at,
-                  personaKey: session.personaKey,
-                  personaName: session.personaName ?? session.personaKey,
-                  content: log.content,
-                  metadata: { messageType: log.message_type },
-                });
-              }
-            }
-          } catch {
-            // Individual log fetch failure — skip this session
-          }
-        }
+        events.push({
+          type: 'status_change',
+          id: eventId,
+          timestamp: session.last_message_at,
+          personaKey: session.persona_key,
+          personaName: session.persona_name ?? session.persona_key,
+          content: session.last_message,
+        });
       }
     } catch {
       // Session list failure — skip this cycle

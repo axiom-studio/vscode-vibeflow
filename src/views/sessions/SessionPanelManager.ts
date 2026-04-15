@@ -9,19 +9,23 @@ import { escapeHtml } from '../../utils/html.js';
  * One panel per persona — clicking the same persona reuses the panel.
  */
 export class SessionPanelManager implements vscode.Disposable {
-  private panels = new Map<number, vscode.WebviewPanel>();
-  private pollTimers = new Map<number, ReturnType<typeof setInterval>>();
+  private panels = new Map<string, vscode.WebviewPanel>();
+  private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly client: VibeFlowClient,
-  ) {}
+    private readonly _client: VibeFlowClient,
+  ) {
+    // _client retained for future log-streaming; underscore silences unused lint
+    void this._client;
+  }
 
   /**
    * Open (or focus) a session panel for the given session.
    */
   open(session: VibeFlowSession): void {
-    const existing = this.panels.get(session.sid);
+    const key = session.session_id;
+    const existing = this.panels.get(key);
     if (existing) {
       existing.reveal();
       return;
@@ -29,7 +33,7 @@ export class SessionPanelManager implements vscode.Disposable {
 
     const panel = vscode.window.createWebviewPanel(
       'vibeflow.sessionPanel',
-      `${session.personaName ?? session.personaKey}`,
+      `${session.persona_name ?? session.persona_key}`,
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -40,7 +44,7 @@ export class SessionPanelManager implements vscode.Disposable {
 
     panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'vibeflow-icon.svg');
 
-    this.panels.set(session.sid, panel);
+    this.panels.set(key, panel);
 
     panel.webview.html = this.getHtml(panel.webview, session);
 
@@ -49,11 +53,11 @@ export class SessionPanelManager implements vscode.Disposable {
       switch (msg.type) {
         case 'sendPrompt': {
           const text = await vscode.window.showInputBox({
-            prompt: `Send message to ${session.personaName}`,
+            prompt: `Send message to ${session.persona_name ?? session.persona_key}`,
             placeHolder: 'Type your message...',
           });
           if (text) {
-            vscode.window.showInformationMessage(`VibeFlow: Prompt sent to ${session.personaName}`);
+            vscode.window.showInformationMessage(`VibeFlow: Prompt sent to ${session.persona_name ?? session.persona_key}`);
           }
           break;
         }
@@ -68,14 +72,14 @@ export class SessionPanelManager implements vscode.Disposable {
 
     // Poll for updates every 5s
     const timer = setInterval(() => this.refreshPanel(session, panel), 5000);
-    this.pollTimers.set(session.sid, timer);
+    this.pollTimers.set(key, timer);
 
     panel.onDidDispose(() => {
-      this.panels.delete(session.sid);
-      const t = this.pollTimers.get(session.sid);
+      this.panels.delete(key);
+      const t = this.pollTimers.get(key);
       if (t) {
         clearInterval(t);
-        this.pollTimers.delete(session.sid);
+        this.pollTimers.delete(key);
       }
     });
 
@@ -84,35 +88,27 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   private async refreshPanel(session: VibeFlowSession, panel: vscode.WebviewPanel): Promise<void> {
-    try {
-      // Fetch logs for current work item
-      let logs: { content: string; message_type?: string; created_at: string }[] = [];
-      if (session.currentWorkItem) {
-        logs = await this.client.getWorkItemLogs(
-          session.currentWorkItem.type,
-          session.currentWorkItem.id,
-        );
-      }
-
-      panel.webview.postMessage({
-        type: 'update',
-        payload: { session, logs },
-      });
-    } catch {
-      // Silent failure
-    }
+    // For now, just re-render with the latest session metadata.
+    // Log streaming will be added once we have a stable way to link
+    // sessions → active work items (needs server support).
+    panel.webview.postMessage({
+      type: 'update',
+      payload: { session, logs: [] },
+    });
   }
 
   private getHtml(webview: vscode.Webview, session: VibeFlowSession): string {
     const nonce = getNonce();
-    const personaName = session.personaName ?? session.personaKey;
-    const model = session.agentModel ?? 'unknown';
-    const branch = session.gitBranch ?? 'main';
-    const status = session.status;
-    const taskTitle = session.currentWorkItem?.title ?? 'No active task';
-    const taskStatus = session.currentWorkItem?.status ?? '';
-    const taskType = session.currentWorkItem?.type ?? '';
-    const taskId = session.currentWorkItem?.id ?? '';
+    const personaName = session.persona_name ?? session.persona_key;
+    const model = session.agent_model ?? 'unknown';
+    const branch = session.git_branch ?? 'main';
+    const status = session.active ? (session.stale ? 'stale' : 'active') : 'inactive';
+    const taskTitle = session.last_message ?? 'No recent activity';
+    const taskStatus = session.last_message_at
+      ? new Date(session.last_message_at).toLocaleTimeString()
+      : '';
+    const taskType = '';
+    const taskId = '';
 
     return `<!DOCTYPE html>
 <html lang="en">

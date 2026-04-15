@@ -8,13 +8,19 @@
       "label": "npm: dev",
       "isBackground": true,
       "problemMatcher": {
+        "owner": "esbuild",
+        "fileLocation": "absolute",
         "pattern": {
-          "regexp": "^$"
+          "regexp": "^([^\\s].*)\\((\\d+|\\d+,\\d+|\\d+,\\d+,\\d+,\\d+)\\):\\s+(error|warning|info)\\s+(.*)$",
+          "file": 1,
+          "location": 2,
+          "severity": 3,
+          "message": 4
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": ".",
-          "endsPattern": "Watching for changes"
+          "beginsPattern": "Watching for changes",
+          "endsPattern": "build finished"
         }
       }
     }

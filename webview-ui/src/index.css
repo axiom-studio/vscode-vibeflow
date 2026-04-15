@@ -32,3 +32,75 @@ body {
   line-height: 1.4;
   overflow: hidden;
 }
+
+/* Markdown viewer styling — mirrors axiomcloud DocumentPopoutModal */
+.prose-vf {
+  padding: 20px 28px;
+  max-width: 820px;
+  margin: 0 auto;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--feed-fg);
+  overflow-y: auto;
+  height: 100vh;
+}
+.prose-vf h1 { font-size: 1.8em; font-weight: 700; margin: 1.2em 0 0.5em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.3em; }
+.prose-vf h2 { font-size: 1.4em; font-weight: 600; margin: 1.2em 0 0.5em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.2em; }
+.prose-vf h3 { font-size: 1.2em; font-weight: 600; margin: 1em 0 0.4em; }
+.prose-vf h4 { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.3em; }
+.prose-vf p { margin: 0.6em 0; }
+.prose-vf ul, .prose-vf ol { padding-left: 1.5em; margin: 0.6em 0; }
+.prose-vf li { margin: 0.2em 0; }
+.prose-vf code {
+  background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+}
+.prose-vf pre {
+  background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.1));
+  padding: 0.8em 1em;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0.8em 0;
+  border: 1px solid var(--feed-border);
+}
+.prose-vf pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+.prose-vf blockquote {
+  border-left: 3px solid var(--feed-link);
+  padding: 0.4em 0.8em;
+  margin: 0.8em 0;
+  color: var(--feed-muted);
+  background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.05));
+}
+.prose-vf table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  width: 100%;
+}
+.prose-vf th, .prose-vf td {
+  border: 1px solid var(--feed-border);
+  padding: 0.4em 0.8em;
+  text-align: left;
+}
+.prose-vf th {
+  background: var(--vscode-editorHoverWidget-background, rgba(127,127,127,0.1));
+  font-weight: 600;
+}
+.prose-vf a {
+  color: var(--feed-link);
+  text-decoration: none;
+}
+.prose-vf a:hover { text-decoration: underline; }
+.prose-vf hr {
+  border: none;
+  border-top: 1px solid var(--feed-border);
+  margin: 1.5em 0;
+}
+.prose-vf img { max-width: 100%; height: auto; }
+.prose-vf input[type="checkbox"] { margin-right: 0.4em; }

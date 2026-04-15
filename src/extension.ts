@@ -317,16 +317,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      launchSession(client, detector, sessionsProvider);
+      launchSession(client, detector, sessionsProvider, context.extensionUri);
     }),
-    vscode.commands.registerCommand('vibeflow.killSession', (node: { session?: { sid: number; personaName: string; gitBranch: string } }) => {
+    vscode.commands.registerCommand('vibeflow.killSession', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
       if (node?.session) {
-        killSession(client, node.session as import('./api/types.js').VibeFlowSession, sessionsProvider);
+        killSession(client, node.session, sessionsProvider);
       }
     }),
-    vscode.commands.registerCommand('vibeflow.restartSession', (node: { session?: { sid: number; personaKey: string; agentType: string; gitBranch: string; personaName: string } }) => {
+    vscode.commands.registerCommand('vibeflow.restartSession', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
       if (node?.session) {
-        restartSession(client, node.session as import('./api/types.js').VibeFlowSession, detector, sessionsProvider);
+        restartSession(client, node.session, detector, sessionsProvider);
       }
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {

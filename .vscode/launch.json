@@ -6,12 +6,12 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
+        "--folder-uri=file:///Users/vishnu/Projects/axiom/vscode-vibeflow",
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"
-      ],
-      "preLaunchTask": "npm: dev"
+      ]
     }
   ]
 }
