@@ -21,6 +21,7 @@ import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
+import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
@@ -44,6 +45,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const workItemsProvider = new WorkItemsTreeProvider();
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri);
   const documentsProvider = new DocumentsTreeProvider();
+
+  // --- File Decorations ---
+  const fileDecorationProvider = new AgentFileDecorationProvider();
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(fileDecorationProvider),
+    fileDecorationProvider,
+  );
 
   // --- Terminal Registry + Sticky Models ---
   const terminalRegistry = new TerminalRegistry();
