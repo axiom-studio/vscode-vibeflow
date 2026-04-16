@@ -81,12 +81,7 @@ export function ProvidersTab({ data, onUpdate, onCommand }: Props) {
                 </span>
               </div>
               <button
-                onClick={() => {
-                  const token = prompt(`Enter ${provider.envTokenName}:`);
-                  if (token) {
-                    onCommand({ type: 'setProviderToken', payload: { provider: provider.key, token } });
-                  }
-                }}
+                onClick={() => onCommand({ type: 'setProviderToken', payload: { provider: provider.key, token: '' } })}
                 className="mt-1 px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
               >
                 {provider.envTokenSet ? 'Change' : 'Set'}
