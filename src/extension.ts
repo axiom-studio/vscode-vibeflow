@@ -13,7 +13,8 @@ import {
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
-import { launchSession, killSession, restartSession } from './commands/sessionCommands.js';
+import { launchSession, killSession, restartSession, focusTerminal } from './commands/sessionCommands.js';
+import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
@@ -40,6 +41,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const workItemsProvider = new WorkItemsTreeProvider();
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri);
   const documentsProvider = new DocumentsTreeProvider();
+
+  // --- Terminal Registry ---
+  const terminalRegistry = new TerminalRegistry();
+  context.subscriptions.push(terminalRegistry);
 
   // --- Focus Panels ---
   const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
@@ -317,7 +322,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      launchSession(client, detector, sessionsProvider, context.extensionUri);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry);
+    }),
+    vscode.commands.registerCommand('vibeflow.focusTerminal', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
+      if (node?.session) {
+        focusTerminal(terminalRegistry, node.session);
+      }
     }),
     vscode.commands.registerCommand('vibeflow.killSession', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
       if (node?.session) {

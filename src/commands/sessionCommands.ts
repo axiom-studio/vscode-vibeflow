@@ -5,6 +5,7 @@ import type { ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
 import type { VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
+import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 
 const SESSION_MODES = [
   {
@@ -61,6 +62,7 @@ export async function launchSession(
   detector: ProjectDetector,
   sessionsProvider: SessionsTreeProvider,
   extensionUri: vscode.Uri,
+  terminalRegistry: TerminalRegistry,
 ): Promise<void> {
   const project = detector.getCachedProject();
   if (!project) {
@@ -220,21 +222,35 @@ export async function launchSession(
     ensureAllAgentDocs(extensionUri, workDir);
   }
 
-  // Note: we do NOT call session_init from the extension. That's an MCP tool
-  // (not a REST endpoint), and the agent binary itself will call it when it
-  // starts up via its configured MCP server. We just spawn the terminal with
-  // the right env vars and the agent handles the rest — same behavior as the
-  // CLI's `vibeflow launch` command.
+  // Read terminal mode setting
+  const terminalMode = vscode.workspace.getConfiguration('vibeflow')
+    .get<TerminalMode>('session.terminalMode', 'hybrid');
+
+  // Build env: provider env vars + VibeFlow context
+  const env: Record<string, string> = {
+    ...envVars,
+    VIBEFLOW_SERVER_URL: serverUrl,
+    VIBEFLOW_BRANCH: branch,
+  };
+
+  // Note: we do NOT call session_init from the extension. The agent binary
+  // reads CLAUDE.md/AGENTS.md and calls session_init itself via MCP.
   for (const persona of personas) {
     try {
-      spawnAgentTerminal({
-        persona,
-        provider: provider.value,
-        branch,
-        workDir,
-        envVars,
-        serverUrl,
+      const command = buildLaunchCommand(
+        binaries[provider.value] ?? 'claude',
+        provider.value,
         sessionMode,
+      );
+
+      terminalRegistry.create({
+        persona,
+        branch,
+        provider: provider.value,
+        workDir,
+        command,
+        env: { ...env, VIBEFLOW_PERSONA: persona },
+        terminalMode,
       });
     } catch (err) {
       vscode.window.showErrorMessage(`VibeFlow: Failed to launch ${persona} — ${err}`);
@@ -247,58 +263,13 @@ export async function launchSession(
   sessionsProvider.refresh();
 }
 
-/**
- * Spawn an integrated VSCode terminal with the agent binary running.
- * The terminal IS the session — closing it kills the agent.
- */
-function spawnAgentTerminal(opts: {
-  persona: string;
-  provider: string;
-  branch: string;
-  workDir: string;
-  envVars: Record<string, string>;
-  serverUrl: string;
-  sessionMode: string;
-}): void {
-  const personaLabel = opts.persona.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  const terminalName = `VibeFlow · ${personaLabel} · ${opts.branch}`;
-
-  // Provider binary mapping (matches CLI defaults)
-  const binaries: Record<string, string> = {
-    claude: 'claude',
-    codex: 'codex',
-    gemini: 'gemini',
-    cursor: 'agent',
-  };
-  const binary = binaries[opts.provider] ?? 'claude';
-
-  // Build the launch command with mode-specific flags
-  const command = buildLaunchCommand(binary, opts.provider, opts.sessionMode);
-
-  // Build env: provider env vars + VibeFlow context
-  const env: Record<string, string> = {
-    ...opts.envVars,
-    VIBEFLOW_SERVER_URL: opts.serverUrl,
-    VIBEFLOW_PERSONA: opts.persona,
-    VIBEFLOW_BRANCH: opts.branch,
-  };
-
-  const terminal = vscode.window.createTerminal({
-    name: terminalName,
-    cwd: opts.workDir,
-    env,
-    iconPath: new vscode.ThemeIcon('hubot'),
-  });
-
-  terminal.show(true);
-  terminal.sendText(command, true);
-
-  // Note: we do not send an init prompt after claude starts.
-  // Claude's TUI reads the CLAUDE.md in workDir on startup, and the user
-  // can ask it to initialize the vibeflow session in their first message.
-  // Sending text via sendText after the TUI is live doesn't execute
-  // reliably — the text goes into the input box but requires manual Enter.
-}
+// Provider binary mapping (matches CLI defaults from config.go DefaultConfig)
+const binaries: Record<string, string> = {
+  claude: 'claude',
+  codex: 'codex',
+  gemini: 'gemini',
+  cursor: 'agent',
+};
 
 /**
  * Build the agent binary launch command with session mode flags.
@@ -330,6 +301,21 @@ function buildLaunchCommand(binary: string, provider: string, sessionMode: strin
     return `${binary} --yolo --approve-mcps`;
   }
   return binary;
+}
+
+/**
+ * Focus the terminal for a session. Opens hidden terminals.
+ */
+export function focusTerminal(
+  terminalRegistry: TerminalRegistry,
+  session: VibeFlowSession,
+): void {
+  const found = terminalRegistry.focus(session.persona_key, session.git_branch);
+  if (!found) {
+    vscode.window.showInformationMessage(
+      `VibeFlow: No local terminal for ${session.persona_name ?? session.persona_key}. This session may be running on another machine.`,
+    );
+  }
 }
 
 /**
