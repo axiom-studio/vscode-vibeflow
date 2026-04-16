@@ -154,6 +154,34 @@
         "title": "VibeFlow: Manage Worktrees"
       },
       {
+        "command": "vibeflow.changeStatus",
+        "title": "VibeFlow: Change Status"
+      },
+      {
+        "command": "vibeflow.checkBranchStatus",
+        "title": "VibeFlow: Check Branch Review Status"
+      },
+      {
+        "command": "vibeflow.createPR",
+        "title": "VibeFlow: Create Pull Request"
+      },
+      {
+        "command": "vibeflow.qaVerify",
+        "title": "VibeFlow: QA Verify"
+      },
+      {
+        "command": "vibeflow.qaReject",
+        "title": "VibeFlow: QA Reject"
+      },
+      {
+        "command": "vibeflow.securityApprove",
+        "title": "VibeFlow: Security Approve"
+      },
+      {
+        "command": "vibeflow.securityReject",
+        "title": "VibeFlow: Security Reject"
+      },
+      {
         "command": "vibeflow.refresh",
         "title": "VibeFlow: Refresh",
         "icon": "$(refresh)"
@@ -247,35 +275,58 @@
             "id": "welcome",
             "title": "Welcome to VibeFlow",
             "description": "VibeFlow brings multi-persona AI agent orchestration into your IDE. Run Developer, Architect, QA, Security, and PM agents — all from VSCode.\n\n[Learn more](https://cloud.axiomstudio.ai)",
-            "media": { "image": "media/vibeflow-icon.svg", "altText": "VibeFlow logo" }
+            "media": {
+              "image": "media/vibeflow-icon.svg",
+              "altText": "VibeFlow logo"
+            }
           },
           {
             "id": "setup",
             "title": "Connect to VibeFlow",
             "description": "Paste your API key from Account > API Keys to connect.\n\n[Run Setup](command:vibeflow.setup)",
-            "media": { "image": "media/vibeflow-icon.svg", "altText": "Setup" },
-            "completionEvents": ["onCommand:vibeflow.setup"]
+            "media": {
+              "image": "media/vibeflow-icon.svg",
+              "altText": "Setup"
+            },
+            "completionEvents": [
+              "onCommand:vibeflow.setup"
+            ]
           },
           {
             "id": "launch",
             "title": "Launch Your First Session",
             "description": "Pick a persona, provider, and branch. The agent runs in an integrated terminal.\n\n[Launch Session](command:vibeflow.launchSession)",
-            "media": { "image": "media/vibeflow-icon.svg", "altText": "Launch" },
-            "completionEvents": ["onCommand:vibeflow.launchSession"]
+            "media": {
+              "image": "media/vibeflow-icon.svg",
+              "altText": "Launch"
+            },
+            "completionEvents": [
+              "onCommand:vibeflow.launchSession"
+            ]
           },
           {
             "id": "respond",
             "title": "Respond to Agent Prompts",
             "description": "When an agent needs your input, a notification appears. Click Respond to answer.\n\n[Respond to Prompt](command:vibeflow.respondToPrompt)",
-            "media": { "image": "media/vibeflow-icon.svg", "altText": "Respond" },
-            "completionEvents": ["onCommand:vibeflow.respondToPrompt"]
+            "media": {
+              "image": "media/vibeflow-icon.svg",
+              "altText": "Respond"
+            },
+            "completionEvents": [
+              "onCommand:vibeflow.respondToPrompt"
+            ]
           },
           {
             "id": "explore",
             "title": "Explore the Sidebar",
             "description": "Click the VibeFlow icon in the Activity Bar to see Agent Fleet, Work Items, Activity Feed, and Documents.\n\n[Open Sidebar](command:vibeflow.viewSessions)",
-            "media": { "image": "media/vibeflow-icon.svg", "altText": "Sidebar" },
-            "completionEvents": ["onCommand:vibeflow.viewSessions"]
+            "media": {
+              "image": "media/vibeflow-icon.svg",
+              "altText": "Sidebar"
+            },
+            "completionEvents": [
+              "onCommand:vibeflow.viewSessions"
+            ]
           }
         ]
       }
@@ -339,7 +390,11 @@
         "vibeflow.session.terminalMode": {
           "type": "string",
           "default": "hybrid",
-          "enum": ["hybrid", "all", "none"],
+          "enum": [
+            "hybrid",
+            "all",
+            "none"
+          ],
           "enumDescriptions": [
             "Code agents (Dev/Arch/PE) visible, advisory agents hidden",
             "All agent terminals visible",
@@ -376,5 +431,8 @@
     "esbuild": "^0.24.0",
     "eslint": "^8.57.0",
     "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

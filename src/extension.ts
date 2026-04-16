@@ -331,6 +331,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.setup', () => runSetup()),
     vscode.commands.registerCommand('vibeflow.login', () => runSetup()), // Alias
     vscode.commands.registerCommand('vibeflow.logout', async () => {
+      await client.disconnectMcp();
       await authService.logout();
       await detector.clearCache();
       disconnect();
