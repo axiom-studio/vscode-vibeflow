@@ -67,6 +67,9 @@ class ChatHandler {
       case 'launch':
         await this.handleLaunch(request, stream);
         break;
+      case 'respond':
+        await this.handleRespond(project, request, stream);
+        break;
       default:
         await this.handleFreeform(project, request, stream);
         break;
@@ -239,6 +242,31 @@ class ChatHandler {
     }
 
     stream.button({ command: 'vibeflow.launchSession', title: 'Launch Session' });
+  }
+
+  private async handleRespond(
+    project: DetectedProject,
+    request: vscode.ChatRequest,
+    stream: vscode.ChatResponseStream,
+  ): Promise<void> {
+    const responseText = request.prompt.trim();
+
+    if (!responseText) {
+      stream.markdown(
+        'Provide a response to send to the pending prompt.\n\n' +
+        'Example: `@vibeflow /respond Use JWT tokens with 15 minute expiry`\n',
+      );
+      return;
+    }
+
+    // For now, guide user to the Quick Pick — full MCP integration
+    // (calling respond_to_prompt) requires the prompt_id which we'd
+    // need to fetch from wait_for_work. Defer to the notification flow.
+    stream.markdown(
+      `Response ready: "${responseText}"\n\n` +
+      'Use the button below to send it via the prompt notification flow:\n\n',
+    );
+    stream.button({ command: 'vibeflow.respondToPrompt', title: 'Respond to Prompt' });
   }
 
   private async handleCreate(

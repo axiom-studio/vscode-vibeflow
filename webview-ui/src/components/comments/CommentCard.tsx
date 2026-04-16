@@ -40,8 +40,8 @@ export function CommentCard({ comment, currentUserId, onDelete }: CommentCardPro
         background: 'rgba(139, 92, 246, 0.06)',
         border: '1px solid rgba(139, 92, 246, 0.15)',
         borderRadius: 5,
-        padding: '8px 10px',
-        marginTop: 6,
+        padding: '6px 10px',
+        marginTop: 4,
         fontSize: 12,
         position: 'relative',
       }}
@@ -94,7 +94,9 @@ export function CommentCard({ comment, currentUserId, onDelete }: CommentCardPro
           color: 'var(--feed-fg)',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
-          lineHeight: 1.5,
+          lineHeight: 1.45,
+          margin: '2px 0 0 0',
+          padding: 0,
         }}
       >
         {comment.content}
