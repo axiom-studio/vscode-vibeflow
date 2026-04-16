@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ActivityFeed } from './components/ActivityFeed';
 import { SettingsView } from './components/settings/SettingsView';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { CommentableDocumentViewer } from './components/comments/CommentableDocumentViewer';
 
-type View = 'activity' | 'settings' | 'document';
+// Lazy-load heavy panels to keep initial bundle fast
+const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
+const KanbanView = lazy(() => import('./components/KanbanView').then(m => ({ default: m.KanbanView })));
+
+type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban';
 
 interface DocumentContext {
   content: string;
@@ -24,6 +28,10 @@ export function App() {
     const initialMode = document.body.dataset.vfMode;
     if (initialMode === 'settings') {
       setView('settings');
+    } else if (initialMode === 'dashboard') {
+      setView('dashboard');
+    } else if (initialMode === 'kanban') {
+      setView('kanban');
     } else if (initialMode === 'document') {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
@@ -60,7 +68,11 @@ export function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  const loading = <div style={{ padding: 20, color: 'var(--feed-muted)' }}>Loading...</div>;
+
   if (view === 'settings') { return <SettingsView />; }
+  if (view === 'dashboard') { return <Suspense fallback={loading}><DashboardView /></Suspense>; }
+  if (view === 'kanban') { return <Suspense fallback={loading}><KanbanView /></Suspense>; }
   if (view === 'document' && doc) {
     // Use CommentableDocumentViewer when we have project/entity context
     if (doc.entityId && doc.projectId) {

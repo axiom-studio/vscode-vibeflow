@@ -6,7 +6,7 @@ import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvide
 import type { VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
-import { StickyModels, KNOWN_MODELS } from '../sessions/stickyModels.js';
+import { StickyModels } from '../sessions/stickyModels.js';
 
 const SESSION_MODES = [
   {
