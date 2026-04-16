@@ -10,7 +10,7 @@ const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void }
 const TABS = [
   { id: 'connection', label: 'Connection', icon: '🔗' },
   { id: 'providers', label: 'Providers', icon: '🤖' },
-  { id: 'session', label: 'Session', icon: '⚡' },
+  { id: 'session', label: 'Session & Advanced', icon: '⚙' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -33,7 +33,6 @@ export function SettingsView() {
 
   function updateSetting(key: string, value: unknown) {
     vscode.postMessage({ type: 'updateSetting', payload: { key, value } });
-    // Optimistic update
     if (data) {
       setData({ ...data, [key]: value });
     }
@@ -45,45 +44,101 @@ export function SettingsView() {
 
   if (!data) {
     return (
-      <div className="flex items-center justify-center h-full text-[var(--feed-muted)]">
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        color: 'var(--feed-muted)',
+        fontFamily: 'var(--vscode-font-family)',
+      }}>
         Loading settings...
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen">
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100vh',
+      fontFamily: 'var(--vscode-font-family)',
+      color: 'var(--feed-fg)',
+      background: 'var(--feed-bg)',
+    }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--feed-border)]">
-        <span className="text-sm font-medium">Settings</span>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '14px 20px',
+        borderBottom: '1px solid var(--feed-border)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 18, fontWeight: 700 }}>VibeFlow Settings</span>
+          <span style={{
+            fontSize: 10,
+            padding: '2px 6px',
+            borderRadius: 3,
+            background: 'var(--feed-badge-bg)',
+            color: 'var(--feed-badge-fg)',
+          }}>v0.1.0</span>
+        </div>
         <button
           onClick={() => sendCommand({ type: 'closeSettings' })}
-          className="px-2 py-0.5 text-xs rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
+          style={{
+            padding: '5px 14px',
+            fontSize: 12,
+            background: 'var(--feed-button-bg)',
+            color: 'var(--feed-button-fg)',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
         >
           Done
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[var(--feed-border)]">
+      <div style={{
+        display: 'flex',
+        gap: 0,
+        borderBottom: '1px solid var(--feed-border)',
+        padding: '0 20px',
+      }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex-1 px-2 py-1.5 text-xs cursor-pointer border-none border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-[var(--feed-link)] text-[var(--feed-fg)]'
-                : 'border-transparent text-[var(--feed-muted)] hover:text-[var(--feed-fg)]'
-            }`}
-            style={{ background: 'transparent' }}
+            style={{
+              padding: '10px 18px',
+              fontSize: 12,
+              fontWeight: activeTab === tab.id ? 600 : 400,
+              color: activeTab === tab.id ? 'var(--feed-fg)' : 'var(--feed-muted)',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === tab.id ? '2px solid var(--feed-link)' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 100ms',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
           >
-            {tab.icon} {tab.label}
+            <span>{tab.icon}</span>
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
+      {/* Content */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        padding: '20px 24px',
+        maxWidth: 640,
+      }}>
         {activeTab === 'connection' && (
           <ConnectionTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
         )}
