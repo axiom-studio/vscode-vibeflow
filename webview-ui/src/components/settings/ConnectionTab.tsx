@@ -38,10 +38,7 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         </div>
         <div className="flex gap-1 mt-1">
           <button
-            onClick={() => {
-              const key = prompt('Paste your VibeFlow API key:');
-              if (key) { onCommand({ type: 'setApiKey', payload: key }); }
-            }}
+            onClick={() => onCommand({ type: 'setApiKey', payload: '' })}
             className="px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
           >
             {data.apiKeySet ? 'Change' : 'Set Key'}
