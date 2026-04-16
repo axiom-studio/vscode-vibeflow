@@ -431,6 +431,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- @vibeflow Chat Participant ---
   registerChatParticipant(context, client, detector);
 
+  // --- MCP Server Definition Provider ---
+  // Registers VibeFlow's MCP server so Copilot Agent Mode, Continue.dev, Cody
+  // and any other AI tool in VSCode can use all 72 VibeFlow tools natively.
+  // Uses dynamic access since the API may not exist in older VSCode versions.
+  try {
+    const lm = vscode.lm as Record<string, unknown>;
+    const registerFn = lm?.registerMcpServerDefinitionProvider as
+      | ((name: string, provider: { provideMcpServerDefinitions: () => unknown[] }) => vscode.Disposable)
+      | undefined;
+    const McpDef = (vscode as Record<string, unknown>).McpHttpServerDefinition as
+      | (new (name: string, label: string, uri: vscode.Uri, headers: Record<string, string>) => unknown)
+      | undefined;
+
+    if (registerFn && McpDef) {
+      const mcpProvider = registerFn('vibeflow', {
+        provideMcpServerDefinitions() {
+          const token = authService.getToken();
+          const serverUrl = vscode.workspace.getConfiguration('vibeflow')
+            .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+          if (!token || !serverUrl) { return []; }
+          return [new McpDef(
+            'vibeflow',
+            'VibeFlow Project Management',
+            vscode.Uri.parse(`${serverUrl}/rest/v1/vibeflow/mcp`),
+            { 'Authorization': `Bearer ${token}` },
+          )];
+        },
+      });
+      context.subscriptions.push(mcpProvider);
+      console.log('[VibeFlow] MCP Server Definition Provider registered');
+    }
+  } catch {
+    // MCP provider API not available in this VSCode version — not critical
+  }
+
   // =============================================
   // ACTIVATION: try auto-connect with stored credentials
   // =============================================
