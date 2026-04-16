@@ -246,6 +246,10 @@ export async function launchSession(
         sessionMode,
       );
 
+      // Build the init prompt that tells the agent which persona and project to use.
+      // This is sent to the terminal after claude's TUI loads (~4s delay).
+      const initPrompt = `Initialize a vibeflow session for project "${project.projectName}" with persona "${persona}" and follow the agent prompt. Call session_init with project_name: "${project.projectName}", persona: "${persona}", git_branch: "${branch}" and begin Phase 1 immediately.`;
+
       terminalRegistry.create({
         persona,
         branch,
@@ -258,6 +262,7 @@ export async function launchSession(
           VIBEFLOW_MODEL: model,
         },
         terminalMode,
+        initPrompt,
       });
     } catch (err) {
       vscode.window.showErrorMessage(`VibeFlow: Failed to launch ${persona} — ${err}`);

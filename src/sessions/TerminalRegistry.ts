@@ -51,6 +51,7 @@ export class TerminalRegistry implements vscode.Disposable {
     command: string;
     env: Record<string, string>;
     terminalMode: TerminalMode;
+    initPrompt?: string;
   }): vscode.Terminal {
     const k = this.key(opts.persona, opts.branch);
 
@@ -94,6 +95,17 @@ export class TerminalRegistry implements vscode.Disposable {
       terminal.show(true); // preserveFocus = true
     }
     terminal.sendText(opts.command, true);
+
+    // Send init prompt after claude's TUI loads.
+    // Claude's TUI takes ~2-4 seconds to initialize. We send the prompt
+    // after a delay. sendText with true appends Enter which submits
+    // the message in claude's input box.
+    if (opts.initPrompt) {
+      const prompt = opts.initPrompt;
+      setTimeout(() => {
+        terminal.sendText(prompt, true);
+      }, 4000);
+    }
 
     this._onDidChange.fire();
     return terminal;
