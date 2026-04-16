@@ -135,6 +135,11 @@
         }
       },
       {
+        "command": "vibeflow.focusTerminal",
+        "title": "VibeFlow: Focus Terminal",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "vibeflow.openSessionPanel",
         "title": "VibeFlow: View Session Details"
       },
@@ -152,6 +157,11 @@
     "menus": {
       "view/item/context": [
         {
+          "command": "vibeflow.focusTerminal",
+          "when": "view == vibeflow.agentFleet && viewItem == activeSession",
+          "group": "session@0"
+        },
+        {
           "command": "vibeflow.killSession",
           "when": "view == vibeflow.agentFleet && viewItem == activeSession",
           "group": "session@1"
@@ -160,6 +170,11 @@
           "command": "vibeflow.restartSession",
           "when": "view == vibeflow.agentFleet && viewItem == activeSession",
           "group": "session@2"
+        },
+        {
+          "command": "vibeflow.openSessionPanel",
+          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
+          "group": "session@3"
         }
       ],
       "view/title": [
@@ -245,6 +260,17 @@
           "type": "boolean",
           "default": true,
           "description": "Show notifications when work items complete"
+        },
+        "vibeflow.session.terminalMode": {
+          "type": "string",
+          "default": "hybrid",
+          "enum": ["hybrid", "all", "none"],
+          "enumDescriptions": [
+            "Code agents (Dev/Arch/PE) visible, advisory agents hidden",
+            "All agent terminals visible",
+            "All agent terminals hidden (background only)"
+          ],
+          "description": "Controls terminal visibility when launching agent sessions"
         },
         "vibeflow.debug.simulateActivity": {
           "type": "boolean",
