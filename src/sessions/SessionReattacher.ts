@@ -87,8 +87,9 @@ export class SessionReattacher {
 
     if (action !== 'Reattach All') { return []; }
 
-    const terminalMode = vscode.workspace.getConfiguration('vibeflow')
-      .get<TerminalMode>('session.terminalMode', 'hybrid');
+    // Reattach always uses 'all' mode — user explicitly asked to reattach,
+    // so show all terminals regardless of hybrid setting.
+    const terminalMode: TerminalMode = 'all';
 
     const reattached: PhantomSession[] = [];
     for (const phantom of phantoms) {
@@ -116,8 +117,9 @@ export class SessionReattacher {
     }
 
     if (reattached.length > 0) {
+      const names = reattached.map(p => personaDisplayName(p.persona)).join(', ');
       vscode.window.showInformationMessage(
-        `VibeFlow: Reattached ${reattached.length} session(s)`,
+        `VibeFlow: Reattached ${reattached.length} session(s): ${names}`,
       );
     }
 
