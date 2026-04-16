@@ -19,6 +19,7 @@ import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
+import { SettingsPanel } from './views/settings/SettingsPanel.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
@@ -393,7 +394,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       openDocumentViewer(client, detector, context.extensionUri, docId, docTitle);
     }),
     vscode.commands.registerCommand('vibeflow.openSettings', () => {
-      activityFeedProvider.showSettings();
+      SettingsPanel.open(context.extensionUri);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
