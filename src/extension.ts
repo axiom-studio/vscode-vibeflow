@@ -574,6 +574,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         gitBranch,
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
         serverUrl,
+        cachedProject.projectName,
       ).then(() => sessionsProvider.refresh());
     }
   }
