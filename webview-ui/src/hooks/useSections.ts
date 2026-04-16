@@ -44,5 +44,5 @@ export function useSections(markdown: string): Section[] {
  * Re-assemble a section back into a markdown string.
  */
 export function sectionToMarkdown(section: Section): string {
-  return section.lines.join('\n');
+  return section.lines.join('\n').trim();
 }
