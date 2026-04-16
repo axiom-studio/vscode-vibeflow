@@ -82,6 +82,10 @@
           {
             "name": "launch",
             "description": "Launch an agent session"
+          },
+          {
+            "name": "respond",
+            "description": "Respond to a pending agent prompt"
           }
         ]
       }
