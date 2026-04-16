@@ -8,104 +8,173 @@ interface Props {
 
 export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Server URL */}
-      <Section title="Server URL">
-        <div className="flex gap-2">
+      <SettingsCard title="Server URL" description="VibeFlow API server address">
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             type="text"
             value={data.serverUrl}
             onChange={e => onUpdate('serverUrl', e.target.value)}
-            className="flex-1 px-2 py-1 text-xs rounded bg-[var(--feed-input-bg)] border border-[var(--feed-input-border)] text-[var(--feed-fg)] outline-none"
+            style={inputStyle}
           />
-          <StatusDot status={data.serverReachable} />
+          <StatusIndicator status={data.serverReachable} />
         </div>
-        <button
-          onClick={() => onCommand({ type: 'validateServerUrl', payload: data.serverUrl })}
-          className="mt-1 px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
-        >
-          Test Connection
-        </button>
-      </Section>
+        <div style={{ marginTop: 8 }}>
+          <ActionButton
+            label="Test Connection"
+            onClick={() => onCommand({ type: 'validateServerUrl', payload: data.serverUrl })}
+          />
+        </div>
+      </SettingsCard>
 
       {/* API Key */}
-      <Section title="API Key">
-        <div className="flex items-center gap-2">
-          <span className="text-xs">
-            {data.apiKeySet ? '••••••••••' : 'Not set'}
+      <SettingsCard title="API Key" description="Authentication token from Account > API Keys">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            fontFamily: 'var(--vscode-editor-font-family)',
+            fontSize: 13,
+            letterSpacing: 2,
+            color: data.apiKeySet ? 'var(--feed-success)' : 'var(--feed-error)',
+          }}>
+            {data.apiKeySet ? '●●●●●●●●●●●● (set)' : 'Not configured'}
           </span>
-          <StatusDot status={data.apiKeyValid} />
         </div>
-        <div className="flex gap-1 mt-1">
-          <button
+        <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+          <ActionButton
+            label={data.apiKeySet ? 'Change Key' : 'Set API Key'}
             onClick={() => onCommand({ type: 'setApiKey', payload: '' })}
-            className="px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
-          >
-            {data.apiKeySet ? 'Change' : 'Set Key'}
-          </button>
+          />
           {data.apiKeySet && (
-            <button
+            <ActionButton
+              label="Test Key"
+              secondary
               onClick={() => onCommand({ type: 'validateApiKey', payload: '' })}
-              className="px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
-            >
-              Test
-            </button>
+            />
           )}
         </div>
-      </Section>
+      </SettingsCard>
 
       {/* Project */}
-      <Section title="Project">
+      <SettingsCard title="Project" description="Connected VibeFlow project for this workspace">
         {data.projectName ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium">{data.projectName}</span>
-            <span className="text-[10px] text-[var(--feed-muted)]">ID: {data.projectId}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{data.projectName}</span>
+            <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>ID: {data.projectId}</span>
           </div>
         ) : (
-          <span className="text-xs text-[var(--feed-muted)]">No project selected</span>
+          <span style={{ fontSize: 13, color: 'var(--feed-muted)' }}>No project selected</span>
         )}
-        <div className="mt-1">
+        <div style={{ marginTop: 8 }}>
           <select
             value={data.projectId ?? ''}
             onChange={e => {
               const id = parseInt(e.target.value);
               if (!isNaN(id)) { onCommand({ type: 'selectProject', payload: id }); }
             }}
-            className="w-full px-2 py-1 text-xs rounded bg-[var(--feed-input-bg)] border border-[var(--feed-input-border)] text-[var(--feed-fg)] outline-none"
+            style={selectStyle}
           >
             <option value="">Select project...</option>
             {data.projects.map(p => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <button
-            onClick={() => onCommand({ type: 'refreshProjects' })}
-            className="mt-1 px-2 py-0.5 text-[10px] rounded bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)] cursor-pointer border-none"
-          >
-            Refresh
-          </button>
         </div>
-      </Section>
+        <div style={{ marginTop: 6 }}>
+          <ActionButton
+            label="Refresh Projects"
+            secondary
+            onClick={() => onCommand({ type: 'refreshProjects' })}
+          />
+        </div>
+      </SettingsCard>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/* ── Shared Components ── */
+
+function SettingsCard({ title, description, children }: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-[var(--feed-muted)] mb-1">{title}</h3>
+    <div style={{
+      padding: '16px 18px',
+      borderRadius: 8,
+      border: '1px solid var(--feed-border)',
+      background: 'var(--vscode-editor-background)',
+    }}>
+      <div style={{ marginBottom: 10 }}>
+        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h3>
+        <p style={{ margin: '3px 0 0', fontSize: 11, color: 'var(--feed-muted)', lineHeight: 1.4 }}>{description}</p>
+      </div>
       {children}
     </div>
   );
 }
 
-function StatusDot({ status }: { status: boolean | null }) {
+function ActionButton({ label, onClick, secondary }: {
+  label: string;
+  onClick: () => void;
+  secondary?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '5px 12px',
+        fontSize: 11,
+        fontWeight: 500,
+        background: secondary ? 'transparent' : 'var(--feed-button-bg)',
+        color: secondary ? 'var(--feed-muted)' : 'var(--feed-button-fg)',
+        border: secondary ? '1px solid var(--feed-border)' : 'none',
+        borderRadius: 4,
+        cursor: 'pointer',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function StatusIndicator({ status }: { status: boolean | null }) {
   if (status === null) { return null; }
   return (
     <span
-      className="inline-block size-2 rounded-full shrink-0"
-      style={{ backgroundColor: status ? 'var(--feed-success)' : 'var(--feed-error)' }}
-      title={status ? 'OK' : 'Failed'}
+      style={{
+        display: 'inline-block',
+        width: 8,
+        height: 8,
+        borderRadius: '50%',
+        backgroundColor: status ? 'var(--feed-success)' : 'var(--feed-error)',
+        flexShrink: 0,
+      }}
+      title={status ? 'Connected' : 'Failed'}
     />
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '7px 10px',
+  fontSize: 12,
+  borderRadius: 4,
+  background: 'var(--feed-input-bg)',
+  border: '1px solid var(--feed-input-border)',
+  color: 'var(--feed-fg)',
+  outline: 'none',
+  fontFamily: 'var(--vscode-editor-font-family)',
+};
+
+const selectStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '7px 10px',
+  fontSize: 12,
+  borderRadius: 4,
+  background: 'var(--feed-input-bg)',
+  border: '1px solid var(--feed-input-border)',
+  color: 'var(--feed-fg)',
+  outline: 'none',
+};

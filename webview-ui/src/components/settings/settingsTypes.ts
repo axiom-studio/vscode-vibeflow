@@ -34,6 +34,7 @@ export interface SettingsData {
   pollInterval: number;
   viewMode: 'flat' | 'grouped';
   skipPermissions: boolean;
+  sessionTerminalMode?: string;
 
   // Advanced
   errorRecoveryEnabled: boolean;
