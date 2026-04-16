@@ -170,7 +170,7 @@ export function CommentableDocumentViewer({
                 />
               }
             >
-              <MarkdownRenderer content={sectionMarkdown} />
+              <MarkdownRenderer content={sectionMarkdown} inline />
             </CommentableSection>
           );
         })}
