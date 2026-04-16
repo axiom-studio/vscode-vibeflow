@@ -230,14 +230,12 @@
           "group": "session@3"
         }
       ],
-      "viewContainer/title": [
+      "view/title": [
         {
           "command": "vibeflow.openSettings",
-          "when": "viewContainer == workbench.view.extension.vibeflow",
+          "when": "view == vibeflow.agentFleet",
           "group": "navigation@99"
-        }
-      ],
-      "view/title": [
+        },
         {
           "command": "vibeflow.launchSession",
           "when": "view == vibeflow.agentFleet",
