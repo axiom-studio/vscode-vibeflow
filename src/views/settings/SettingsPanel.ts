@@ -60,10 +60,43 @@ export class SettingsPanel {
     panel.webview.onDidReceiveMessage((msg) => {
       if (msg.type === 'closeSettings') {
         panel.dispose();
+      } else if (msg.type === 'getSetting') {
+        // Return current settings so the SettingsView can render
+        const config = vscode.workspace.getConfiguration('vibeflow');
+        panel.webview.postMessage({
+          type: 'settingsData',
+          payload: {
+            serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
+            serverReachable: null,
+            apiKeySet: true, // Assume set if settings opened (user is authenticated)
+            apiKeyValid: null,
+            projectId: null,
+            projectName: null,
+            projects: [],
+            defaultProvider: config.get('defaultProvider', 'claude'),
+            providers: [
+              { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
+              { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'MCP_TOKEN', envTokenSet: false },
+              { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: false },
+              { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: false, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
+            ],
+            worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
+            worktreeAutoCreate: true,
+            worktreeCleanupOnKill: 'ask',
+            pollInterval: config.get('polling.interval', 30),
+            viewMode: 'flat',
+            skipPermissions: false,
+            errorRecoveryEnabled: true,
+            errorRecoveryMaxRetries: 10,
+            errorRecoveryDebounce: 5,
+            notifyAgentPrompts: config.get('notifications.agentPrompts', true),
+            notifyWorkComplete: config.get('notifications.workItemComplete', true),
+            debugSimulateActivity: config.get('debug.simulateActivity', false),
+            debugVerboseLogging: false,
+            version: '0.1.0',
+          },
+        });
       }
-      // Other settings message types handled by the existing
-      // settingsHandler on ActivityFeedProvider — but for the
-      // dedicated panel, we handle them here too.
     });
 
     panel.onDidDispose(() => {
