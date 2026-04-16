@@ -75,6 +75,7 @@ export class SessionReattacher {
     gitBranch: string,
     workDir: string,
     serverUrl: string,
+    projectName?: string,
   ): Promise<PhantomSession[]> {
     if (phantoms.length === 0) { return []; }
 
@@ -96,6 +97,10 @@ export class SessionReattacher {
       try {
         const command = buildReattachCommand(provider, sessionMode);
 
+        const initPrompt = projectName
+          ? `Initialize a vibeflow session for project ${projectName} with persona ${phantom.persona} and follow the agent prompt. Call session_init with project_name: ${projectName}, persona: ${phantom.persona}, git_branch: ${gitBranch} and begin Phase 1 immediately.`
+          : undefined;
+
         terminalRegistry.create({
           persona: phantom.persona,
           branch: gitBranch,
@@ -108,6 +113,7 @@ export class SessionReattacher {
             VIBEFLOW_BRANCH: gitBranch,
           },
           terminalMode,
+          initPrompt,
         });
 
         reattached.push(phantom);
