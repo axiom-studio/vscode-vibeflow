@@ -20,7 +20,10 @@ import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
+import { manageWorktrees } from './commands/worktreeCommands.js';
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
+import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
+import { KanbanPanel } from './views/kanban/KanbanPanel.js';
 import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
@@ -407,7 +410,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       SettingsPanel.open(context.extensionUri);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
-      vscode.window.showInformationMessage('VibeFlow: Dashboard — coming soon');
+      DashboardPanel.open(context.extensionUri);
+    }),
+    vscode.commands.registerCommand('vibeflow.openKanban', () => {
+      KanbanPanel.open(context.extensionUri);
+    }),
+    vscode.commands.registerCommand('vibeflow.manageWorktrees', () => {
+      manageWorktrees();
     }),
     vscode.commands.registerCommand('vibeflow.refresh', () => {
       sessionsProvider.refresh();

@@ -146,6 +146,14 @@
         "title": "VibeFlow: Open Dashboard"
       },
       {
+        "command": "vibeflow.openKanban",
+        "title": "VibeFlow: Open Kanban Board"
+      },
+      {
+        "command": "vibeflow.manageWorktrees",
+        "title": "VibeFlow: Manage Worktrees"
+      },
+      {
         "command": "vibeflow.refresh",
         "title": "VibeFlow: Refresh",
         "icon": "$(refresh)"
