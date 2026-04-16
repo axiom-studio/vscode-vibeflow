@@ -22,7 +22,9 @@ export function App() {
   useEffect(() => {
     // Check initial mode set by extension before webview loads (via data attribute)
     const initialMode = document.body.dataset.vfMode;
-    if (initialMode === 'document') {
+    if (initialMode === 'settings') {
+      setView('settings');
+    } else if (initialMode === 'document') {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
       const title = document.body.dataset.vfTitle ?? 'Document';
