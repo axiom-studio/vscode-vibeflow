@@ -40,6 +40,11 @@
           "id": "vibeflow",
           "title": "VibeFlow",
           "icon": "media/vibeflow-icon.svg"
+        },
+        {
+          "id": "vibeflowMonitor",
+          "title": "VibeFlow Monitor",
+          "icon": "media/vibeflow-icon.svg"
         }
       ]
     },
@@ -56,15 +61,17 @@
           "type": "tree"
         },
         {
-          "id": "vibeflow.activityFeed",
-          "name": "Activity Feed",
-          "type": "webview"
-        },
-        {
           "id": "vibeflow.documents",
           "name": "Documents",
           "type": "tree",
           "visibility": "collapsed"
+        }
+      ],
+      "vibeflowMonitor": [
+        {
+          "id": "vibeflow.activityFeed",
+          "name": "Activity Feed",
+          "type": "webview"
         }
       ]
     },
