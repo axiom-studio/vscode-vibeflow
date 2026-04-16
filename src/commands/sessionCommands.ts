@@ -6,6 +6,7 @@ import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvide
 import type { VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
+import { StickyModels, KNOWN_MODELS } from '../sessions/stickyModels.js';
 
 const SESSION_MODES = [
   {
@@ -63,6 +64,7 @@ export async function launchSession(
   sessionsProvider: SessionsTreeProvider,
   extensionUri: vscode.Uri,
   terminalRegistry: TerminalRegistry,
+  stickyModels: StickyModels,
 ): Promise<void> {
   const project = detector.getCachedProject();
   if (!project) {
@@ -237,6 +239,7 @@ export async function launchSession(
   // reads CLAUDE.md/AGENTS.md and calls session_init itself via MCP.
   for (const persona of personas) {
     try {
+      const model = stickyModels.getModel(persona);
       const command = buildLaunchCommand(
         binaries[provider.value] ?? 'claude',
         provider.value,
@@ -249,7 +252,11 @@ export async function launchSession(
         provider: provider.value,
         workDir,
         command,
-        env: { ...env, VIBEFLOW_PERSONA: persona },
+        env: {
+          ...env,
+          VIBEFLOW_PERSONA: persona,
+          VIBEFLOW_MODEL: model,
+        },
         terminalMode,
       });
     } catch (err) {

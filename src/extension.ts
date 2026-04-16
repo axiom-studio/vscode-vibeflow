@@ -16,6 +16,7 @@ import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession, focusTerminal } from './commands/sessionCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
+import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
@@ -44,8 +45,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri);
   const documentsProvider = new DocumentsTreeProvider();
 
-  // --- Terminal Registry ---
+  // --- Terminal Registry + Sticky Models ---
   const terminalRegistry = new TerminalRegistry();
+  const stickyModels = new StickyModels(context.globalState);
   context.subscriptions.push(terminalRegistry);
 
   // --- Focus Panels ---
@@ -324,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (node: { session?: import('./api/types.js').VibeFlowSession }) => {
       if (node?.session) {
