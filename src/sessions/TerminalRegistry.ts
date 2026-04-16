@@ -99,10 +99,13 @@ export class TerminalRegistry implements vscode.Disposable {
     }
 
     if (opts.initPrompt) {
-      // Escape double quotes in the prompt for shell safety
-      const escaped = opts.initPrompt.replace(/"/g, '\\"');
-      terminal.sendText(`${opts.command} "${escaped}"`, true);
+      // Use single quotes to avoid escaping issues with double quotes in the prompt
+      const escaped = opts.initPrompt.replace(/'/g, "'\\''");
+      const fullCommand = `${opts.command} '${escaped}'`;
+      console.log('[VibeFlow] Terminal command:', fullCommand.slice(0, 200));
+      terminal.sendText(fullCommand, true);
     } else {
+      console.log('[VibeFlow] Terminal command (no prompt):', opts.command);
       terminal.sendText(opts.command, true);
     }
 
