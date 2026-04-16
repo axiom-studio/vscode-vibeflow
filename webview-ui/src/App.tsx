@@ -1,12 +1,10 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { ActivityFeed } from './components/ActivityFeed';
 import { SettingsView } from './components/settings/SettingsView';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { CommentableDocumentViewer } from './components/comments/CommentableDocumentViewer';
-
-// Lazy-load heavy panels to keep initial bundle fast
-const DashboardView = lazy(() => import('./components/DashboardView').then(m => ({ default: m.DashboardView })));
-const KanbanView = lazy(() => import('./components/KanbanView').then(m => ({ default: m.KanbanView })));
+import { DashboardView } from './components/DashboardView';
+import { KanbanView } from './components/KanbanView';
 
 type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban';
 
@@ -68,11 +66,9 @@ export function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  const loading = <div style={{ padding: 20, color: 'var(--feed-muted)' }}>Loading...</div>;
-
   if (view === 'settings') { return <SettingsView />; }
-  if (view === 'dashboard') { return <Suspense fallback={loading}><DashboardView /></Suspense>; }
-  if (view === 'kanban') { return <Suspense fallback={loading}><KanbanView /></Suspense>; }
+  if (view === 'dashboard') { return <DashboardView />; }
+  if (view === 'kanban') { return <KanbanView />; }
   if (view === 'document' && doc) {
     // Use CommentableDocumentViewer when we have project/entity context
     if (doc.entityId && doc.projectId) {
