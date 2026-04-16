@@ -20,6 +20,19 @@
     "workspaceContains:.vibeflow-session-*",
     "onStartupFinished"
   ],
+  "icon": "media/icon.png",
+  "keywords": [
+    "ai",
+    "agent",
+    "vibeflow",
+    "orchestration",
+    "multi-agent",
+    "project-management"
+  ],
+  "bugs": {
+    "url": "https://bitbucket.org/axiom-studio/vscode-vibeflow/issues"
+  },
+  "homepage": "https://cloud.axiomstudio.ai",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -209,6 +222,49 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "vibeflow.getStarted",
+        "title": "Get Started with VibeFlow",
+        "description": "Set up your AI agent orchestration environment in 5 steps.",
+        "steps": [
+          {
+            "id": "welcome",
+            "title": "Welcome to VibeFlow",
+            "description": "VibeFlow brings multi-persona AI agent orchestration into your IDE. Run Developer, Architect, QA, Security, and PM agents — all from VSCode.\n\n[Learn more](https://cloud.axiomstudio.ai)",
+            "media": { "image": "media/vibeflow-icon.svg", "altText": "VibeFlow logo" }
+          },
+          {
+            "id": "setup",
+            "title": "Connect to VibeFlow",
+            "description": "Paste your API key from Account > API Keys to connect.\n\n[Run Setup](command:vibeflow.setup)",
+            "media": { "image": "media/vibeflow-icon.svg", "altText": "Setup" },
+            "completionEvents": ["onCommand:vibeflow.setup"]
+          },
+          {
+            "id": "launch",
+            "title": "Launch Your First Session",
+            "description": "Pick a persona, provider, and branch. The agent runs in an integrated terminal.\n\n[Launch Session](command:vibeflow.launchSession)",
+            "media": { "image": "media/vibeflow-icon.svg", "altText": "Launch" },
+            "completionEvents": ["onCommand:vibeflow.launchSession"]
+          },
+          {
+            "id": "respond",
+            "title": "Respond to Agent Prompts",
+            "description": "When an agent needs your input, a notification appears. Click Respond to answer.\n\n[Respond to Prompt](command:vibeflow.respondToPrompt)",
+            "media": { "image": "media/vibeflow-icon.svg", "altText": "Respond" },
+            "completionEvents": ["onCommand:vibeflow.respondToPrompt"]
+          },
+          {
+            "id": "explore",
+            "title": "Explore the Sidebar",
+            "description": "Click the VibeFlow icon in the Activity Bar to see Agent Fleet, Work Items, Activity Feed, and Documents.\n\n[Open Sidebar](command:vibeflow.viewSessions)",
+            "media": { "image": "media/vibeflow-icon.svg", "altText": "Sidebar" },
+            "completionEvents": ["onCommand:vibeflow.viewSessions"]
+          }
+        ]
+      }
+    ],
     "configuration": {
       "title": "VibeFlow",
       "properties": {
