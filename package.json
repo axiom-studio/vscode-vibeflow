@@ -40,11 +40,6 @@
           "id": "vibeflow",
           "title": "VibeFlow",
           "icon": "media/vibeflow-icon.svg"
-        },
-        {
-          "id": "vibeflowMonitor",
-          "title": "VibeFlow Monitor",
-          "icon": "media/vibeflow-icon.svg"
         }
       ]
     },
@@ -65,9 +60,7 @@
           "name": "Documents",
           "type": "tree",
           "visibility": "collapsed"
-        }
-      ],
-      "vibeflowMonitor": [
+        },
         {
           "id": "vibeflow.activityFeed",
           "name": "Activity Feed",
@@ -404,7 +397,7 @@
         },
         "vibeflow.debug.simulateActivity": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Fill the Activity Feed with simulated dummy data (for development/testing)"
         },
         "vibeflow.devMode.workspaceFolder": {
