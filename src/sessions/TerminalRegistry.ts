@@ -90,21 +90,20 @@ export class TerminalRegistry implements vscode.Disposable {
       hidden,
     });
 
-    // Show and run command
+    // Show and run command.
+    // If initPrompt is provided, append it as a positional argument to the
+    // binary command. Claude accepts `claude [options] [prompt]` — the prompt
+    // becomes the first user message, no TUI input timing issues.
     if (!hidden) {
       terminal.show(true); // preserveFocus = true
     }
-    terminal.sendText(opts.command, true);
 
-    // Send init prompt after claude's TUI loads.
-    // Claude's TUI takes ~2-4 seconds to initialize. We send the prompt
-    // after a delay. sendText with true appends Enter which submits
-    // the message in claude's input box.
     if (opts.initPrompt) {
-      const prompt = opts.initPrompt;
-      setTimeout(() => {
-        terminal.sendText(prompt, true);
-      }, 4000);
+      // Escape double quotes in the prompt for shell safety
+      const escaped = opts.initPrompt.replace(/"/g, '\\"');
+      terminal.sendText(`${opts.command} "${escaped}"`, true);
+    } else {
+      terminal.sendText(opts.command, true);
     }
 
     this._onDidChange.fire();
