@@ -15,6 +15,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession, focusTerminal } from './commands/sessionCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
+import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
@@ -494,6 +495,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   await tryAutoConnect();
+
+  // --- Session Reattachment ---
+  // Detect .vibeflow-session-* files from a previous VSCode window
+  // and offer to reattach terminals for them.
+  const cachedProject = detector.getCachedProject();
+  if (cachedProject) {
+    const gitBranch = await detector.getGitBranch();
+    const phantoms = await SessionReattacher.detectPhantoms(terminalRegistry, gitBranch);
+    if (phantoms.length > 0) {
+      const serverUrl = vscode.workspace.getConfiguration('vibeflow')
+        .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+      // Default provider from settings; user can override at reattach time
+      const defaultProvider = vscode.workspace.getConfiguration('vibeflow')
+        .get<string>('defaultProvider', 'claude');
+      // Use vibeflow mode by default for reattachment (agent was running before)
+      SessionReattacher.promptReattach(
+        phantoms,
+        terminalRegistry,
+        defaultProvider,
+        'vibeflow',
+        gitBranch,
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+        serverUrl,
+      ).then(() => sessionsProvider.refresh());
+    }
+  }
 
   // --- Activity Feed simulation (debug mode) ---
   // Fills the Activity Feed with dummy data so the UI is testable without real sessions.
