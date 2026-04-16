@@ -408,7 +408,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       openDocumentViewer(client, detector, context.extensionUri, docId, docTitle);
     }),
     vscode.commands.registerCommand('vibeflow.openSettings', () => {
-      SettingsPanel.open(context.extensionUri);
+      SettingsPanel.open(context.extensionUri, authService);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       DashboardPanel.open(context.extensionUri);
