@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
@@ -218,10 +220,11 @@ export async function launchSession(
   const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
   // Write agent instruction docs (CLAUDE.md / AGENTS.md / GEMINI.md) into workDir.
-  // The agent reads these on startup and calls session_init itself via MCP.
-  // Matches CLI EnsureAllAgentDocs behavior.
   if (workDir) {
     ensureAllAgentDocs(extensionUri, workDir);
+    // Ensure .mcp.json exists with vibeflow server config so the agent
+    // can connect to the MCP server regardless of global ~/.claude.json state.
+    ensureMcpConfig(workDir, serverUrl, client);
   }
 
   // Read terminal mode setting
@@ -273,6 +276,62 @@ export async function launchSession(
     `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${personas.join(', ')}`,
   );
   sessionsProvider.refresh();
+}
+
+/**
+ * Ensure .mcp.json exists in the workspace with the vibeflow MCP server config.
+ * Claude reads this on startup to discover MCP servers. Without it, the agent
+ * can't call session_init or any other VibeFlow MCP tool.
+ */
+function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowClient): void {
+  const mcpPath = path.join(workDir, '.mcp.json');
+
+  // Read token from CLI config (same source as extension auto-login)
+  let token: string | undefined;
+  try {
+    const cliConfigPath = path.join(require('os').homedir(), '.vibeflow-cli', 'config.yaml');
+    const cliContent = fs.readFileSync(cliConfigPath, 'utf-8');
+    const match = cliContent.match(/^api_token:\s*(.+)$/m);
+    if (match) { token = match[1].trim(); }
+  } catch {
+    // No CLI config — can't write .mcp.json without a token
+  }
+
+  if (!token) { return; }
+
+  // Read existing .mcp.json if present
+  let existing: Record<string, unknown> = {};
+  try {
+    const content = fs.readFileSync(mcpPath, 'utf-8');
+    existing = JSON.parse(content);
+  } catch {
+    // File doesn't exist or invalid JSON — will create fresh
+  }
+
+  const mcpServers = (existing.mcpServers ?? {}) as Record<string, unknown>;
+
+  // Only write if vibeflow isn't already configured
+  if (mcpServers.vibeflow) { return; }
+
+  mcpServers.vibeflow = {
+    command: 'npx',
+    args: [
+      '-y',
+      'mcp-remote',
+      `${serverUrl}/rest/v1/vibeflow/mcp`,
+      '--header',
+      `Authorization: Bearer ${token}`,
+    ],
+  };
+
+  existing.mcpServers = mcpServers;
+
+  try {
+    fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), 'utf-8');
+    console.log('[VibeFlow] Wrote .mcp.json with vibeflow server config');
+  } catch {
+    // Non-fatal — agent can still use global config
+  }
 }
 
 // Provider binary mapping (matches CLI defaults from config.go DefaultConfig)
