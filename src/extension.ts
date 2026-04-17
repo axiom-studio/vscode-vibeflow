@@ -340,36 +340,39 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
       launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels);
     }),
-    vscode.commands.registerCommand('vibeflow.focusTerminal', (node: { id?: string; session?: import('./api/types.js').VibeFlowSession }) => {
-      const session = node?.session ?? (node?.id ? sessionsProvider.getSessionById(node.id) : undefined);
+    vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { focusTerminal(terminalRegistry, session); }
     }),
-    vscode.commands.registerCommand('vibeflow.killSession', (node: { id?: string; session?: import('./api/types.js').VibeFlowSession }) => {
-      const session = node?.session ?? (node?.id ? sessionsProvider.getSessionById(node.id) : undefined);
+    vscode.commands.registerCommand('vibeflow.killSession', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { killSession(client, session, sessionsProvider); }
     }),
-    vscode.commands.registerCommand('vibeflow.restartSession', (node: { id?: string; session?: import('./api/types.js').VibeFlowSession }) => {
-      const session = node?.session ?? (node?.id ? sessionsProvider.getSessionById(node.id) : undefined);
+    vscode.commands.registerCommand('vibeflow.restartSession', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { restartSession(client, session, detector, sessionsProvider); }
     }),
-    vscode.commands.registerCommand('vibeflow.openSessionPanel', (node: { id?: string; session?: import('./api/types.js').VibeFlowSession }) => {
-      const session = node?.session ?? (node?.id ? sessionsProvider.getSessionById(node.id) : undefined);
+    vscode.commands.registerCommand('vibeflow.openSessionPanel', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { sessionPanelManager.open(session); }
+      else { vscode.window.showInformationMessage('VibeFlow: Session not found — it may have expired'); }
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
     }),
-    vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (node: { id?: string; label?: string; description?: string }) => {
-      // Parse type and numeric ID from the node's id field (e.g., "todo-1234" or "issue-567")
-      // The 'type' custom field may not survive VSCode's TreeItem serialization
-      const id = node?.id ?? '';
-      const idMatch = id.match(/^(todo|issue)-(\d+)$/);
+    vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (nodeId: string, label?: string, description?: string) => {
+      // nodeId is e.g., "todo-1234" or "issue-567" — passed as a plain string
+      const idMatch = (nodeId ?? '').match(/^(todo|issue)-(\d+)$/);
       if (idMatch) {
         workItemPanelManager.open({
           type: idMatch[1] as 'todo' | 'issue',
           id: parseInt(idMatch[2]),
-          title: node?.label?.replace(/^#\d+:\s*/, '') ?? '',
-          status: node?.description ?? '',
+          title: (label ?? '').replace(/^#\d+:\s*/, ''),
+          status: description ?? '',
           priority: 'medium',
         });
       }
