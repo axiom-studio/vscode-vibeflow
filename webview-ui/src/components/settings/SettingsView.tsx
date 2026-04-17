@@ -71,11 +71,12 @@ export function SettingsView() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '14px 20px',
+        padding: '16px 32px',
         borderBottom: '1px solid var(--feed-border)',
+        flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 18, fontWeight: 700 }}>VibeFlow Settings</span>
+          <span style={{ fontSize: 18, fontWeight: 700 }}>Settings</span>
           <span style={{
             fontSize: 10,
             padding: '2px 6px',
@@ -105,14 +106,15 @@ export function SettingsView() {
         display: 'flex',
         gap: 0,
         borderBottom: '1px solid var(--feed-border)',
-        padding: '0 20px',
+        padding: '0 32px',
+        flexShrink: 0,
       }}>
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '10px 18px',
+              padding: '10px 20px',
               fontSize: 12,
               fontWeight: activeTab === tab.id ? 600 : 400,
               color: activeTab === tab.id ? 'var(--feed-fg)' : 'var(--feed-muted)',
@@ -132,22 +134,23 @@ export function SettingsView() {
         ))}
       </div>
 
-      {/* Content */}
+      {/* Content — wide padding so scrollbar sits at the right edge */}
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '20px 24px',
-        maxWidth: 640,
+        padding: '24px 32px 40px 32px',
       }}>
-        {activeTab === 'connection' && (
-          <ConnectionTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
-        )}
-        {activeTab === 'providers' && (
-          <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
-        )}
-        {activeTab === 'session' && (
-          <SessionTab data={data} onUpdate={updateSetting} />
-        )}
+        <div style={{ maxWidth: 580 }}>
+          {activeTab === 'connection' && (
+            <ConnectionTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
+          )}
+          {activeTab === 'providers' && (
+            <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
+          )}
+          {activeTab === 'session' && (
+            <SessionTab data={data} onUpdate={updateSetting} />
+          )}
+        </div>
       </div>
     </div>
   );
