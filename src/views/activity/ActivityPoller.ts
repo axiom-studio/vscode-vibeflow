@@ -161,9 +161,13 @@ export class ActivityPoller {
           id: eventId,
           timestamp: log.created_at,
           personaKey: 'developer', // Best effort — claimedBy is session_id, not persona_key
-          personaName: `${type} #${id}`,
+          personaName: 'Agent',
           messageType,
           content: this.truncate(log.content),
+          metadata: {
+            workItemType: type,
+            workItemId: id,
+          },
         });
       }
     } catch {
