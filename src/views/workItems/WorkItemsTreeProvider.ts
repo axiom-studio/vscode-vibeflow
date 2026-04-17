@@ -120,11 +120,12 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
     }
 
     // Click a todo/issue → open Work Item Detail Panel
+    // Pass only serializable primitives — ThemeColor/MarkdownString break serialization
     if (element.type === 'todo' || element.type === 'issue') {
       item.command = {
         command: 'vibeflow.openWorkItemPanel',
         title: 'View Details',
-        arguments: [element],
+        arguments: [element.id, element.label, element.description ?? ''],
       };
     }
 
