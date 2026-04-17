@@ -59,6 +59,17 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private projectId: number | undefined;
   private sessions: VibeFlowSession[] = [];
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  // Session lookup by TreeItem id — needed because VSCode strips custom fields
+  // from TreeItem arguments when passing to commands
+  private sessionById = new Map<string, VibeFlowSession>();
+
+  /**
+   * Look up a session by its TreeItem id (e.g., "session-abc123").
+   * Used by command handlers that receive serialized TreeItem arguments.
+   */
+  getSessionById(treeItemId: string): VibeFlowSession | undefined {
+    return this.sessionById.get(treeItemId);
+  }
 
   refresh(): void {
     this.fetchAndRefresh();
@@ -124,6 +135,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildTree(): SessionNode[] {
+    this.sessionById.clear();
     if (this.sessions.length === 0) { return this.buildPlaceholderTree(); }
 
     // Group sessions by branch
@@ -173,8 +185,11 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       tooltip.appendMarkdown(`\n> ${session.last_message}\n`);
     }
 
+    const nodeId = `session-${session.session_id}`;
+    this.sessionById.set(nodeId, session);
+
     return {
-      id: `session-${session.session_id}`,
+      id: nodeId,
       type: 'session',
       label: personaLabel,
       description,
