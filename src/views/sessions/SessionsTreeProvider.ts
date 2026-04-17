@@ -117,12 +117,13 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       item.iconPath = new vscode.ThemeIcon(element.iconId, element.iconColor);
     }
 
-    // Click a session node → focus its terminal (primary interaction)
-    if (element.type === 'session' && element.session) {
+    // Click a session node → open Session Panel (inspection view)
+    // Pass only the string ID — non-serializable fields (ThemeColor, MarkdownString) break args
+    if (element.type === 'session') {
       item.command = {
-        command: 'vibeflow.focusTerminal',
-        title: 'Focus Terminal',
-        arguments: [element],
+        command: 'vibeflow.openSessionPanel',
+        title: 'View Session',
+        arguments: [element.id],
       };
     }
 
