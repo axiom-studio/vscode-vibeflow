@@ -178,6 +178,8 @@ export class ActivityPoller {
   private truncate(content: string): string {
     const lines = content.split('\n').filter(l => !l.startsWith('#') && l.trim());
     const firstLine = lines[0] ?? content;
-    return firstLine.length > 200 ? firstLine.slice(0, 197) + '...' : firstLine;
+    // Strip markdown bold/italic markers for clean display
+    const clean = firstLine.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1');
+    return clean.length > 200 ? clean.slice(0, 197) + '...' : clean;
   }
 }
