@@ -124,6 +124,10 @@ export class VibeFlowClient {
     );
   }
 
+  async getTodo(id: number): Promise<VibeFlowTodo> {
+    return this.request<VibeFlowTodo>(`/rest/v1/vibeflow/todos/${id}`);
+  }
+
   async createTodo(featureId: number, title: string, priority: string, targetBranch: string): Promise<void> {
     await this.mcp.callTool('create_todo', { feature_id: featureId, title, priority, target_branch: targetBranch });
   }
@@ -138,6 +142,10 @@ export class VibeFlowClient {
     return this.request<VibeFlowIssue[]>(
       `/rest/v1/vibeflow/projects/${projectId}/issues`,
     );
+  }
+
+  async getIssue(id: number): Promise<VibeFlowIssue> {
+    return this.request<VibeFlowIssue>(`/rest/v1/vibeflow/issues/${id}`);
   }
 
   async createIssue(projectId: number, title: string, priority: string, targetBranch: string): Promise<void> {

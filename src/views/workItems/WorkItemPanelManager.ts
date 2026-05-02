@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { WorkItemsTreeProvider } from './WorkItemsTreeProvider.js';
+import { qaVerify, qaReject, securityApprove, securityReject } from '../../commands/governanceCommands.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
 
@@ -14,8 +16,27 @@ interface WorkItemInfo {
 }
 
 /**
+ * Live state we read back from the backend after any action; drives which
+ * buttons render in the Actions toolbar. Kept separate from the static
+ * WorkItemInfo passed by the caller because the caller's data may be stale
+ * (it's whatever the tree had last).
+ */
+interface WorkItemState {
+  status: string;
+  qa_verified: boolean;
+  security_reviewed: boolean;
+}
+
+/**
  * Manages Focus View Webview Panels for work item details.
- * Tabbed view: Description | Execution Logs | Commits | Attachments.
+ *
+ * Tabbed view (Phase A): Logs | Actions. Description / Commits /
+ * Attachments tabs and the header-level action toolbar (Comment / Edit /
+ * Archive / Delete) land in Phase B+. Phase A scope is closing the
+ * "QA/Security mocked" audit finding by routing those buttons through the
+ * real governanceCommands wrappers and gating their visibility on the
+ * canonical axiomcloud rules (see memory: axiomcloud work-item action
+ * visibility).
  */
 export class WorkItemPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
@@ -24,6 +45,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
+    private readonly workItemsProvider: WorkItemsTreeProvider,
   ) {}
 
   open(item: WorkItemInfo): void {
@@ -50,21 +72,27 @@ export class WorkItemPanelManager implements vscode.Disposable {
 
     panel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
-        case 'changeStatus': {
+        case 'changeStatus':
           vscode.commands.executeCommand('vibeflow.changeStatus', item.type, item.id, item.status);
+          // Status edit is handled in a separate quickpick flow; refresh on
+          // return so the buttons regate to the new status.
+          await this.refreshState(item, panel);
           break;
-        }
         case 'qaVerify':
-          await this.qaAction(item, 'verify');
+          await qaVerify(this.client, item.type, item.id, this.workItemsProvider);
+          await this.refreshState(item, panel);
           break;
         case 'qaReject':
-          await this.qaAction(item, 'reject');
+          await qaReject(this.client, item.type, item.id, this.workItemsProvider);
+          await this.refreshState(item, panel);
           break;
         case 'securityApprove':
-          await this.securityAction(item, 'verify');
+          await securityApprove(this.client, item.type, item.id, this.workItemsProvider);
+          await this.refreshState(item, panel);
           break;
         case 'securityReject':
-          await this.securityAction(item, 'reject');
+          await securityReject(this.client, item.type, item.id, this.workItemsProvider);
+          await this.refreshState(item, panel);
           break;
         case 'loadLogs':
           await this.sendLogs(item, panel);
@@ -72,8 +100,11 @@ export class WorkItemPanelManager implements vscode.Disposable {
       }
     });
 
-    // Poll for log updates every 5s
-    const timer = setInterval(() => this.sendLogs(item, panel), 5000);
+    // Poll for log + state updates every 5s.
+    const timer = setInterval(() => {
+      this.sendLogs(item, panel);
+      this.refreshState(item, panel);
+    }, 5000);
     this.pollTimers.set(key, timer);
 
     panel.onDidDispose(() => {
@@ -82,8 +113,9 @@ export class WorkItemPanelManager implements vscode.Disposable {
       if (t) { clearInterval(t); this.pollTimers.delete(key); }
     });
 
-    // Initial log load
+    // Initial state + log load.
     this.sendLogs(item, panel);
+    this.refreshState(item, panel);
   }
 
   private async sendLogs(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
@@ -95,29 +127,25 @@ export class WorkItemPanelManager implements vscode.Disposable {
     }
   }
 
-  private async qaAction(item: WorkItemInfo, action: 'verify' | 'reject'): Promise<void> {
-    if (action === 'reject') {
-      const comment = await vscode.window.showInputBox({
-        prompt: 'Rejection reason (required)',
-        placeHolder: 'Describe what failed...',
-      });
-      if (!comment) { return; }
-      vscode.window.showInformationMessage(`VibeFlow: QA rejected ${item.type} #${item.id} — "${comment}"`);
-    } else {
-      vscode.window.showInformationMessage(`VibeFlow: QA verified ${item.type} #${item.id}`);
-    }
-  }
-
-  private async securityAction(item: WorkItemInfo, action: 'verify' | 'reject'): Promise<void> {
-    if (action === 'reject') {
-      const comment = await vscode.window.showInputBox({
-        prompt: 'Security rejection reason (required)',
-        placeHolder: 'Describe the security concern...',
-      });
-      if (!comment) { return; }
-      vscode.window.showInformationMessage(`VibeFlow: Security rejected ${item.type} #${item.id} — "${comment}"`);
-    } else {
-      vscode.window.showInformationMessage(`VibeFlow: Security approved ${item.type} #${item.id}`);
+  /**
+   * Re-fetch the current work item from the backend and push the live
+   * state to the webview. The caller's WorkItemInfo may be stale (tree
+   * snapshots can lag the actual record by a poll cycle), so action
+   * visibility derives from this fresh state, not the constructor input.
+   */
+  private async refreshState(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
+    try {
+      const fresh = item.type === 'todo'
+        ? await this.client.getTodo(item.id)
+        : await this.client.getIssue(item.id);
+      const state: WorkItemState = {
+        status: fresh.status,
+        qa_verified: fresh.qaVerified ?? false,
+        security_reviewed: fresh.securityReviewed ?? false,
+      };
+      panel.webview.postMessage({ type: 'state', payload: state });
+    } catch {
+      // Silent — webview keeps its last state, retries on next poll tick.
     }
   }
 
@@ -137,7 +165,8 @@ export class WorkItemPanelManager implements vscode.Disposable {
     body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); padding: 16px; margin: 0; }
     .header { padding-bottom: 12px; border-bottom: 1px solid var(--vscode-panel-border); }
     .header h1 { margin: 0 0 8px 0; font-size: 1.2em; }
-    .meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+    .meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85em; color: var(--vscode-descriptionForeground); align-items: center; }
+    .check { color: var(--vscode-terminal-ansiGreen); font-weight: 600; }
     .tabs { display: flex; gap: 0; margin-top: 16px; border-bottom: 1px solid var(--vscode-panel-border); }
     .tab { padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.9em; }
     .tab.active { border-bottom-color: var(--vscode-focusBorder); color: var(--vscode-foreground); }
@@ -148,20 +177,26 @@ export class WorkItemPanelManager implements vscode.Disposable {
     .log-entry { padding: 4px 0; border-bottom: 1px solid var(--vscode-panel-border, transparent); white-space: pre-wrap; word-break: break-word; }
     .log-entry .time { color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-right: 8px; }
     .actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+    .actions .group { display: flex; gap: 8px; align-items: center; }
+    .actions .group-label { font-size: 0.8em; color: var(--vscode-descriptionForeground); margin-right: 4px; }
     button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; }
+    button[hidden] { display: none !important; }
     .btn-success { background: var(--vscode-terminal-ansiGreen); color: white; }
     .btn-danger { background: var(--vscode-errorForeground); color: white; }
     .btn-secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+    .empty-actions { color: var(--vscode-descriptionForeground); font-size: 0.85em; font-style: italic; }
   </style>
 </head>
 <body>
   <div class="header">
     <h1>${item.type} #${item.id}: ${escapeHtml(item.title)}</h1>
     <div class="meta">
-      ${statusBadge(item.status, 'badge-background')}
+      <span id="status-badge">${statusBadge(item.status, 'badge-background')}</span>
       <span>Priority: ${item.priority}</span>
       ${item.featureName ? `<span>Feature: ${escapeHtml(item.featureName)}</span>` : ''}
       ${item.claimedBy ? `<span>Claimed: ${escapeHtml(item.claimedBy)}</span>` : ''}
+      <span id="qa-flag" class="check" hidden>✓ QA verified</span>
+      <span id="security-flag" class="check" hidden>✓ Security reviewed</span>
     </div>
   </div>
 
@@ -178,11 +213,21 @@ export class WorkItemPanelManager implements vscode.Disposable {
 
   <div id="tab-actions" class="tab-content">
     <div class="actions">
-      <button class="btn-secondary" onclick="send('changeStatus')">Change Status</button>
-      <button class="btn-success" onclick="send('qaVerify')">QA Verify</button>
-      <button class="btn-danger" onclick="send('qaReject')">QA Reject</button>
-      <button class="btn-success" onclick="send('securityApprove')">Security Approve</button>
-      <button class="btn-danger" onclick="send('securityReject')">Security Reject</button>
+      <div class="group">
+        <span class="group-label">Status:</span>
+        <button class="btn-secondary" onclick="send('changeStatus')">Change…</button>
+      </div>
+      <div class="group">
+        <span class="group-label">QA:</span>
+        <button id="btn-qa-verify" class="btn-success" onclick="send('qaVerify')" hidden>✓ QA Verify</button>
+        <button id="btn-qa-reject" class="btn-danger" onclick="send('qaReject')" hidden>✕ QA Reject</button>
+      </div>
+      <div class="group">
+        <span class="group-label">Security:</span>
+        <button id="btn-sec-verify" class="btn-success" onclick="send('securityApprove')" hidden>✓ Security Verify</button>
+        <button id="btn-sec-reject" class="btn-danger" onclick="send('securityReject')" hidden>✕ Security Reject</button>
+      </div>
+      <div id="empty-actions" class="empty-actions" hidden>No actions available for this status.</div>
     </div>
   </div>
 
@@ -200,7 +245,48 @@ export class WorkItemPanelManager implements vscode.Disposable {
       });
     });
 
-    // Receive logs
+    // ----- Action visibility, mirroring axiomcloud TodoDetail/IssueDetail -----
+    // Rules (verified 2026-05-03 against studio/src/Pages/Vibeflow/*.jsx):
+    //  - QA Verify:   status === 'done' && !qa_verified
+    //  - QA Reject:   status === 'done' && !qa_verified  (text: "✕ QA Reject")
+    //  - QA Revoke:   status === 'done' &&  qa_verified  (same button, text: "↩ Revoke QA")
+    //  - Security Verify/Reject — extension-only convenience action (no
+    //    canonical web UI); shown when !security_reviewed.
+    function applyState(state) {
+      const status = state.status;
+      const qa = !!state.qa_verified;
+      const sec = !!state.security_reviewed;
+
+      // Header badges
+      document.getElementById('status-badge').textContent = status;
+      document.getElementById('qa-flag').hidden = !qa;
+      document.getElementById('security-flag').hidden = !sec;
+
+      // QA buttons — only at status 'done'.
+      const qaVerifyBtn = document.getElementById('btn-qa-verify');
+      const qaRejectBtn = document.getElementById('btn-qa-reject');
+      if (status === 'done') {
+        qaVerifyBtn.hidden = qa;                    // hide once verified
+        qaRejectBtn.hidden = false;
+        qaRejectBtn.textContent = qa ? '↩ Revoke QA' : '✕ QA Reject';
+      } else {
+        qaVerifyBtn.hidden = true;
+        qaRejectBtn.hidden = true;
+      }
+
+      // Security buttons — extension-only, hide once reviewed.
+      const secVerifyBtn = document.getElementById('btn-sec-verify');
+      const secRejectBtn = document.getElementById('btn-sec-reject');
+      secVerifyBtn.hidden = sec;
+      secRejectBtn.hidden = sec;
+
+      // Empty-state hint when nothing is actionable.
+      const anyVisible = !qaVerifyBtn.hidden || !qaRejectBtn.hidden ||
+                         !secVerifyBtn.hidden || !secRejectBtn.hidden;
+      document.getElementById('empty-actions').hidden = anyVisible;
+    }
+
+    // Receive logs + state
     window.addEventListener('message', e => {
       if (e.data.type === 'logs' && e.data.payload) {
         const logsEl = document.getElementById('logs');
@@ -217,11 +303,14 @@ export class WorkItemPanelManager implements vscode.Disposable {
         }).join('');
         logsEl.scrollTop = logsEl.scrollHeight;
       }
+      if (e.data.type === 'state' && e.data.payload) {
+        applyState(e.data.payload);
+      }
     });
 
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-    // Request initial logs
+    // Request initial logs (state arrives via host's postMessage on open)
     vscode.postMessage({ type: 'loadLogs' });
   </script>
 </body>
@@ -235,4 +324,3 @@ export class WorkItemPanelManager implements vscode.Disposable {
     this.pollTimers.clear();
   }
 }
-
