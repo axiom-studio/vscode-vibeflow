@@ -46,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
-  const activityFeedProvider = new ActivityFeedProvider(context.extensionUri);
+  const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
 
   // --- File Decorations ---
@@ -81,9 +81,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
 
+    // Wire the response path so PromptNotifier.collectAndSendResponse
+    // actually hits the backend instead of silently no-op'ing. Project id
+    // is captured here so the handler doesn't need it threaded through.
+    promptNotifier.setRespondHandler((promptId, response) =>
+      client.respondToPrompt(project.projectId, promptId, response),
+    );
+
+    // Session focus panels need projectId for log correlation and
+    // user-to-agent prompts.
+    sessionPanelManager.setProjectId(project.projectId);
+
     // Start real Activity Feed polling (stop any previous)
     activityPoller?.stop();
-    activityPoller = new ActivityPoller(client, activityFeedProvider, promptNotifier, project.projectId);
+    activityPoller = new ActivityPoller(
+      client,
+      activityFeedProvider,
+      promptNotifier,
+      project.projectId,
+      fileDecorationProvider,
+    );
     activityPoller.start();
 
     // Update status bars
@@ -384,7 +401,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');
     }),
     vscode.commands.registerCommand('vibeflow.respondToPrompt', () => {
-      promptNotifier.showPendingPromptsQuickPick([]);
+      promptNotifier.showPendingPromptsQuickPick();
     }),
     vscode.commands.registerCommand('vibeflow.qaVerify', (_type: string, _id: number) => {
       qaVerify(client, _type as 'todo' | 'issue', _id, workItemsProvider);
@@ -411,10 +428,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       SettingsPanel.open(context.extensionUri, authService);
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
-      DashboardPanel.open(context.extensionUri);
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      // The cached project may have a stale gitBranch (set during cacheProject
+      // before any branch switch); refresh it so dashboard branch metrics
+      // reflect the current checkout.
+      detector.getGitBranch().then(branch => {
+        DashboardPanel.open(
+          context.extensionUri,
+          client,
+          { ...project, gitBranch: branch || project.gitBranch },
+          terminalRegistry,
+        );
+      });
     }),
     vscode.commands.registerCommand('vibeflow.openKanban', () => {
-      KanbanPanel.open(context.extensionUri);
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
     vscode.commands.registerCommand('vibeflow.manageWorktrees', () => {
       manageWorktrees();
@@ -581,9 +634,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Activity Feed simulation (debug mode) ---
   // Fills the Activity Feed with dummy data so the UI is testable without real sessions.
-  // Toggle off via setting: vibeflow.debug.simulateActivity = false
+  // Default OFF (matches package.json contributes.configuration default and Phase 4 PRD
+  // exit criterion that real builds ship without simulated data). Opt in via setting:
+  // vibeflow.debug.simulateActivity = true
   const debugConfig = vscode.workspace.getConfiguration('vibeflow');
-  if (debugConfig.get<boolean>('debug.simulateActivity', true)) {
+  if (debugConfig.get<boolean>('debug.simulateActivity', false)) {
     activityFeedProvider.pushEntries(generateBatch(500));
     const simTimer = setInterval(() => {
       activityFeedProvider.pushEntry(generateOne());
