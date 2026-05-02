@@ -15,25 +15,64 @@ const PRIORITIES = [
   { label: '$(arrow-down) Low', value: 'low' as const },
 ];
 
+/**
+ * Allowed status transitions surfaced in the "Change Status" Quick Pick.
+ *
+ * Backend canonical statuses (axiomcloud/database/vibeflow_models.go:36-46):
+ *   in_review, needs_pm_input, needs_ux_input, planning, ready_to_implement,
+ *   architecture_review_complete, implementing, done, archived, rejected.
+ *
+ * The backend doesn't enforce a state machine — any → any is accepted. These
+ * lists are pure UX guidance: they show the most-likely "next state" from
+ * each source so the user isn't picking from all 10 every time. `archived`
+ * and `rejected` are intentionally omitted — they're terminal/admin moves
+ * better made via the web UI.
+ */
 const VALID_TRANSITIONS: Record<string, { label: string; value: string }[]> = {
   in_review: [
     { label: 'Planning', value: 'planning' },
     { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'Needs PM Input', value: 'needs_pm_input' },
+    { label: 'Needs UX Input', value: 'needs_ux_input' },
   ],
-  planning: [
+  needs_pm_input: [
+    { label: 'Planning', value: 'planning' },
     { label: 'Ready to Implement', value: 'ready_to_implement' },
     { label: 'In Review', value: 'in_review' },
   ],
+  needs_ux_input: [
+    { label: 'Planning', value: 'planning' },
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'In Review', value: 'in_review' },
+  ],
+  planning: [
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'Architecture Review Complete', value: 'architecture_review_complete' },
+    { label: 'In Review', value: 'in_review' },
+    { label: 'Needs PM Input', value: 'needs_pm_input' },
+    { label: 'Needs UX Input', value: 'needs_ux_input' },
+  ],
   ready_to_implement: [
     { label: 'Implementing', value: 'implementing' },
+    { label: 'Architecture Review Complete', value: 'architecture_review_complete' },
+    { label: 'Planning', value: 'planning' },
+  ],
+  architecture_review_complete: [
+    { label: 'Implementing', value: 'implementing' },
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
     { label: 'Planning', value: 'planning' },
   ],
   implementing: [
     { label: 'Done', value: 'done' },
+    { label: 'In Review', value: 'in_review' },
     { label: 'Planning', value: 'planning' },
+    { label: 'Needs PM Input', value: 'needs_pm_input' },
+    { label: 'Needs UX Input', value: 'needs_ux_input' },
   ],
   done: [
+    { label: 'Implementing', value: 'implementing' },
     { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'In Review', value: 'in_review' },
   ],
 };
 
