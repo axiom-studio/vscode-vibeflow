@@ -22,6 +22,16 @@ Thumbs.db
 # Session files (local agent state)
 .vibeflow-session-*
 
+# MCP config — written by the extension with a Bearer token in args.
+# Must never be committed.
+.mcp.json
+
+# Agent doc files written by the extension into a workspace at activation
+# (claude/codex/cursor/gemini). Source-of-truth lives under media/agentdocs/.
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+
 # Test reports
 TEST*.xml
 
