@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
+import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -11,7 +12,10 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   private pendingEntries: ActivityEntry[] = [];
   settingsHandler: ((message: unknown) => void) | undefined;
 
-  constructor(private readonly extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly promptNotifier: PromptNotifier,
+  ) {}
 
   resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -100,15 +104,15 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   }
 
   private async handlePromptResponse(promptId: string): Promise<void> {
-    const response = await vscode.window.showInputBox({
-      prompt: `Respond to agent prompt (${promptId})`,
-      placeHolder: 'Type your response...',
-    });
-    if (response !== undefined) {
-      // In production, this would call the MCP respond_to_prompt tool.
-      // For the spike, just show confirmation.
-      vscode.window.showInformationMessage(`Response sent: "${response}"`);
+    // Look the prompt up in PromptNotifier so we can render the persona
+    // name and original question in the input box, then route through the
+    // shared collectAndSendResponse path that actually hits the backend.
+    const prompt = this.promptNotifier.findById(promptId);
+    if (!prompt) {
+      vscode.window.showWarningMessage(`Prompt ${promptId} is no longer pending`);
+      return;
     }
+    await this.promptNotifier.collectAndSendResponse(prompt);
   }
 
   private getHtml(webview: vscode.Webview): string {
