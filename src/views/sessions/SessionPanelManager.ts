@@ -1,23 +1,51 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { VibeFlowSession } from '../../api/types.js';
+import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
 
 /**
+ * Single log entry as the webview consumes it. Mirrors the shape we already
+ * get back from `client.getWorkItemLogs`, plus a synthesized `source` so the
+ * UI can label which work item a log line came from when a session has more
+ * than one claimed item open at once.
+ */
+interface PanelLog {
+  id?: number;
+  content: string;
+  message_type?: string;
+  created_at: string;
+  source: { type: 'todo' | 'issue'; id: number };
+}
+
+/**
  * Manages Focus View Webview Panels for individual agent sessions.
  * One panel per persona — clicking the same persona reuses the panel.
+ *
+ * The Progress Ledger is built by client-side correlation: we don't have a
+ * `GET /sessions/{id}/logs` endpoint in the backend (axiomcloud confirmed,
+ * 2026-05-02), so we list features → todos → issues, filter the ones whose
+ * `claimedBy` matches the session id, and merge their logs by timestamp.
  */
 export class SessionPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
   private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
+  /**
+   * Project id for the currently-connected workspace. Set by
+   * `setProjectId` from extension.ts once a project is detected — before
+   * that, panels can render the static metadata header but log streaming
+   * and prompt sends are disabled.
+   */
+  private projectId: number | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly _client: VibeFlowClient,
-  ) {
-    // _client retained for future log-streaming; underscore silences unused lint
-    void this._client;
+    private readonly client: VibeFlowClient,
+  ) {}
+
+  /** Wire (or rewire) the active project. Called from `connectToProject`. */
+  setProjectId(projectId: number | undefined): void {
+    this.projectId = projectId;
   }
 
   /**
@@ -52,12 +80,23 @@ export class SessionPanelManager implements vscode.Disposable {
     panel.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.type) {
         case 'sendPrompt': {
+          const personaName = session.persona_name ?? session.persona_key;
+          if (this.projectId === undefined) {
+            vscode.window.showWarningMessage('VibeFlow: not connected to a project');
+            break;
+          }
           const text = await vscode.window.showInputBox({
-            prompt: `Send message to ${session.persona_name ?? session.persona_key}`,
+            prompt: `Send message to ${personaName}`,
             placeHolder: 'Type your message...',
+            ignoreFocusOut: true,
           });
-          if (text) {
-            vscode.window.showInformationMessage(`VibeFlow: Prompt sent to ${session.persona_name ?? session.persona_key}`);
+          if (!text) { break; }
+          try {
+            await this.client.promptUser(this.projectId, session.session_id, text);
+            vscode.window.showInformationMessage(`VibeFlow: Prompt sent to ${personaName}`);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to send prompt: ${msg}`);
           }
           break;
         }
@@ -88,13 +127,82 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   private async refreshPanel(session: VibeFlowSession, panel: vscode.WebviewPanel): Promise<void> {
-    // For now, just re-render with the latest session metadata.
-    // Log streaming will be added once we have a stable way to link
-    // sessions → active work items (needs server support).
+    if (this.projectId === undefined) {
+      panel.webview.postMessage({ type: 'update', payload: { session, logs: [] } });
+      return;
+    }
+
+    const logs = await this.collectSessionLogs(this.projectId, session.session_id);
     panel.webview.postMessage({
       type: 'update',
-      payload: { session, logs: [] },
+      payload: { session, logs },
     });
+  }
+
+  /**
+   * Build the Progress Ledger for one session by correlating
+   * `claimedBy === sessionId` across all in-flight work items in the
+   * project. We mirror the same pattern ActivityPoller uses but scoped to
+   * a single session and bounded to the most recent ~100 lines.
+   *
+   * Failures are absorbed (return what we have) — a panel that can't reach
+   * the API should still render the static metadata header and try again
+   * on the next 5s tick.
+   */
+  private async collectSessionLogs(projectId: number, sessionId: string): Promise<PanelLog[]> {
+    const claimedTodos: VibeFlowTodo[] = [];
+    const claimedIssues: VibeFlowIssue[] = [];
+
+    try {
+      const features = await this.client.listFeatures(projectId);
+      const activeFeatures = features.filter(f =>
+        f.status === 'implementing' || f.status === 'ready_to_implement',
+      );
+      const todoLists = await Promise.all(
+        activeFeatures.map(f => this.client.listTodos(f.id).catch(() => [])),
+      );
+      for (const todos of todoLists) {
+        for (const todo of todos) {
+          if (todo.claimedBy === sessionId && todo.status === 'implementing') {
+            claimedTodos.push(todo);
+          }
+        }
+      }
+    } catch {
+      // Continue with whatever we collected.
+    }
+
+    try {
+      const issues = await this.client.listIssues(projectId);
+      for (const issue of issues) {
+        if (issue.claimedBy === sessionId && issue.status === 'implementing') {
+          claimedIssues.push(issue);
+        }
+      }
+    } catch {
+      // Continue.
+    }
+
+    const logBatches = await Promise.all([
+      ...claimedTodos.map(t =>
+        this.client.getWorkItemLogs('todo', t.id)
+          .then(rows => rows.map<PanelLog>(r => ({ ...r, source: { type: 'todo' as const, id: t.id } })))
+          .catch(() => [] as PanelLog[]),
+      ),
+      ...claimedIssues.map(i =>
+        this.client.getWorkItemLogs('issue', i.id)
+          .then(rows => rows.map<PanelLog>(r => ({ ...r, source: { type: 'issue' as const, id: i.id } })))
+          .catch(() => [] as PanelLog[]),
+      ),
+    ]);
+
+    const merged = logBatches.flat();
+    // Cap at the newest 100 lines across all of this session's work items
+    // (sort desc, slice), then reverse so the webview gets them in the
+    // chronological order it already renders — oldest at top, newest at
+    // bottom, scroll-to-bottom for tailing.
+    merged.sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return merged.slice(0, 100).reverse();
   }
 
   private getHtml(webview: vscode.Webview, session: VibeFlowSession): string {
@@ -131,6 +239,7 @@ export class SessionPanelManager implements vscode.Disposable {
     .logs { max-height: 60vh; overflow-y: auto; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
     .log-entry { padding: 4px 0; border-bottom: 1px solid var(--vscode-panel-border, transparent); white-space: pre-wrap; word-break: break-word; }
     .log-entry .time { color: var(--vscode-descriptionForeground); font-size: 0.85em; margin-right: 8px; }
+    .log-entry .src { font-size: 0.8em; padding: 1px 6px; border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); margin-right: 6px; }
     .actions { display: flex; gap: 8px; margin-top: 16px; }
     .actions button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
     .btn-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -186,7 +295,8 @@ export class SessionPanelManager implements vscode.Disposable {
           const time = new Date(log.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
           const icon = { thinking:'🤔', action:'⚡', observation:'👁', summary:'📋', diff:'📝', test_result:'🧪' }[log.message_type] || '📌';
           const lines = log.content.split('\\n').slice(0, 5).join('\\n');
-          return '<div class="log-entry"><span class="time">' + time + '</span>' + icon + ' ' + escHtml(lines) + '</div>';
+          const src = log.source ? ('<span class="src">' + log.source.type + ' #' + log.source.id + '</span>') : '';
+          return '<div class="log-entry"><span class="time">' + time + '</span>' + src + ' ' + icon + ' ' + escHtml(lines) + '</div>';
         }).join('');
         logsEl.scrollTop = logsEl.scrollHeight;
       }
