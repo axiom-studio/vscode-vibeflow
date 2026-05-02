@@ -83,6 +83,16 @@ export async function securityReject(
 
 // --- Branch Review Status ---
 
+/**
+ * Check whether the current branch is ready for a PR. Returns true when both
+ * security review and QA verification have passed for every work item on the
+ * branch.
+ *
+ * Wire-shape reference: axiomcloud/mcp/vibeflow_tools.go:7415-7424. The tool
+ * returns `overall_security`/`overall_qa` PASS|PENDING strings (NOT a
+ * `ready` boolean), counts as `security_passed`/`qa_passed`/`total_items`,
+ * and a special `total_items === 0` short-form when the branch has no work.
+ */
 export async function checkBranchReviewStatus(
   client: VibeFlowClient,
   detector: ProjectDetector,
@@ -96,20 +106,37 @@ export async function checkBranchReviewStatus(
   try {
     const result = await client.checkBranchReviewStatus(project.projectId, project.gitBranch);
 
-    if (result.ready) {
+    // No work items on this branch — server short-circuits to `{ total_items: 0, message }`.
+    if (!result.total_items || result.total_items === 0) {
       vscode.window.showInformationMessage(
-        `VibeFlow: Branch "${project.gitBranch}" is ready for PR — all items QA verified and security reviewed.`,
+        `VibeFlow: Branch "${project.gitBranch}" has no tracked work items.`,
       );
       return true;
-    } else {
-      const parts: string[] = [];
-      if (result.needsQA > 0) { parts.push(`${result.needsQA} need QA review`); }
-      if (result.needsSecurity > 0) { parts.push(`${result.needsSecurity} need security review`); }
-      vscode.window.showWarningMessage(
-        `VibeFlow: Branch "${project.gitBranch}" not ready for PR — ${parts.join(', ')}.`,
-      );
-      return false;
     }
+
+    const ready = result.overall_security === 'PASS' && result.overall_qa === 'PASS';
+
+    if (ready) {
+      const tail = result.total_lines ? ` · ${result.total_lines}` : '';
+      vscode.window.showInformationMessage(
+        `VibeFlow: Branch "${project.gitBranch}" is ready for PR — ` +
+        `${result.total_items} item(s), all reviewed${tail}.`,
+      );
+      return true;
+    }
+
+    const total = result.total_items;
+    const needsSecurity = total - (result.security_passed ?? 0);
+    const needsQA = total - (result.qa_passed ?? 0);
+    const parts: string[] = [];
+    if (needsSecurity > 0) { parts.push(`${needsSecurity} need security review`); }
+    if (needsQA > 0) { parts.push(`${needsQA} need QA verification`); }
+    if ((result.open_findings ?? 0) > 0) { parts.push(`${result.open_findings} open finding(s)`); }
+    const detail = parts.length > 0 ? ` — ${parts.join(', ')}` : '';
+    vscode.window.showWarningMessage(
+      `VibeFlow: Branch "${project.gitBranch}" not ready for PR${detail}.`,
+    );
+    return false;
   } catch (err) {
     vscode.window.showErrorMessage(`VibeFlow: Failed to check branch status — ${err}`);
     return false;
