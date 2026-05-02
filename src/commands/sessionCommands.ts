@@ -282,6 +282,11 @@ export async function launchSession(
  * Ensure .mcp.json exists in the workspace with the vibeflow MCP server config.
  * Claude reads this on startup to discover MCP servers. Without it, the agent
  * can't call session_init or any other VibeFlow MCP tool.
+ *
+ * SECURITY: this file embeds a Bearer token in args. Before writing, we verify
+ * the workspace's .gitignore excludes .mcp.json (or self-heal it). If the
+ * workspace is a git repo and we cannot ensure the file will be ignored, we
+ * refuse to write rather than risk leaking the token in a future commit.
  */
 function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowClient): void {
   const mcpPath = path.join(workDir, '.mcp.json');
@@ -298,6 +303,17 @@ function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowCl
   }
 
   if (!token) { return; }
+
+  // SECURITY GUARD: refuse to write if the workspace is a git repo and we
+  // cannot guarantee .mcp.json will be ignored.
+  if (!ensureMcpJsonIsGitIgnored(workDir)) {
+    console.warn('[VibeFlow] Skipping .mcp.json write: cannot ensure file is gitignored.');
+    vscode.window.showWarningMessage(
+      'VibeFlow: Skipped writing .mcp.json — could not confirm the file is gitignored. ' +
+      'Add `.mcp.json` to your workspace .gitignore or configure the MCP server globally instead.',
+    );
+    return;
+  }
 
   // Read existing .mcp.json if present
   let existing: Record<string, unknown> = {};
@@ -327,10 +343,59 @@ function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowCl
   existing.mcpServers = mcpServers;
 
   try {
-    fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), 'utf-8');
+    fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), { encoding: 'utf-8', mode: 0o600 });
     console.log('[VibeFlow] Wrote .mcp.json with vibeflow server config');
   } catch {
     // Non-fatal — agent can still use global config
+  }
+}
+
+/**
+ * Ensures `.mcp.json` is excluded from git in the given workspace.
+ *
+ * Returns true if either:
+ *   - the workspace is not a git repo (no .git, no .gitignore — write is fine),
+ *   - .gitignore already contains a rule matching `.mcp.json`, or
+ *   - we successfully appended `.mcp.json` to .gitignore.
+ *
+ * Returns false if the workspace looks like a git repo but we couldn't update
+ * .gitignore (permissions, etc.). Caller should refuse to write the token.
+ */
+function ensureMcpJsonIsGitIgnored(workDir: string): boolean {
+  const gitignorePath = path.join(workDir, '.gitignore');
+  const gitDirPath = path.join(workDir, '.git');
+
+  const isGitRepo = fs.existsSync(gitDirPath) || fs.existsSync(gitignorePath);
+  if (!isGitRepo) { return true; }
+
+  let existing = '';
+  try {
+    existing = fs.readFileSync(gitignorePath, 'utf-8');
+  } catch {
+    // .gitignore doesn't exist yet — we'll create it below
+  }
+
+  // Match any line that would ignore .mcp.json (exact, leading-slash, or wildcard
+  // patterns). Comments and blank lines are skipped.
+  const matches = existing.split('\n').some(rawLine => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) { return false; }
+    const stripped = line.replace(/^\/+/, '').replace(/^!/, '');
+    return stripped === '.mcp.json' || stripped === '*.mcp.json' || stripped === '*';
+  });
+
+  if (matches) { return true; }
+
+  try {
+    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+    fs.appendFileSync(
+      gitignorePath,
+      `${prefix}\n# Added by VibeFlow — contains a Bearer token, do not commit.\n.mcp.json\n`,
+      'utf-8',
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -1,10 +1,42 @@
 import * as vscode from 'vscode';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import * as path from 'path';
 
 interface Worktree {
   path: string;
   branch: string;
   isCurrent: boolean;
+}
+
+/**
+ * Validate a string against git's ref-format rules conservatively.
+ * Allowed: ASCII letters, digits, slash, hyphen, underscore, period.
+ * Rejected: leading dash (would be parsed as a CLI flag), `..`, `@{`, trailing `.lock`,
+ * any control or whitespace, and empty input.
+ *
+ * This is intentionally stricter than `git check-ref-format` — we'd rather refuse
+ * an exotic-but-valid name than miss a path that could be parsed as a flag or shell
+ * metacharacter when piped through any future code path.
+ */
+function isSafeBranchName(name: string): boolean {
+  if (!name || name.length > 250) { return false; }
+  if (name.startsWith('-')) { return false; }
+  if (name.includes('..')) { return false; }
+  if (name.includes('@{')) { return false; }
+  if (name.endsWith('.lock')) { return false; }
+  return /^[A-Za-z0-9._/\-]+$/.test(name);
+}
+
+/**
+ * Run `git` with the given argv, never via a shell.
+ * Returns stdout on success; throws with a useful message on failure.
+ */
+function runGit(args: string[], cwd: string): string {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 /**
@@ -62,20 +94,38 @@ async function createWorktree(workDir: string): Promise<void> {
   const branch = await vscode.window.showInputBox({
     prompt: 'Branch name for the new worktree',
     placeHolder: 'feature/my-feature',
+    validateInput: v => isSafeBranchName(v.trim())
+      ? null
+      : 'Branch must match [A-Za-z0-9._/-], not start with "-", and not contain ".." or "@{".',
   });
   if (!branch) { return; }
+  const safeBranch = branch.trim();
+  if (!isSafeBranchName(safeBranch)) {
+    vscode.window.showErrorMessage('VibeFlow: Refusing to create worktree — branch name is unsafe.');
+    return;
+  }
 
-  const baseDir = vscode.workspace.getConfiguration('vibeflow')
+  const baseDirSetting = vscode.workspace.getConfiguration('vibeflow')
     .get<string>('worktree.baseDir', '.claude/worktrees');
 
-  const wtPath = `${workDir}/${baseDir}/${branch.replace(/\//g, '-')}`;
+  // Resolve the worktree path explicitly and confine it inside the workspace.
+  const folderName = safeBranch.replace(/\//g, '-');
+  const baseDirAbs = path.isAbsolute(baseDirSetting)
+    ? path.normalize(baseDirSetting)
+    : path.normalize(path.join(workDir, baseDirSetting));
+  const wtPath = path.join(baseDirAbs, folderName);
+  const wtPathNormalized = path.normalize(wtPath);
+
+  // Defense in depth: reject any traversal that escapes the configured base dir.
+  if (!wtPathNormalized.startsWith(baseDirAbs + path.sep) && wtPathNormalized !== baseDirAbs) {
+    vscode.window.showErrorMessage('VibeFlow: Refusing to create worktree — resolved path escapes the worktree base directory.');
+    return;
+  }
 
   try {
-    execSync(`git worktree add "${wtPath}" -b "${branch}" 2>&1`, {
-      cwd: workDir,
-      encoding: 'utf-8',
-    });
-    vscode.window.showInformationMessage(`VibeFlow: Worktree created at ${wtPath}`);
+    // argv form — branch and path are positional arguments, never expanded by a shell.
+    runGit(['worktree', 'add', wtPathNormalized, '-b', safeBranch], workDir);
+    vscode.window.showInformationMessage(`VibeFlow: Worktree created at ${wtPathNormalized}`);
 
     const open = await vscode.window.showInformationMessage(
       'Open worktree in new window?',
@@ -83,7 +133,7 @@ async function createWorktree(workDir: string): Promise<void> {
       'Later',
     );
     if (open === 'Open') {
-      vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(wtPath), true);
+      vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(wtPathNormalized), true);
     }
   } catch (err) {
     vscode.window.showErrorMessage(`VibeFlow: Failed to create worktree — ${err}`);
@@ -96,6 +146,14 @@ async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
     return;
   }
 
+  // The path came from `git worktree list --porcelain`, but we still defend
+  // against an attacker-controlled `wt.path` (e.g. branch name shaped like
+  // `--exec=...`) by using argv form and rejecting leading dashes.
+  if (!wt.path || wt.path.startsWith('-')) {
+    vscode.window.showErrorMessage('VibeFlow: Refusing to delete worktree — path is unsafe.');
+    return;
+  }
+
   const confirm = await vscode.window.showWarningMessage(
     `Delete worktree "${wt.branch}" at ${wt.path}?`,
     { modal: true },
@@ -104,10 +162,8 @@ async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
   if (confirm !== 'Delete') { return; }
 
   try {
-    execSync(`git worktree remove "${wt.path}" --force 2>&1`, {
-      cwd: workDir,
-      encoding: 'utf-8',
-    });
+    // `--` terminates option parsing; even a `-` prefix in path can't be parsed as a flag.
+    runGit(['worktree', 'remove', '--force', '--', wt.path], workDir);
     vscode.window.showInformationMessage(`VibeFlow: Worktree "${wt.branch}" deleted`);
   } catch (err) {
     vscode.window.showErrorMessage(`VibeFlow: Failed to delete worktree — ${err}`);
@@ -116,10 +172,7 @@ async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
 
 function listWorktrees(workDir: string): Worktree[] {
   try {
-    const output = execSync('git worktree list --porcelain', {
-      cwd: workDir,
-      encoding: 'utf-8',
-    });
+    const output = runGit(['worktree', 'list', '--porcelain'], workDir);
 
     const worktrees: Worktree[] = [];
     let currentPath = '';
