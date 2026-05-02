@@ -63,7 +63,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Focus Panels ---
   const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
-  const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client);
+  const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider);
 
   // --- Activity poller (started when connected) ---
   let activityPoller: ActivityPoller | undefined;
