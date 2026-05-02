@@ -4,7 +4,7 @@
   "description": "AI agent orchestration, project management, and governance for VSCode",
   "version": "0.1.0",
   "publisher": "axiom-studio",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git@bitbucket.org:axiom-studio/vscode-vibeflow.git"
@@ -136,11 +136,13 @@
       },
       {
         "command": "vibeflow.openDashboard",
-        "title": "VibeFlow: Open Dashboard"
+        "title": "VibeFlow: Open Dashboard",
+        "icon": "$(graph)"
       },
       {
         "command": "vibeflow.openKanban",
-        "title": "VibeFlow: Open Kanban Board"
+        "title": "VibeFlow: Open Kanban Board",
+        "icon": "$(layout-centered)"
       },
       {
         "command": "vibeflow.manageWorktrees",
@@ -239,25 +241,47 @@
         {
           "command": "vibeflow.launchSession",
           "when": "view == vibeflow.agentFleet",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.openDashboard",
+          "when": "view == vibeflow.agentFleet",
+          "group": "navigation@2"
         },
         {
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.agentFleet",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "vibeflow.createWorkItem",
           "when": "view == vibeflow.workItems",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.openKanban",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation@2"
         },
         {
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.workItems",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "vibeflow.openKanban",
+        "key": "ctrl+shift+v k",
+        "mac": "cmd+shift+v k"
+      },
+      {
+        "command": "vibeflow.openDashboard",
+        "key": "ctrl+shift+v d",
+        "mac": "cmd+shift+v d"
+      }
+    ],
     "walkthroughs": [
       {
         "id": "vibeflow.getStarted",
@@ -410,11 +434,15 @@
   },
   "scripts": {
     "vscode:prepublish": "yarn build",
-    "build": "node esbuild.mjs --production",
+    "build:webview": "yarn --cwd webview-ui build",
+    "build:extension": "node esbuild.mjs --production",
+    "build": "yarn build:webview && yarn build:extension",
     "watch": "node esbuild.mjs --watch",
+    "watch:webview": "yarn --cwd webview-ui dev",
     "dev": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
-    "package": "vsce package"
+    "package": "yarn build && vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
