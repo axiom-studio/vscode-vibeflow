@@ -10,6 +10,11 @@ import type {
   VibeFlowDocument,
   VibeFlowComment,
   CreateCommentInput,
+  BranchReviewStatus,
+  VibeFlowSwimlaneResult,
+  VibeFlowWorkSummary,
+  VibeFlowComplianceFinding,
+  VibeFlowPrompt,
 } from './types.js';
 
 /**
@@ -163,11 +168,68 @@ export class VibeFlowClient {
     await this.mcp.callTool('reject_security_review', { entity_type: type, entity_id: id, rejection_comment: comment });
   }
 
+  // --- Swimlane / Kanban ---
+
+  /**
+   * Org-wide swimlane data — returns 8 status arrays. Endpoint is org-scoped
+   * (the server reads org from the auth token), so callers MUST filter the
+   * returned items by project_id client-side when scoping to a workspace.
+   *
+   * Source: axiomcloud/handlers/vibeflow_dashboard.go:13-30.
+   */
+  async getSwimlane(): Promise<VibeFlowSwimlaneResult> {
+    return this.request<VibeFlowSwimlaneResult>('/rest/v1/vibeflow/dashboard/swimlane');
+  }
+
+  // --- Work Summary ---
+
+  /**
+   * Aggregate metrics for a project. Counts sessions, time, commits, and
+   * line changes across every todo/issue in the project.
+   *
+   * Source: axiomcloud/mcp/vibeflow_tools.go:6800 (vibeflowGetWorkSummaryHandler).
+   */
+  async getWorkSummary(projectId: number): Promise<VibeFlowWorkSummary> {
+    const result = await this.mcp.callTool('get_work_summary', { project_id: projectId });
+    return result as VibeFlowWorkSummary;
+  }
+
+  // --- Compliance Findings ---
+
+  /**
+   * List compliance findings for a project, optionally filtered by status.
+   *
+   * Source: axiomcloud/mcp/vibeflow_tools.go:2705 (list_compliance_findings).
+   */
+  async listComplianceFindings(
+    projectId: number,
+    filters?: { status?: string; severity?: string; framework?: string },
+  ): Promise<VibeFlowComplianceFinding[]> {
+    const args: Record<string, unknown> = { project_id: projectId };
+    if (filters?.status) { args.status = filters.status; }
+    if (filters?.severity) { args.severity = filters.severity; }
+    if (filters?.framework) { args.framework = filters.framework; }
+    const result = await this.mcp.callTool('list_compliance_findings', args);
+    if (Array.isArray(result)) { return result as VibeFlowComplianceFinding[]; }
+    // Some list endpoints wrap in `{ findings: [...] }`; tolerate either shape.
+    if (result && typeof result === 'object' && Array.isArray((result as { findings?: unknown }).findings)) {
+      return (result as { findings: VibeFlowComplianceFinding[] }).findings;
+    }
+    return [];
+  }
+
   // --- Branch Review Status ---
 
-  async checkBranchReviewStatus(projectId: number, branch: string): Promise<{ ready: boolean; needsQA: number; needsSecurity: number }> {
-    const result = await this.mcp.callTool('check_branch_review_status', { project_id: projectId, branch });
-    return result as { ready: boolean; needsQA: number; needsSecurity: number };
+  /**
+   * Returns the rich branch-review payload from the `check_branch_review_status`
+   * MCP tool. Note: the MCP tool itself only takes `branch` — the server
+   * derives the org from the auth token. We accept `projectId` for forward
+   * compatibility but currently ignore it (matches server signature).
+   */
+  async checkBranchReviewStatus(projectId: number, branch: string): Promise<BranchReviewStatus> {
+    void projectId;
+    const result = await this.mcp.callTool('check_branch_review_status', { branch });
+    return result as BranchReviewStatus;
   }
 
   // --- Work Item Logs ---
@@ -265,6 +327,45 @@ export class VibeFlowClient {
       session_id: sessionId,
       prompt_text: promptText,
     });
+  }
+
+  // --- Agent → User prompts ---
+
+  /**
+   * Fetch project-wide agent prompts that need a human response.
+   *
+   * The REST endpoint returns every prompt (both directions, all statuses);
+   * we filter to `source === 'agent' && status === 'pending'` because those
+   * are the only ones the human needs to act on. Inverse direction
+   * (user→agent) flows through the agent's `wait_for_work` poll.
+   *
+   * Returns an empty array on any failure — prompts are non-critical UX and
+   * we don't want to break the activity poll loop.
+   */
+  async listPendingPrompts(projectId: number): Promise<VibeFlowPrompt[]> {
+    try {
+      const all = await this.request<VibeFlowPrompt[]>(
+        `/rest/v1/vibeflow/projects/${projectId}/prompts`,
+      );
+      return (all ?? []).filter(p => p.source === 'agent' && p.status === 'pending');
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Submit the human's response to an agent-initiated prompt. Backend
+   * transitions the prompt to `responded` and publishes an SSE event that
+   * wakes the waiting agent's `wait_for_work` poll.
+   */
+  async respondToPrompt(projectId: number, promptId: string, responseText: string): Promise<void> {
+    await this.request(
+      `/rest/v1/vibeflow/projects/${projectId}/prompts/${encodeURIComponent(promptId)}/respond`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ response_text: responseText }),
+      },
+    );
   }
 
   // --- PR Creation ---

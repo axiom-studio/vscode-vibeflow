@@ -153,3 +153,161 @@ export interface CreateCommentInput {
   sectionHeading: string;
   content: string;
 }
+
+/**
+ * Phase breakdown returned by get_work_summary, e.g. how much time was spent
+ * in `planning` vs `implementing` across all sessions in scope.
+ */
+export interface VibeFlowWorkPhaseSummary {
+  phase: string;
+  session_count: number;
+  total_seconds: number;
+}
+
+/**
+ * Aggregate work metrics across todos/issues/features/projects. Wire shape
+ * defined inline at axiomcloud/mcp/vibeflow_tools.go (vibeflowGetWorkSummaryHandler).
+ *
+ * `total_seconds` is per-session-duration sum, capped at 900s per session
+ * server-side. Use this for relative comparisons, not wall-clock totals.
+ */
+export interface VibeFlowWorkSummary {
+  total_sessions: number;
+  total_seconds: number;
+  total_commits: number;
+  lines_added: number;
+  lines_deleted: number;
+  phases: VibeFlowWorkPhaseSummary[];
+}
+
+/**
+ * Compliance finding row. Wire shape:
+ *   axiomcloud/database/vibeflow_models.go:513-538.
+ *
+ * snake_case mirrors the wire format. `effective_status` is a server-derived
+ * field that accounts for SLA grace windows and may differ from `status`.
+ */
+export interface VibeFlowComplianceFinding {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  project_id: number;
+  feature_id?: number;
+  work_item_type: string;
+  work_item_id: number;
+  finding_type: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'informational';
+  status: 'open' | 'in_progress' | 'resolved' | 'accepted_risk';
+  effective_status?: string;
+  description?: string;
+  resolved_at?: string;
+  remediation_notes?: string;
+  backward_compatible?: boolean;
+}
+
+/**
+ * One card in the kanban/swimlane view.
+ *
+ * Wire shape: axiomcloud/database/vibeflow_models.go:830-845. snake_case is
+ * intentional — this mirrors the wire format. The org-scoped swimlane
+ * endpoint returns items from ALL projects; clients filter by project_id.
+ */
+export interface VibeFlowSwimlaneItem {
+  type: 'project' | 'feature' | 'todo' | 'issue';
+  id: number;
+  name: string;
+  status: string;
+  priority?: string;
+  project_id?: number;
+  project_name?: string;
+  feature_id?: number;
+  feature_name?: string;
+  updated_at: string;
+  completed_at?: string;
+  current_persona?: string;
+  security_reviewed?: boolean;
+}
+
+/**
+ * Eight-column swimlane response. Wire shape:
+ *   GET /rest/v1/vibeflow/dashboard/swimlane → VibeflowSwimlaneResult.
+ * Defined at axiomcloud/database/vibeflow_models.go:847-857.
+ */
+export interface VibeFlowSwimlaneResult {
+  in_review: VibeFlowSwimlaneItem[];
+  needs_pm_input: VibeFlowSwimlaneItem[];
+  needs_ux_input: VibeFlowSwimlaneItem[];
+  planning: VibeFlowSwimlaneItem[];
+  ready_to_implement: VibeFlowSwimlaneItem[];
+  architecture_review_complete: VibeFlowSwimlaneItem[];
+  implementing: VibeFlowSwimlaneItem[];
+  done: VibeFlowSwimlaneItem[];
+}
+
+/**
+ * Response shape from the `check_branch_review_status` MCP tool.
+ *
+ * Wire format defined by axiomcloud/mcp/vibeflow_tools.go:7415-7424. Both
+ * `overall_security` and `overall_qa` are PASS|PENDING strings; `total_lines`
+ * is a pre-formatted display string like "+342 -89".
+ *
+ * `total_items === 0` is a special "no work items on this branch" case that
+ * the server returns with just `{ branch, total_items, message }` — counts
+ * fields will be undefined.
+ */
+export type BranchReviewVerdict = 'PASS' | 'PENDING';
+
+export interface BranchReviewItemStatus {
+  type: 'todo' | 'issue';
+  id: number;
+  title: string;
+  security: BranchReviewVerdict;
+  security_notes?: string;
+  qa: BranchReviewVerdict;
+  open_findings: number;
+}
+
+export interface BranchReviewStatus {
+  branch: string;
+  total_items: number;
+  message?: string;
+  overall_security?: BranchReviewVerdict;
+  overall_qa?: BranchReviewVerdict;
+  security_passed?: number;
+  qa_passed?: number;
+  open_findings?: number;
+  total_commits?: number;
+  total_lines?: string;
+  items?: BranchReviewItemStatus[];
+}
+
+/**
+ * Wire shape for `GET /rest/v1/vibeflow/projects/{id}/prompts`.
+ * Mirrors `database.VibeflowPrompt` in axiomcloud.
+ *
+ * The extension cares about prompts where `source === 'agent'` and
+ * `status === 'pending'` — those are agents asking the human a question and
+ * waiting on a reply. Other source/status combos belong to the inverse
+ * direction (user → agent) and are surfaced inside the agent's
+ * `wait_for_work` poll, not in the extension UI.
+ */
+export type VibeFlowPromptStatus = 'pending' | 'responded' | 'acknowledged' | 'expired';
+export type VibeFlowPromptSource = 'agent' | 'user';
+
+export interface VibeFlowPrompt {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  organization_id: string;
+  project_id: number;
+  session_id: string;
+  prompt_id: string;
+  prompt_text: string;
+  response_text: string;
+  status: VibeFlowPromptStatus;
+  responded_at: string | null;
+  source: VibeFlowPromptSource;
+  work_item_type?: string;
+  work_item_id?: number;
+  message_type?: string;
+}
