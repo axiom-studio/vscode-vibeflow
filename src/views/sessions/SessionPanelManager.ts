@@ -163,7 +163,7 @@ export class SessionPanelManager implements vscode.Disposable {
       );
       for (const todos of todoLists) {
         for (const todo of todos) {
-          if (todo.claimedBy === sessionId && todo.status === 'implementing') {
+          if (todo.claimed_by === sessionId && todo.status === 'implementing') {
             claimedTodos.push(todo);
           }
         }
@@ -175,7 +175,7 @@ export class SessionPanelManager implements vscode.Disposable {
     try {
       const issues = await this.client.listIssues(projectId);
       for (const issue of issues) {
-        if (issue.claimedBy === sessionId && issue.status === 'implementing') {
+        if (issue.claimed_by === sessionId && issue.status === 'implementing') {
           claimedIssues.push(issue);
         }
       }

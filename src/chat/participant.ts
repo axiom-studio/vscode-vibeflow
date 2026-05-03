@@ -155,13 +155,13 @@ class ChatHandler {
       }
 
       const needsQA = [
-        ...allTodos.filter(t => t.status === 'done' && !t.qaVerified),
-        ...issues.filter(i => i.status === 'done' && !i.qaVerified),
+        ...allTodos.filter(t => t.status === 'done' && !t.qa_verified),
+        ...issues.filter(i => i.status === 'done' && !i.qa_verified),
       ];
 
       const needsSecurity = [
-        ...allTodos.filter(t => t.status === 'done' && !t.securityReviewed),
-        ...issues.filter(i => i.status === 'done' && !i.securityReviewed),
+        ...allTodos.filter(t => t.status === 'done' && !t.security_reviewed),
+        ...issues.filter(i => i.status === 'done' && !i.security_reviewed),
       ];
 
       if (needsQA.length > 0) {

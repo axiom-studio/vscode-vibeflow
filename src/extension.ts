@@ -147,7 +147,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!remoteUrl) { return undefined; }
 
       const projects = await client.listProjects();
-      const matched = projects.find(p => p.gitRemoteUrl === remoteUrl);
+      const matched = projects.find(p => p.git_remote_url === remoteUrl);
       if (matched) {
         const branch = await detector.getGitBranch();
         const project: DetectedProject = {
@@ -216,7 +216,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Validate by fetching projects
     await authService.setToken(apiKey);
 
-    let projects: { id: number; name: string; gitRemoteUrl?: string }[];
+    let projects: { id: number; name: string; git_remote_url?: string }[];
     try {
       projects = await client.listProjects();
     } catch (err) {
@@ -235,7 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Step 3: Select Project — try auto-match first
     const remoteUrl = await detector.getGitRemoteUrl();
     const autoMatch = remoteUrl
-      ? projects.find(p => p.gitRemoteUrl === remoteUrl)
+      ? projects.find(p => p.git_remote_url === remoteUrl)
       : undefined;
 
     let selectedProject: { id: number; name: string } | undefined;
@@ -589,7 +589,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           await detector.cacheProject({
             projectId: matched.id,
             projectName: matched.name,
-            gitRemoteUrl: matched.gitRemoteUrl ?? '',
+            gitRemoteUrl: matched.git_remote_url ?? '',
             gitBranch: 'main',
           });
         } else {

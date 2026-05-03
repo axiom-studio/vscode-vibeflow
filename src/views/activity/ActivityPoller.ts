@@ -239,7 +239,7 @@ export class ActivityPoller {
       const issues = await this.client.listIssues(this.projectId);
       const activeIssues = issues.filter(i => i.status === 'implementing');
       for (const issue of activeIssues) {
-        await this.fetchAndPushLogs('issue', issue.id, issue.claimedBy, workspaceRoot);
+        await this.fetchAndPushLogs('issue', issue.id, issue.claimed_by, workspaceRoot);
       }
 
       // Implementing todos under non-done features
@@ -252,7 +252,7 @@ export class ActivityPoller {
           const todos = await this.client.listTodos(feature.id);
           const activeTodos = todos.filter(t => t.status === 'implementing');
           for (const todo of activeTodos) {
-            await this.fetchAndPushLogs('todo', todo.id, todo.claimedBy, workspaceRoot);
+            await this.fetchAndPushLogs('todo', todo.id, todo.claimed_by, workspaceRoot);
           }
         } catch {
           // Skip this feature — next cycle may succeed.

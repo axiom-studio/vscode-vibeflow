@@ -140,8 +140,8 @@ export class WorkItemPanelManager implements vscode.Disposable {
         : await this.client.getIssue(item.id);
       const state: WorkItemState = {
         status: fresh.status,
-        qa_verified: fresh.qaVerified ?? false,
-        security_reviewed: fresh.securityReviewed ?? false,
+        qa_verified: fresh.qa_verified ?? false,
+        security_reviewed: fresh.security_reviewed ?? false,
       };
       panel.webview.postMessage({ type: 'state', payload: state });
     } catch {

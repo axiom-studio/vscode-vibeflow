@@ -166,10 +166,10 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   }
 
   private buildTodoNode(todo: VibeFlowTodo): WorkItemNode {
-    const feature = this.features.find(f => f.id === todo.featureId);
+    const feature = this.features.find(f => f.id === todo.feature_id);
     const priorityIcon = PRIORITY_ICONS[todo.priority] ?? 'dash';
     const priorityColor = PRIORITY_COLORS[todo.priority];
-    const claimant = todo.claimedBy ? `@${todo.claimedBy.split('-')[0]}` : '';
+    const claimant = todo.claimed_by ? `@${todo.claimed_by.split('-')[0]}` : '';
     const featureName = feature ? feature.name : '';
 
     const desc = [claimant, featureName].filter(Boolean).join(' · ');
@@ -189,7 +189,7 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private buildIssueNode(issue: VibeFlowIssue): WorkItemNode {
     const priorityIcon = PRIORITY_ICONS[issue.priority] ?? 'dash';
     const priorityColor = PRIORITY_COLORS[issue.priority];
-    const claimant = issue.claimedBy ? `@${issue.claimedBy.split('-')[0]}` : '';
+    const claimant = issue.claimed_by ? `@${issue.claimed_by.split('-')[0]}` : '';
 
     return {
       id: `issue-${issue.id}`,

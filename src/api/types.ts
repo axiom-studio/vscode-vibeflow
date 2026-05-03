@@ -64,7 +64,8 @@ export interface VibeFlowProject {
   id: number;
   name: string;
   status: string;
-  gitRemoteUrl?: string;
+  /** Backend wire is `git_remote_url` — see VibeflowSession.git_remote_url field for shape. */
+  git_remote_url?: string;
 }
 
 /**
@@ -93,12 +94,30 @@ export interface VibeFlowSession {
   stale?: boolean;
 }
 
+/**
+ * Compliance tag — appears on a work item header next to severity (PCIDSS,
+ * SOC2, etc.). Mirrors `database.VibeflowComplianceTag` in axiomcloud.
+ */
+export interface VibeFlowComplianceTag {
+  framework: string;
+  section_reference?: string;
+  description?: string;
+}
+
+/**
+ * Wire shape mirrors `database.VibeflowFeature` in axiomcloud — snake_case
+ * fields are intentional. Earlier camelCase versions of these types were a
+ * bug: backend handlers serialize the struct directly with `json.NewEncoder`
+ * which respects the `json:"snake_case"` tags, so consumers reading
+ * `feature.featureId` always saw `undefined` at runtime.
+ */
 export interface VibeFlowFeature {
   id: number;
   name: string;
   status: string;
   priority: string;
-  projectId: number;
+  project_id: number;
+  description?: string;
 }
 
 export interface VibeFlowTodo {
@@ -106,11 +125,17 @@ export interface VibeFlowTodo {
   title: string;
   status: string;
   priority: string;
-  featureId: number;
-  targetBranch: string;
-  claimedBy?: string;
-  qaVerified?: boolean;
-  securityReviewed?: boolean;
+  description?: string;
+  feature_id?: number;
+  feature_name?: string;
+  user_email?: string;
+  created_at?: string;
+  updated_at?: string;
+  target_branch?: string;
+  claimed_by?: string;
+  qa_verified?: boolean;
+  security_reviewed?: boolean;
+  compliance_tags?: VibeFlowComplianceTag[];
 }
 
 export interface VibeFlowIssue {
@@ -118,12 +143,18 @@ export interface VibeFlowIssue {
   title: string;
   status: string;
   priority: string;
-  projectId: number;
-  targetBranch: string;
-  featureId?: number;
-  claimedBy?: string;
-  qaVerified?: boolean;
-  securityReviewed?: boolean;
+  description?: string;
+  project_id: number;
+  feature_id?: number;
+  feature_name?: string;
+  user_email?: string;
+  created_at?: string;
+  updated_at?: string;
+  target_branch?: string;
+  claimed_by?: string;
+  qa_verified?: boolean;
+  security_reviewed?: boolean;
+  compliance_tags?: VibeFlowComplianceTag[];
 }
 
 export interface VibeFlowDocument {
