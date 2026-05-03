@@ -22,11 +22,14 @@ const PRIORITIES = [
  *   in_review, needs_pm_input, needs_ux_input, planning, ready_to_implement,
  *   architecture_review_complete, implementing, done, archived, rejected.
  *
- * The backend doesn't enforce a state machine — any → any is accepted. These
- * lists are pure UX guidance: they show the most-likely "next state" from
- * each source so the user isn't picking from all 10 every time. `archived`
- * and `rejected` are intentionally omitted — they're terminal/admin moves
- * better made via the web UI.
+ * The backend enforces ONE transition rule (from `rejected` only `in_review`
+ * is allowed — see VibeflowStatusRejected check in vibeflow_models.go); all
+ * other source/target pairs are accepted. These lists are pure UX guidance:
+ * they show the most-likely "next state" from each source so the user isn't
+ * picking from all 10 every time.
+ *
+ * Verified 2026-05-04 against axiomcloud — VibeflowStatus.IsValid() lists 10
+ * statuses, and we cover every source: 8 active flow + archived + rejected.
  */
 const VALID_TRANSITIONS: Record<string, { label: string; value: string }[]> = {
   in_review: [
@@ -70,7 +73,23 @@ const VALID_TRANSITIONS: Record<string, { label: string; value: string }[]> = {
     { label: 'Needs UX Input', value: 'needs_ux_input' },
   ],
   done: [
-    { label: 'Implementing', value: 'implementing' },
+    { label: 'Implementing (rework — clears QA/Security)', value: 'implementing' },
+    { label: 'Ready to Implement', value: 'ready_to_implement' },
+    { label: 'In Review', value: 'in_review' },
+  ],
+  // Backend's only enforced transition rule: from rejected, only
+  // in_review is allowed (vibeflow_models.go:VibeflowStatusRejected
+  // check). Surface that as the lone option instead of leaving the
+  // user stuck on "No valid transitions" when they hit a rejected
+  // item from the tree.
+  rejected: [
+    { label: 'In Review (revive after rejection)', value: 'in_review' },
+  ],
+  // Archived has no backend-enforced restrictions; surface common
+  // un-archive moves so users can recover an item without leaving
+  // the editor for the web UI.
+  archived: [
+    { label: 'Planning', value: 'planning' },
     { label: 'Ready to Implement', value: 'ready_to_implement' },
     { label: 'In Review', value: 'in_review' },
   ],
@@ -167,11 +186,38 @@ export async function changeStatus(
   });
   if (!selected) { return; }
 
+  // done -> implementing is rework: backend wipes qa_verified +
+  // security_reviewed AND deletes the verification rows
+  // (vibeflow_issues.go: rework reset). Confirm so the user knows
+  // they're invalidating prior reviews — not just changing a label.
+  if (currentStatus === 'done' && selected.value === 'implementing') {
+    const proceed = await vscode.window.showWarningMessage(
+      'Move back to Implementing? This will clear the QA verification ' +
+      'and security review on this item — both will need to be redone after rework.',
+      { modal: true },
+      'Rework',
+    );
+    if (proceed !== 'Rework') { return; }
+  }
+
+  // Backend requires rejection_comment when transitioning to rejected.
+  let rejectionComment: string | undefined;
+  if (selected.value === 'rejected') {
+    const comment = await vscode.window.showInputBox({
+      prompt: `Why is ${itemType} #${itemId} being rejected? (required)`,
+      placeHolder: 'Describe what failed...',
+      ignoreFocusOut: true,
+    });
+    if (!comment?.trim()) { return; }
+    rejectionComment = comment.trim();
+  }
+
   try {
+    const opts = rejectionComment ? { rejectionComment } : undefined;
     if (itemType === 'todo') {
-      await client.updateTodoStatus(itemId, selected.value);
+      await client.updateTodoStatus(itemId, selected.value, opts);
     } else {
-      await client.updateIssueStatus(itemId, selected.value);
+      await client.updateIssueStatus(itemId, selected.value, opts);
     }
     vscode.window.showInformationMessage(`VibeFlow: Status changed to "${selected.value}"`);
     workItemsProvider.refresh();
