@@ -138,6 +138,26 @@ export class VibeFlowClient {
     await this.mcp.callTool('update_todo_status', { id: todoId, status });
   }
 
+  /**
+   * Edit body fields of a todo. Status is NOT editable here — backend
+   * routes that through PATCH /todos/{id}/status (see updateTodoStatus
+   * MCP wrapper). Mirrors axiomcloud handlers/vibeflow_todos.go UpdateTodo.
+   */
+  async updateTodo(
+    todoId: number,
+    fields: { title?: string; description?: string; priority?: string; target_branch?: string; feature_id?: number | null },
+  ): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/todos/${todoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(fields),
+    });
+  }
+
+  /** Hard delete a todo. Backend has no soft-delete — this is irreversible. */
+  async deleteTodo(todoId: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/todos/${todoId}`, { method: 'DELETE' });
+  }
+
   // --- Issues ---
 
   async listIssues(projectId: number): Promise<VibeFlowIssue[]> {
@@ -156,6 +176,24 @@ export class VibeFlowClient {
 
   async updateIssueStatus(issueId: number, status: string): Promise<void> {
     await this.mcp.callTool('update_issue_status', { id: issueId, status });
+  }
+
+  /**
+   * Edit body fields of an issue. Same shape as updateTodo.
+   */
+  async updateIssue(
+    issueId: number,
+    fields: { title?: string; description?: string; priority?: string; target_branch?: string; feature_id?: number | null },
+  ): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/issues/${issueId}`, {
+      method: 'PUT',
+      body: JSON.stringify(fields),
+    });
+  }
+
+  /** Hard delete an issue. Backend has no soft-delete — this is irreversible. */
+  async deleteIssue(issueId: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/issues/${issueId}`, { method: 'DELETE' });
   }
 
   // --- QA & Security Review ---
