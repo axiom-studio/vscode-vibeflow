@@ -427,7 +427,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       openDocumentViewer(client, detector, context.extensionUri, docId, docTitle);
     }),
     vscode.commands.registerCommand('vibeflow.openSettings', () => {
-      SettingsPanel.open(context.extensionUri, authService);
+      SettingsPanel.open(context.extensionUri, {
+        authService,
+        client,
+        detector,
+        onProjectSwitched: connectToProject,
+      });
     }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       const project = detector.getCachedProject();

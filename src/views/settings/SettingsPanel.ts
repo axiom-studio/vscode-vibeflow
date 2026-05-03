@@ -1,6 +1,27 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { AuthService } from '../../auth/AuthService.js';
+import type { VibeFlowClient } from '../../api/client.js';
+import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
+
+/**
+ * Optional dependencies the panel needs to wire interactive controls.
+ * All optional so a partially-initialized extension activate path can
+ * still open the panel and edit pure-VS-Code settings (server URL,
+ * polling interval, etc.) — actions that need a project simply degrade.
+ */
+export interface SettingsPanelDeps {
+  authService?: AuthService;
+  client?: VibeFlowClient;
+  detector?: ProjectDetector;
+  /**
+   * Callback invoked after the user picks a different project from the
+   * Settings dropdown. extension.ts wires this to its connectToProject
+   * helper so trees, pollers, panels all rebind to the new id without a
+   * window reload.
+   */
+  onProjectSwitched?: (project: DetectedProject) => void;
+}
 
 /**
  * Manages the Settings Webview Panel in the editor area.
@@ -9,7 +30,7 @@ import type { AuthService } from '../../auth/AuthService.js';
 export class SettingsPanel {
   private static instance: vscode.WebviewPanel | undefined;
 
-  static open(extensionUri: vscode.Uri, authService?: AuthService): void {
+  static open(extensionUri: vscode.Uri, deps: SettingsPanelDeps = {}): void {
     // Reuse existing panel if open
     if (SettingsPanel.instance) {
       SettingsPanel.instance.reveal();
@@ -57,6 +78,12 @@ export class SettingsPanel {
 </body>
 </html>`;
 
+    /** Push a fresh settings snapshot to the webview. */
+    const pushSettings = async () => {
+      const payload = await buildSettingsPayload(deps);
+      panel.webview.postMessage({ type: 'settingsData', payload });
+    };
+
     // Handle messages from the settings webview
     panel.webview.onDidReceiveMessage(async (msg) => {
       if (msg.type === 'closeSettings') {
@@ -85,11 +112,10 @@ export class SettingsPanel {
           password: true,
           ignoreFocusOut: true,
         });
-        if (key && authService) {
-          await authService.setToken(key);
+        if (key && deps.authService) {
+          await deps.authService.setToken(key);
           vscode.window.showInformationMessage('VibeFlow: API key updated');
-          // Refresh settings data in webview
-          panel.webview.postMessage({ type: 'settingsData', payload: { ...buildSettingsPayload(), apiKeySet: true } });
+          await pushSettings();
         }
       } else if (msg.type === 'setProviderToken') {
         const { provider: provKey } = msg.payload as { provider: string };
@@ -114,9 +140,56 @@ export class SettingsPanel {
           vscode.window.showWarningMessage('VibeFlow: Server unreachable');
         }
       } else if (msg.type === 'validateApiKey') {
-        vscode.window.showInformationMessage('VibeFlow: Use "Test Connection" on the server URL first');
+        if (!deps.client) {
+          vscode.window.showInformationMessage('VibeFlow: Use "Test Connection" on the server URL first');
+          return;
+        }
+        try {
+          const projects = await deps.client.listProjects();
+          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: true } });
+          vscode.window.showInformationMessage(`VibeFlow: API key valid — found ${projects.length} project(s)`);
+          await pushSettings();
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: false, message: errMsg } });
+          vscode.window.showWarningMessage(`VibeFlow: API key invalid — ${errMsg}`);
+        }
       } else if (msg.type === 'getSetting') {
-        panel.webview.postMessage({ type: 'settingsData', payload: buildSettingsPayload() });
+        await pushSettings();
+      } else if (msg.type === 'refreshProjects') {
+        // Just rebuild the payload — buildSettingsPayload re-fetches the
+        // project list from the server on every call.
+        await pushSettings();
+      } else if (msg.type === 'selectProject') {
+        if (!deps.client || !deps.detector) {
+          vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
+          return;
+        }
+        const projectId = msg.payload as number;
+        try {
+          const projects = await deps.client.listProjects();
+          const matched = projects.find(p => p.id === projectId);
+          if (!matched) {
+            vscode.window.showErrorMessage(`VibeFlow: project ${projectId} not found`);
+            return;
+          }
+          // Preserve the workspace's git remote/branch — we're switching
+          // the linked project, not the workspace itself.
+          const previous = deps.detector.getCachedProject();
+          const detected: DetectedProject = {
+            projectId: matched.id,
+            projectName: matched.name,
+            gitRemoteUrl: matched.git_remote_url ?? previous?.gitRemoteUrl ?? '',
+            gitBranch: previous?.gitBranch ?? '',
+          };
+          await deps.detector.cacheProject(detected);
+          deps.onProjectSwitched?.(detected);
+          vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
+          await pushSettings();
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${errMsg}`);
+        }
       }
     });
 
@@ -128,16 +201,38 @@ export class SettingsPanel {
   }
 }
 
-function buildSettingsPayload(): Record<string, unknown> {
+/**
+ * Build the snapshot the SettingsView consumes. Reads project list from
+ * the server when a client is wired so the dropdown actually populates;
+ * otherwise returns an empty list and the UI degrades to "no project
+ * selected".
+ */
+async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<string, unknown>> {
   const config = vscode.workspace.getConfiguration('vibeflow');
+  const cached = deps.detector?.getCachedProject();
+
+  let projects: { id: number; name: string }[] = [];
+  let apiKeyValid: boolean | null = null;
+  if (deps.client) {
+    try {
+      const list = await deps.client.listProjects();
+      projects = list.map(p => ({ id: p.id, name: p.name }));
+      apiKeyValid = true;
+    } catch {
+      // Network or auth failure — leave projects empty, surface as "API
+      // key not validated" rather than a hard error.
+      apiKeyValid = false;
+    }
+  }
+
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
     serverReachable: null,
-    apiKeySet: true,
-    apiKeyValid: null,
-    projectId: null,
-    projectName: null,
-    projects: [],
+    apiKeySet: !!deps.authService?.getToken(),
+    apiKeyValid,
+    projectId: cached?.projectId ?? null,
+    projectName: cached?.projectName ?? null,
+    projects,
     defaultProvider: config.get('defaultProvider', 'claude'),
     providers: [
       { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
