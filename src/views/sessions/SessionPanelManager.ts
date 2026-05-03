@@ -3,6 +3,7 @@ import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
+import { assertNever, type SessionPanelClientMessage } from '../../core/webviewMessages.js';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -77,7 +78,7 @@ export class SessionPanelManager implements vscode.Disposable {
     panel.webview.html = this.getHtml(panel.webview, session);
 
     // Handle messages from webview
-    panel.webview.onDidReceiveMessage(async (msg) => {
+    panel.webview.onDidReceiveMessage(async (msg: SessionPanelClientMessage) => {
       switch (msg.type) {
         case 'sendPrompt': {
           const personaName = session.persona_name ?? session.persona_key;
@@ -95,8 +96,8 @@ export class SessionPanelManager implements vscode.Disposable {
             await this.client.promptUser(this.projectId, session.session_id, text);
             vscode.window.showInformationMessage(`VibeFlow: Prompt sent to ${personaName}`);
           } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(`Failed to send prompt: ${msg}`);
+            const errMsg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Failed to send prompt: ${errMsg}`);
           }
           break;
         }
@@ -106,6 +107,8 @@ export class SessionPanelManager implements vscode.Disposable {
         case 'refresh':
           this.refreshPanel(session, panel);
           break;
+        default:
+          assertNever(msg);
       }
     });
 

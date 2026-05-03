@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
+import { assertNever, type ActivityFeedClientMessage } from '../../core/webviewMessages.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -33,7 +34,7 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
-    webviewView.webview.onDidReceiveMessage((message: { type: string; payload?: unknown }) => {
+    webviewView.webview.onDidReceiveMessage((message: ActivityFeedClientMessage) => {
       switch (message.type) {
         case 'ready':
           if (this.pendingEntries.length > 0) {
@@ -42,7 +43,7 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
           }
           break;
         case 'respondToPrompt':
-          this.handlePromptResponse((message.payload as { promptId: string }).promptId);
+          this.handlePromptResponse(message.payload.promptId);
           break;
         case 'closeSettings':
           this.postMessage({ type: 'showActivity' });
@@ -58,6 +59,8 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
           // Settings commands — delegated to extension host via event
           this.settingsHandler?.(message);
           break;
+        default:
+          assertNever(message);
       }
     });
 

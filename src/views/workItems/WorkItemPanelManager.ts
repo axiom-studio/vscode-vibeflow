@@ -15,6 +15,7 @@ import type {
 import { qaVerify, qaReject, securityApprove, securityReject } from '../../commands/governanceCommands.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
+import { assertNever, type WorkItemPanelClientMessage } from '../../core/webviewMessages.js';
 
 interface WorkItemInfo {
   type: 'todo' | 'issue';
@@ -133,7 +134,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
     this.panels.set(key, panel);
     panel.webview.html = this.getHtml(panel.webview, item);
 
-    panel.webview.onDidReceiveMessage(async (msg: { type: string; payload?: { attachmentId?: number } }) => {
+    panel.webview.onDidReceiveMessage(async (msg: WorkItemPanelClientMessage) => {
       switch (msg.type) {
         case 'changeStatus':
           vscode.commands.executeCommand('vibeflow.changeStatus', item.type, item.id, item.status);
@@ -168,11 +169,13 @@ export class WorkItemPanelManager implements vscode.Disposable {
           await this.uploadAttachmentFlow(item, panel);
           break;
         case 'deleteAttachment':
-          await this.deleteAttachmentFlow(item, panel, msg.payload?.attachmentId);
+          await this.deleteAttachmentFlow(item, panel, msg.payload.attachmentId);
           break;
         case 'refresh':
           await this.refreshSnapshot(item, panel);
           break;
+        default:
+          assertNever(msg);
       }
     });
 

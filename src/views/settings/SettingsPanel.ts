@@ -3,6 +3,7 @@ import { getNonce } from '../../utils/nonce.js';
 import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
+import { assertNever, type SettingsClientMessage } from '../../core/webviewMessages.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -85,111 +86,126 @@ export class SettingsPanel {
     };
 
     // Handle messages from the settings webview
-    panel.webview.onDidReceiveMessage(async (msg) => {
-      if (msg.type === 'closeSettings') {
-        panel.dispose();
-      } else if (msg.type === 'updateSetting') {
-        // Persist a setting change immediately
-        const { key, value } = msg.payload as { key: string; value: unknown };
-        const config = vscode.workspace.getConfiguration('vibeflow');
+    panel.webview.onDidReceiveMessage(async (msg: SettingsClientMessage) => {
+      switch (msg.type) {
+        case 'closeSettings':
+          panel.dispose();
+          break;
+        case 'updateSetting': {
+          // Persist a setting change immediately
+          const { key, value } = msg.payload;
+          const config = vscode.workspace.getConfiguration('vibeflow');
 
-        // Route to the right storage based on key
-        const settingsKeys = ['serverUrl', 'defaultPersona', 'defaultProvider', 'polling.interval',
-          'autoDetectProject', 'showStatusBar', 'notifications.agentPrompts',
-          'notifications.workItemComplete', 'session.terminalMode',
-          'debug.simulateActivity'];
+          // Route to the right storage based on key
+          const settingsKeys = ['serverUrl', 'defaultPersona', 'defaultProvider', 'polling.interval',
+            'autoDetectProject', 'showStatusBar', 'notifications.agentPrompts',
+            'notifications.workItemComplete', 'session.terminalMode',
+            'debug.simulateActivity'];
 
-        if (settingsKeys.includes(key)) {
-          // VSCode native settings (settings.json)
-          config.update(key, value, vscode.ConfigurationTarget.Global);
-        }
-        // No confirmation toast — instant save matches VSCode settings UX
-      } else if (msg.type === 'setApiKey') {
-        // Open VSCode Input Box (prompt() doesn't work in webview sandbox)
-        const key = await vscode.window.showInputBox({
-          prompt: 'Paste your VibeFlow API key',
-          placeHolder: 'your-api-key',
-          password: true,
-          ignoreFocusOut: true,
-        });
-        if (key && deps.authService) {
-          await deps.authService.setToken(key);
-          vscode.window.showInformationMessage('VibeFlow: API key updated');
-          await pushSettings();
-        }
-      } else if (msg.type === 'setProviderToken') {
-        const { provider: provKey } = msg.payload as { provider: string };
-        const envName = provKey === 'codex' ? 'MCP_TOKEN' : provKey === 'gemini' ? 'GEMINI_API_KEY' : `${provKey.toUpperCase()}_TOKEN`;
-        const token = await vscode.window.showInputBox({
-          prompt: `Enter ${envName}`,
-          placeHolder: envName,
-          password: true,
-          ignoreFocusOut: true,
-        });
-        if (token) {
-          vscode.window.showInformationMessage(`VibeFlow: ${envName} saved`);
-        }
-      } else if (msg.type === 'validateServerUrl') {
-        const url = msg.payload as string;
-        try {
-          await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
-          vscode.window.showInformationMessage('VibeFlow: Server reachable');
-        } catch {
-          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
-          vscode.window.showWarningMessage('VibeFlow: Server unreachable');
-        }
-      } else if (msg.type === 'validateApiKey') {
-        if (!deps.client) {
-          vscode.window.showInformationMessage('VibeFlow: Use "Test Connection" on the server URL first');
-          return;
-        }
-        try {
-          const projects = await deps.client.listProjects();
-          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: true } });
-          vscode.window.showInformationMessage(`VibeFlow: API key valid — found ${projects.length} project(s)`);
-          await pushSettings();
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: false, message: errMsg } });
-          vscode.window.showWarningMessage(`VibeFlow: API key invalid — ${errMsg}`);
-        }
-      } else if (msg.type === 'getSetting') {
-        await pushSettings();
-      } else if (msg.type === 'refreshProjects') {
-        // Just rebuild the payload — buildSettingsPayload re-fetches the
-        // project list from the server on every call.
-        await pushSettings();
-      } else if (msg.type === 'selectProject') {
-        if (!deps.client || !deps.detector) {
-          vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
-          return;
-        }
-        const projectId = msg.payload as number;
-        try {
-          const projects = await deps.client.listProjects();
-          const matched = projects.find(p => p.id === projectId);
-          if (!matched) {
-            vscode.window.showErrorMessage(`VibeFlow: project ${projectId} not found`);
-            return;
+          if (settingsKeys.includes(key)) {
+            config.update(key, value, vscode.ConfigurationTarget.Global);
           }
-          // Preserve the workspace's git remote/branch — we're switching
-          // the linked project, not the workspace itself.
-          const previous = deps.detector.getCachedProject();
-          const detected: DetectedProject = {
-            projectId: matched.id,
-            projectName: matched.name,
-            gitRemoteUrl: matched.git_remote_url ?? previous?.gitRemoteUrl ?? '',
-            gitBranch: previous?.gitBranch ?? '',
-          };
-          await deps.detector.cacheProject(detected);
-          deps.onProjectSwitched?.(detected);
-          vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
-          await pushSettings();
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${errMsg}`);
+          break;
         }
+        case 'setApiKey': {
+          const key = await vscode.window.showInputBox({
+            prompt: 'Paste your VibeFlow API key',
+            placeHolder: 'your-api-key',
+            password: true,
+            ignoreFocusOut: true,
+          });
+          if (key && deps.authService) {
+            await deps.authService.setToken(key);
+            vscode.window.showInformationMessage('VibeFlow: API key updated');
+            await pushSettings();
+          }
+          break;
+        }
+        case 'setProviderToken': {
+          const provKey = msg.payload.provider;
+          const envName = provKey === 'codex' ? 'MCP_TOKEN' : provKey === 'gemini' ? 'GEMINI_API_KEY' : `${provKey.toUpperCase()}_TOKEN`;
+          const token = await vscode.window.showInputBox({
+            prompt: `Enter ${envName}`,
+            placeHolder: envName,
+            password: true,
+            ignoreFocusOut: true,
+          });
+          if (token) {
+            vscode.window.showInformationMessage(`VibeFlow: ${envName} saved`);
+          }
+          break;
+        }
+        case 'validateServerUrl': {
+          const url = msg.payload;
+          try {
+            await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
+            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
+            vscode.window.showInformationMessage('VibeFlow: Server reachable');
+          } catch {
+            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
+            vscode.window.showWarningMessage('VibeFlow: Server unreachable');
+          }
+          break;
+        }
+        case 'validateApiKey': {
+          if (!deps.client) {
+            vscode.window.showInformationMessage('VibeFlow: Use "Test Connection" on the server URL first');
+            break;
+          }
+          try {
+            const projects = await deps.client.listProjects();
+            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: true } });
+            vscode.window.showInformationMessage(`VibeFlow: API key valid — found ${projects.length} project(s)`);
+            await pushSettings();
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: false, message: errMsg } });
+            vscode.window.showWarningMessage(`VibeFlow: API key invalid — ${errMsg}`);
+          }
+          break;
+        }
+        case 'getSetting':
+          await pushSettings();
+          break;
+        case 'refreshProjects':
+          // Just rebuild the payload — buildSettingsPayload re-fetches the
+          // project list from the server on every call.
+          await pushSettings();
+          break;
+        case 'selectProject': {
+          if (!deps.client || !deps.detector) {
+            vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
+            break;
+          }
+          const projectId = msg.payload;
+          try {
+            const projects = await deps.client.listProjects();
+            const matched = projects.find(p => p.id === projectId);
+            if (!matched) {
+              vscode.window.showErrorMessage(`VibeFlow: project ${projectId} not found`);
+              break;
+            }
+            // Preserve the workspace's git remote/branch — we're switching
+            // the linked project, not the workspace itself.
+            const previous = deps.detector.getCachedProject();
+            const detected: DetectedProject = {
+              projectId: matched.id,
+              projectName: matched.name,
+              gitRemoteUrl: matched.git_remote_url ?? previous?.gitRemoteUrl ?? '',
+              gitBranch: previous?.gitBranch ?? '',
+            };
+            await deps.detector.cacheProject(detected);
+            deps.onProjectSwitched?.(detected);
+            vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
+            await pushSettings();
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${errMsg}`);
+          }
+          break;
+        }
+        default:
+          assertNever(msg);
       }
     });
 
