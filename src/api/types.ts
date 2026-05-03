@@ -234,6 +234,54 @@ export interface VibeFlowComplianceFinding {
   resolved_at?: string;
   remediation_notes?: string;
   backward_compatible?: boolean;
+  compliance_tags?: VibeFlowComplianceTag[];
+}
+
+/**
+ * Asset metadata attached to a VibeFlowAttachment when
+ * `attachment_type === 'asset'`. Wire shape:
+ * axiomcloud/database/vibeflow_models.go:356-368.
+ */
+export interface VibeFlowAsset {
+  id: number;
+  created_at: string;
+  filename: string;
+  original_name: string;
+  content_type: string;
+  size: number;
+  uploaded_by: number;
+}
+
+/**
+ * Attachment row. Wire shape:
+ * axiomcloud/database/vibeflow_models.go:438-453. The embedded `asset`
+ * is populated server-side for asset attachments — non-asset rows
+ * (e.g. linked documents) leave it undefined.
+ */
+export interface VibeFlowAttachment {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  attachment_type: 'asset' | 'document';
+  attachment_id: number;
+  entity_type: 'todo' | 'issue' | 'feature' | 'project';
+  entity_id: number;
+  category?: string;
+  asset?: VibeFlowAsset;
+}
+
+/**
+ * Security-review verification marker for a work item. Created when a
+ * security_lead persona records a review; absent until then. Wire shape:
+ * axiomcloud/handlers/vibeflow_security_review.go:43-72.
+ */
+export interface VibeFlowSecurityReview {
+  id: number;
+  created_at: string;
+  user_id: number;
+  review_notes?: string;
+  source_type: 'todo' | 'issue';
+  source_id: number;
 }
 
 /**

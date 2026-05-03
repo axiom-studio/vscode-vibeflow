@@ -91,6 +91,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Session focus panels need projectId for log correlation and
     // user-to-agent prompts.
     sessionPanelManager.setProjectId(project.projectId);
+    // Work-item panels need projectId for compliance findings lookup.
+    workItemPanelManager.setProjectId(project.projectId);
 
     // Start real Activity Feed polling (stop any previous)
     activityPoller?.stop();
