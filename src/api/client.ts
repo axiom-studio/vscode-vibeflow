@@ -17,6 +17,7 @@ import type {
   VibeFlowPrompt,
   VibeFlowAttachment,
   VibeFlowSecurityReview,
+  VibeFlowQAReview,
 } from './types.js';
 
 /**
@@ -374,9 +375,31 @@ export class VibeFlowClient {
     id: number,
   ): Promise<VibeFlowSecurityReview | undefined> {
     try {
-      return await this.request<VibeFlowSecurityReview>(
+      const v = await this.request<VibeFlowSecurityReview | null>(
         `/rest/v1/vibeflow/${type}s/${id}/security/review`,
       );
+      return v ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Fetch the QA verification marker, if one exists. Backend returns
+   * the literal JSON `null` (not 404) when no verification has been
+   * recorded — both states collapse to undefined here.
+   *
+   * Source: axiomcloud/handlers/vibeflow_dashboard.go:251-308.
+   */
+  async getQAReview(
+    type: 'todo' | 'issue',
+    id: number,
+  ): Promise<VibeFlowQAReview | undefined> {
+    try {
+      const v = await this.request<VibeFlowQAReview | null>(
+        `/rest/v1/vibeflow/${type}s/${id}/qa/review`,
+      );
+      return v ?? undefined;
     } catch {
       return undefined;
     }

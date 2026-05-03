@@ -285,6 +285,25 @@ export interface VibeFlowSecurityReview {
 }
 
 /**
+ * QA verification marker for a work item. Wire shape mirrors
+ * `database.VibeflowQATodoVerification` (and the issue mirror) at
+ * vibeflow_models.go:455-471. Both shapes share id/created_at/user_id;
+ * the foreign key field name differs (`todo_id` vs `issue_id`) so we
+ * keep both optional and let the renderer pick whichever is set.
+ *
+ * Endpoint: GET /rest/v1/vibeflow/{type}s/{id}/qa/review — returns the
+ * literal `null` body when no verification exists (200 either way).
+ */
+export interface VibeFlowQAReview {
+  id: number;
+  created_at: string;
+  updated_at?: string;
+  user_id: number;
+  todo_id?: number;
+  issue_id?: number;
+}
+
+/**
  * One card in the kanban/swimlane view.
  *
  * Wire shape: axiomcloud/database/vibeflow_models.go:830-845. snake_case is
