@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { WorkItemsTreeProvider } from './WorkItemsTreeProvider.js';
 import type {
@@ -22,6 +24,29 @@ interface WorkItemInfo {
   featureName?: string;
   claimedBy?: string;
 }
+
+/**
+ * Best-effort MIME type lookup for the attachment uploader. Backend
+ * falls back to `application/octet-stream` if we send blank, so this
+ * only matters for inline-rendered types (images mostly) — no need to
+ * be exhaustive.
+ */
+const MIME_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+  '.json': 'application/json',
+  '.md': 'text/markdown',
+  '.txt': 'text/plain',
+  '.log': 'text/plain',
+  '.csv': 'text/csv',
+  '.html': 'text/html',
+  '.zip': 'application/zip',
+};
 
 /**
  * Snapshot we push to the webview each refresh. Carries everything the
@@ -106,7 +131,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
     this.panels.set(key, panel);
     panel.webview.html = this.getHtml(panel.webview, item);
 
-    panel.webview.onDidReceiveMessage(async (msg) => {
+    panel.webview.onDidReceiveMessage(async (msg: { type: string; payload?: { attachmentId?: number } }) => {
       switch (msg.type) {
         case 'changeStatus':
           vscode.commands.executeCommand('vibeflow.changeStatus', item.type, item.id, item.status);
@@ -136,6 +161,12 @@ export class WorkItemPanelManager implements vscode.Disposable {
           break;
         case 'delete':
           await this.deleteFlow(item, panel);
+          break;
+        case 'uploadAttachment':
+          await this.uploadAttachmentFlow(item, panel);
+          break;
+        case 'deleteAttachment':
+          await this.deleteAttachmentFlow(item, panel, msg.payload?.attachmentId);
           break;
         case 'refresh':
           await this.refreshSnapshot(item, panel);
@@ -335,6 +366,83 @@ export class WorkItemPanelManager implements vscode.Disposable {
     }
   }
 
+  /**
+   * Upload an attachment via VS Code's native file picker. Two-step:
+   * POST /assets/upload (multipart) → POST /attachments (link to work
+   * item). 32 MB limit enforced server-side; we pre-check locally so the
+   * user gets a friendly error before transferring bytes.
+   */
+  private async uploadAttachmentFlow(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
+    const picks = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: 'Attach',
+      title: `Attach a file to ${item.type} #${item.id}`,
+    });
+    if (!picks || picks.length === 0) { return; }
+    const filePath = picks[0].fsPath;
+
+    let buffer: Buffer;
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+      if (stat.size > 32 * 1024 * 1024) {
+        vscode.window.showErrorMessage(`VibeFlow: file is ${(stat.size / 1024 / 1024).toFixed(1)} MB — server limit is 32 MB`);
+        return;
+      }
+      buffer = fs.readFileSync(filePath);
+    } catch (err) {
+      vscode.window.showErrorMessage(`VibeFlow: could not read file — ${err}`);
+      return;
+    }
+
+    const fileName = path.basename(filePath);
+    const ext = path.extname(fileName).toLowerCase();
+    // Best-effort content type from the extension; backend falls back
+    // to application/octet-stream if we send blank.
+    const contentType = MIME_BY_EXT[ext] ?? 'application/octet-stream';
+
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `VibeFlow: uploading ${fileName}…` },
+        async () => {
+          await this.client.uploadAttachment(item.type, item.id, buffer, fileName, contentType);
+        },
+      );
+      vscode.window.showInformationMessage(`VibeFlow: Attached ${fileName}`);
+      await this.refreshSnapshot(item, panel);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to upload: ${msg}`);
+    }
+  }
+
+  /**
+   * Detach a file from the work item. Confirmation modal — the
+   * underlying asset is preserved (may be linked elsewhere), only the
+   * link is removed.
+   */
+  private async deleteAttachmentFlow(
+    item: WorkItemInfo,
+    panel: vscode.WebviewPanel,
+    attachmentId: number | undefined,
+  ): Promise<void> {
+    if (!attachmentId) { return; }
+    const confirm = await vscode.window.showWarningMessage(
+      `Detach this file from ${item.type} #${item.id}?`,
+      { modal: true },
+      'Detach',
+    );
+    if (confirm !== 'Detach') { return; }
+    try {
+      await this.client.deleteAttachment(attachmentId);
+      vscode.window.showInformationMessage('VibeFlow: Attachment removed');
+      await this.refreshSnapshot(item, panel);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to remove attachment: ${msg}`);
+    }
+  }
+
   private getHtml(webview: vscode.Webview, item: WorkItemInfo): string {
     const nonce = getNonce();
 
@@ -473,6 +581,10 @@ export class WorkItemPanelManager implements vscode.Disposable {
 
   <!-- Attachments -->
   <div id="tab-attachments" class="tab-content">
+    <div style="display:flex;align-items:center;margin-bottom:8px;">
+      <button class="btn-secondary" onclick="send('uploadAttachment')">+ Attach file…</button>
+      <span class="att-meta" style="margin-left:auto;">Max 32 MB</span>
+    </div>
     <div id="attachments-list">
       <div class="empty">No attachments yet.</div>
     </div>
@@ -614,8 +726,15 @@ export class WorkItemPanelManager implements vscode.Disposable {
         return '<div class="attachment">' +
           '<span class="att-name">' + escHtml(name) + '</span>' +
           (meta ? '<span class="att-meta">' + escHtml(meta) + '</span>' : '') +
+          '<button class="btn-icon" data-attachment-id="' + a.id + '">Remove</button>' +
         '</div>';
       }).join('');
+      el.querySelectorAll('button[data-attachment-id]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.getAttribute('data-attachment-id') || '', 10);
+          if (id) { send('deleteAttachment', { attachmentId: id }); }
+        });
+      });
     }
 
     function applyFindings(snap) {
