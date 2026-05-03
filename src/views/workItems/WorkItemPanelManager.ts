@@ -128,6 +128,15 @@ export class WorkItemPanelManager implements vscode.Disposable {
           await securityReject(this.client, item.type, item.id, this.workItemsProvider);
           await this.refreshSnapshot(item, panel);
           break;
+        case 'edit':
+          await this.editFlow(item, panel);
+          break;
+        case 'archive':
+          await this.archiveFlow(item, panel);
+          break;
+        case 'delete':
+          await this.deleteFlow(item, panel);
+          break;
         case 'refresh':
           await this.refreshSnapshot(item, panel);
           break;
@@ -191,6 +200,139 @@ export class WorkItemPanelManager implements vscode.Disposable {
     };
 
     panel.webview.postMessage({ type: 'snapshot', payload: snapshot });
+  }
+
+  /**
+   * Edit body fields via a sequence of input boxes. Native VS Code
+   * prompts are simpler than a webview form and reuse the same
+   * cancellation behavior the rest of the extension uses (Esc aborts).
+   * Pre-fills each box with the current value so a small change is
+   * one-keystroke; submitting an empty title aborts (treated as cancel).
+   */
+  private async editFlow(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
+    const fresh = item.type === 'todo'
+      ? await this.client.getTodo(item.id).catch(() => undefined)
+      : await this.client.getIssue(item.id).catch(() => undefined);
+    if (!fresh) {
+      vscode.window.showErrorMessage('VibeFlow: failed to load current values');
+      return;
+    }
+
+    const title = await vscode.window.showInputBox({
+      prompt: `Title for ${item.type} #${item.id}`,
+      value: fresh.title,
+      ignoreFocusOut: true,
+    });
+    if (title === undefined) { return; }
+    if (!title.trim()) {
+      vscode.window.showWarningMessage('VibeFlow: title cannot be empty');
+      return;
+    }
+
+    const description = await vscode.window.showInputBox({
+      prompt: 'Description (markdown supported)',
+      value: fresh.description ?? '',
+      ignoreFocusOut: true,
+    });
+    if (description === undefined) { return; }
+
+    const priorityChoice = await vscode.window.showQuickPick(
+      ['low', 'medium', 'high'].map(p => ({ label: p, picked: p === fresh.priority })),
+      { placeHolder: 'Priority' },
+    );
+    if (!priorityChoice) { return; }
+
+    const targetBranch = await vscode.window.showInputBox({
+      prompt: 'Target branch',
+      value: fresh.target_branch ?? '',
+      ignoreFocusOut: true,
+    });
+    if (targetBranch === undefined) { return; }
+
+    try {
+      const fields = {
+        title: title.trim(),
+        description,
+        priority: priorityChoice.label,
+        target_branch: targetBranch.trim(),
+      };
+      if (item.type === 'todo') {
+        await this.client.updateTodo(item.id, fields);
+      } else {
+        await this.client.updateIssue(item.id, fields);
+      }
+      this.workItemsProvider.refresh();
+      vscode.window.showInformationMessage(`VibeFlow: Updated ${item.type} #${item.id}`);
+      await this.refreshSnapshot(item, panel);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to update: ${msg}`);
+    }
+  }
+
+  /**
+   * Archive flow — issues only (web parity per axiomcloud-ui-gaps.md).
+   * Implemented as a status transition to 'archived' via the existing
+   * MCP update_issue_status tool. Confirmation modal because archiving
+   * removes the issue from default queries.
+   */
+  private async archiveFlow(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
+    if (item.type !== 'issue') { return; }
+    const confirm = await vscode.window.showWarningMessage(
+      `Archive issue #${item.id}? It will be hidden from default queries until unarchived.`,
+      { modal: true },
+      'Archive',
+    );
+    if (confirm !== 'Archive') { return; }
+    try {
+      await this.client.updateIssueStatus(item.id, 'archived');
+      this.workItemsProvider.refresh();
+      vscode.window.showInformationMessage(`VibeFlow: Archived issue #${item.id}`);
+      await this.refreshSnapshot(item, panel);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to archive: ${msg}`);
+    }
+  }
+
+  /**
+   * Delete flow — irreversible hard delete (axiomcloud has no
+   * soft-delete). Two-step confirm: warning modal, then a typed
+   * confirmation requiring the user to type "delete #N" so an errant
+   * Enter doesn't nuke a record.
+   */
+  private async deleteFlow(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${item.type} #${item.id}? This is permanent and cannot be undone.`,
+      { modal: true },
+      'Delete',
+    );
+    if (confirm !== 'Delete') { return; }
+
+    const phrase = `delete #${item.id}`;
+    const typed = await vscode.window.showInputBox({
+      prompt: `Type "${phrase}" to confirm`,
+      placeHolder: phrase,
+      ignoreFocusOut: true,
+    });
+    if (typed?.trim() !== phrase) {
+      vscode.window.showInformationMessage('VibeFlow: Delete cancelled');
+      return;
+    }
+
+    try {
+      if (item.type === 'todo') {
+        await this.client.deleteTodo(item.id);
+      } else {
+        await this.client.deleteIssue(item.id);
+      }
+      this.workItemsProvider.refresh();
+      vscode.window.showInformationMessage(`VibeFlow: Deleted ${item.type} #${item.id}`);
+      panel.dispose();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`Failed to delete: ${msg}`);
+    }
   }
 
   private getHtml(webview: vscode.Webview, item: WorkItemInfo): string {
@@ -298,6 +440,11 @@ export class WorkItemPanelManager implements vscode.Disposable {
         <span class="group-label">Security</span>
         <button id="btn-sec-verify" class="btn-success" onclick="send('securityApprove')" hidden>✓ Security Verify</button>
         <button id="btn-sec-reject" class="btn-danger" onclick="send('securityReject')" hidden>✕ Security Reject</button>
+      </div>
+      <div class="group" style="margin-left:auto;">
+        <button class="btn-icon" onclick="send('edit')">Edit</button>
+        ${item.type === 'issue' ? `<button class="btn-icon" onclick="send('archive')">Archive</button>` : ''}
+        <button class="btn-icon" onclick="send('delete')">Delete</button>
       </div>
     </div>
   </div>
