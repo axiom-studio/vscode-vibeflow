@@ -29,11 +29,17 @@ import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
+import { ContextProxy } from './core/ContextProxy.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // --- Core services ---
-  const authService = new AuthService(context.secrets);
-  const detector = new ProjectDetector(context.globalState);
+  // ContextProxy wraps globalState + secrets behind a typed registry
+  // (src/core/ContextProxy.ts). Constructed first so every other
+  // service can borrow a typed handle to persistence.
+  const contextProxy = new ContextProxy(context);
+  await contextProxy.migrate();
+  const authService = new AuthService(contextProxy);
+  const detector = new ProjectDetector(contextProxy);
   const promptNotifier = new PromptNotifier();
 
   // --- Status bar (created early so it reflects state immediately) ---
@@ -58,7 +64,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Terminal Registry + Sticky Models ---
   const terminalRegistry = new TerminalRegistry();
-  const stickyModels = new StickyModels(context.globalState);
+  const stickyModels = new StickyModels(contextProxy);
   context.subscriptions.push(terminalRegistry);
 
   // --- Focus Panels ---
