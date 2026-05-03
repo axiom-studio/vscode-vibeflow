@@ -61,7 +61,10 @@ export type SettingsCommand =
   | { type: 'validateServerUrl'; payload: string }
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
-  | { type: 'setProviderToken'; payload: { provider: string; token: string } }
+  // Token is collected by the host's InputBox (webview can't open a
+  // password-masked native input), so the message is fire-and-forget
+  // — only the provider key is needed.
+  | { type: 'setProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
   | { type: 'closeSettings' };
