@@ -118,7 +118,7 @@ export function ProvidersTab({ data, onUpdate, onCommand }: Props) {
                 </span>
               </div>
               <button
-                onClick={() => onCommand({ type: 'setProviderToken', payload: { provider: provider.key, token: '' } })}
+                onClick={() => onCommand({ type: 'setProviderToken', payload: { provider: provider.key } })}
                 style={{
                   padding: '4px 10px',
                   fontSize: 11,
