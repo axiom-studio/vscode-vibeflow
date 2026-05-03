@@ -1,13 +1,13 @@
 import * as vscode from 'vscode';
-
-const SECRET_KEY_TOKEN = 'vibeflow.authToken';
+import type { ContextProxy } from '../core/ContextProxy.js';
 
 export type AuthState = 'authenticated' | 'unauthenticated';
 
 /**
  * Manages VibeFlow authentication via API key (Bearer token).
- * Token stored in VSCode Secrets API (encrypted, per-machine).
- * No OAuth — axiomcloud uses API keys for CLI/MCP/extension auth.
+ * Token stored in VSCode Secrets API (encrypted, per-machine) via
+ * the central ContextProxy. No OAuth — axiomcloud uses API keys for
+ * CLI/MCP/extension auth.
  */
 export class AuthService implements vscode.Disposable {
   private readonly _onDidChangeState = new vscode.EventEmitter<AuthState>();
@@ -15,14 +15,14 @@ export class AuthService implements vscode.Disposable {
 
   private token: string | undefined;
 
-  constructor(private readonly secrets: vscode.SecretStorage) {}
+  constructor(private readonly context: ContextProxy) {}
 
   /**
    * Restore token from secrets on activation.
    * Does NOT validate — caller should validate after restoring.
    */
   async initialize(): Promise<void> {
-    this.token = await this.secrets.get(SECRET_KEY_TOKEN);
+    this.token = await this.context.getSecret('vibeflow.authToken');
     if (this.token) {
       this._onDidChangeState.fire('authenticated');
     }
@@ -42,7 +42,7 @@ export class AuthService implements vscode.Disposable {
    */
   async setToken(token: string): Promise<void> {
     this.token = token;
-    await this.secrets.store(SECRET_KEY_TOKEN, token);
+    await this.context.setSecret('vibeflow.authToken', token);
     this._onDidChangeState.fire('authenticated');
   }
 
@@ -51,7 +51,7 @@ export class AuthService implements vscode.Disposable {
    */
   async logout(): Promise<void> {
     this.token = undefined;
-    await this.secrets.delete(SECRET_KEY_TOKEN);
+    await this.context.deleteSecret('vibeflow.authToken');
     this._onDidChangeState.fire('unauthenticated');
   }
 
