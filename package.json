@@ -41,6 +41,13 @@
           "title": "VibeFlow",
           "icon": "media/vibeflow-icon.svg"
         }
+      ],
+      "auxiliarybar": [
+        {
+          "id": "vibeflowMonitor",
+          "title": "VibeFlow Monitor",
+          "icon": "media/vibeflow-icon.svg"
+        }
       ]
     },
     "views": {
@@ -60,7 +67,9 @@
           "name": "Documents",
           "type": "tree",
           "visibility": "collapsed"
-        },
+        }
+      ],
+      "vibeflowMonitor": [
         {
           "id": "vibeflow.activityFeed",
           "name": "Activity Feed",
