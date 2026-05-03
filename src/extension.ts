@@ -513,7 +513,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- @vibeflow Chat Participant ---
-  registerChatParticipant(context, client, detector);
+  registerChatParticipant(context, client, detector, promptNotifier);
 
   // --- MCP Server Definition Provider ---
   // Registers VibeFlow's MCP server so Copilot Agent Mode, Continue.dev, Cody
