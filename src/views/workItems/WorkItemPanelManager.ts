@@ -9,6 +9,7 @@ import type {
   VibeFlowComplianceFinding,
   VibeFlowAttachment,
   VibeFlowSecurityReview,
+  VibeFlowQAReview,
   VibeFlowComplianceTag,
 } from '../../api/types.js';
 import { qaVerify, qaReject, securityApprove, securityReject } from '../../commands/governanceCommands.js';
@@ -75,6 +76,7 @@ interface WorkItemSnapshot {
   execution_logs: { content: string; message_type?: string; created_at: string }[];
   security_findings: VibeFlowComplianceFinding[];
   security_review?: VibeFlowSecurityReview;
+  qa_review?: VibeFlowQAReview;
 }
 
 /**
@@ -195,7 +197,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
    * specific section rather than the whole panel).
    */
   private async refreshSnapshot(item: WorkItemInfo, panel: vscode.WebviewPanel): Promise<void> {
-    const [freshRes, attachmentsRes, logsRes, findingsRes, reviewRes] = await Promise.allSettled([
+    const [freshRes, attachmentsRes, logsRes, findingsRes, reviewRes, qaRes] = await Promise.allSettled([
       item.type === 'todo' ? this.client.getTodo(item.id) : this.client.getIssue(item.id),
       this.client.listAttachments(item.type, item.id),
       this.client.getWorkItemLogs(item.type, item.id),
@@ -206,6 +208,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
           })
         : Promise.resolve([] as VibeFlowComplianceFinding[]),
       this.client.getSecurityReview(item.type, item.id),
+      this.client.getQAReview(item.type, item.id),
     ]);
 
     const fresh: VibeFlowTodo | VibeFlowIssue | undefined =
@@ -228,6 +231,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
       execution_logs: logsRes.status === 'fulfilled' ? logsRes.value : [],
       security_findings: findingsRes.status === 'fulfilled' ? findingsRes.value : [],
       security_review: reviewRes.status === 'fulfilled' ? reviewRes.value : undefined,
+      qa_review: qaRes.status === 'fulfilled' ? qaRes.value : undefined,
     };
 
     panel.webview.postMessage({ type: 'snapshot', payload: snapshot });
@@ -606,8 +610,9 @@ export class WorkItemPanelManager implements vscode.Disposable {
       </div>
     </div>
     <div id="subtab-security" class="subtab-content">
-      <div id="security-summary" class="empty">No security review yet.</div>
-      <div id="findings-list"></div>
+      <div id="qa-summary" class="empty">No QA review yet.</div>
+      <div id="security-summary" class="empty" style="margin-top:4px;">No security review yet.</div>
+      <div id="findings-list" style="margin-top:12px;"></div>
     </div>
     <div id="subtab-execution" class="subtab-content" hidden>
       <div class="logs" id="execution-logs">
@@ -740,10 +745,28 @@ export class WorkItemPanelManager implements vscode.Disposable {
     function applyFindings(snap) {
       const findings = snap.security_findings || [];
       const review = snap.security_review;
+      const qa = snap.qa_review;
+
+      // QA review summary — purely informational; the actual flag
+      // (qa_verified) is what gates downstream behavior.
+      const qaSummary = document.getElementById('qa-summary');
+      if (qa) {
+        qaSummary.classList.remove('empty');
+        qaSummary.textContent = '✓ QA verified ' + (fmtDate(qa.created_at) || '') +
+          (qa.user_id ? ' (user #' + qa.user_id + ')' : '');
+      } else if (snap.qa_verified) {
+        // Flag is set but the review record didn't load — show a softer line.
+        qaSummary.classList.remove('empty');
+        qaSummary.textContent = '✓ QA verified';
+      } else {
+        qaSummary.classList.add('empty');
+        qaSummary.textContent = 'No QA review yet.';
+      }
+
       const summary = document.getElementById('security-summary');
       if (review) {
         summary.classList.remove('empty');
-        summary.textContent = '✓ Reviewed ' + (fmtDate(review.created_at) || '') +
+        summary.textContent = '✓ Security reviewed ' + (fmtDate(review.created_at) || '') +
           (review.review_notes ? ' — ' + review.review_notes : '');
       } else if (findings.length === 0) {
         summary.classList.add('empty');
