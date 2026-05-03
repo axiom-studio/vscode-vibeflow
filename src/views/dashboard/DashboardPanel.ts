@@ -10,6 +10,7 @@ import type {
 } from '../../api/types.js';
 import type { DetectedProject } from '../../project/ProjectDetector.js';
 import type { TerminalRegistry } from '../../sessions/TerminalRegistry.js';
+import { assertNever, type DashboardClientMessage } from '../../core/webviewMessages.js';
 
 /** Persona keys that drive the topology nodes. */
 export const DASHBOARD_PERSONAS = [
@@ -42,19 +43,7 @@ interface DashboardSnapshot {
   errors: string[];
 }
 
-interface DashboardLoadMessage { type: 'dashboardLoad' }
-interface DashboardRefreshMessage { type: 'dashboardRefresh' }
-interface DashboardFocusPersonaMessage {
-  type: 'dashboardFocusPersona';
-  payload: { personaKey: string };
-}
-interface DashboardOpenSidebarMessage { type: 'dashboardOpenSidebar' }
-
-type DashboardInbound =
-  | DashboardLoadMessage
-  | DashboardRefreshMessage
-  | DashboardFocusPersonaMessage
-  | DashboardOpenSidebarMessage;
+// Canonical message types live in src/core/webviewMessages.ts.
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -108,11 +97,11 @@ export class DashboardPanel {
   }
 
   private attach(): void {
-    this.panel.webview.onDidReceiveMessage((msg: DashboardInbound) => this.handleMessage(msg));
+    this.panel.webview.onDidReceiveMessage((msg: DashboardClientMessage) => this.handleMessage(msg));
     this.panel.onDidDispose(() => this.dispose());
   }
 
-  private async handleMessage(msg: DashboardInbound): Promise<void> {
+  private async handleMessage(msg: DashboardClientMessage): Promise<void> {
     switch (msg.type) {
       case 'dashboardLoad':
         await this.sendSnapshot();
@@ -138,6 +127,8 @@ export class DashboardPanel {
       case 'dashboardOpenSidebar':
         vscode.commands.executeCommand('vibeflow.agentFleet.focus');
         return;
+      default:
+        assertNever(msg);
     }
   }
 
