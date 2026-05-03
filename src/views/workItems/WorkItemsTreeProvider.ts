@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowFeature, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
+import { personaDisplayName } from '../../sessions/personas.js';
 
 type NodeType = 'statusGroup' | 'feature' | 'todo' | 'issue' | 'placeholder';
 
@@ -49,6 +50,14 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private features: VibeFlowFeature[] = [];
   private todos: VibeFlowTodo[] = [];
   private issues: VibeFlowIssue[] = [];
+  /**
+   * session_id → persona_key, refreshed each poll cycle. Used to render
+   * the "claimed by" tag on tree nodes — `claimed_by` on a work item is
+   * a session id like "session-20260411-200221-e9cdf438", which is
+   * useless to a human. We resolve it back to a persona display name so
+   * the user sees "@Architect" instead of "@session".
+   */
+  private sessionPersonaMap = new Map<string, string>();
   private pollTimer: ReturnType<typeof setInterval> | undefined;
 
   refresh(): void {
@@ -83,12 +92,23 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
     }
 
     try {
-      const [features, issues] = await Promise.all([
+      const [features, issues, sessions] = await Promise.all([
         this.client.listFeatures(this.projectId),
         this.client.listIssues(this.projectId),
+        this.client.listSessions(this.projectId).catch(() => []),
       ]);
       this.features = features;
       this.issues = issues;
+
+      // Rebuild session_id -> persona_key map. Same pattern as
+      // ActivityPoller.pollSessions — keep the snapshot fresh so the
+      // "claimed by" tag survives session restarts.
+      this.sessionPersonaMap.clear();
+      for (const s of sessions) {
+        if (s.session_id && s.persona_key) {
+          this.sessionPersonaMap.set(s.session_id, s.persona_key);
+        }
+      }
 
       // Fetch todos for ALL features (some todos may be active even if feature is done)
       const todoLists = await Promise.all(
@@ -169,7 +189,7 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
     const feature = this.features.find(f => f.id === todo.feature_id);
     const priorityIcon = PRIORITY_ICONS[todo.priority] ?? 'dash';
     const priorityColor = PRIORITY_COLORS[todo.priority];
-    const claimant = todo.claimed_by ? `@${todo.claimed_by.split('-')[0]}` : '';
+    const claimant = this.formatClaimant(todo.claimed_by);
     const featureName = feature ? feature.name : '';
 
     const desc = [claimant, featureName].filter(Boolean).join(' · ');
@@ -189,7 +209,7 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private buildIssueNode(issue: VibeFlowIssue): WorkItemNode {
     const priorityIcon = PRIORITY_ICONS[issue.priority] ?? 'dash';
     const priorityColor = PRIORITY_COLORS[issue.priority];
-    const claimant = issue.claimed_by ? `@${issue.claimed_by.split('-')[0]}` : '';
+    const claimant = this.formatClaimant(issue.claimed_by);
 
     return {
       id: `issue-${issue.id}`,
@@ -201,6 +221,26 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       collapsibleState: vscode.TreeItemCollapsibleState.None,
       contextValue: `issue-${issue.status}`,
     };
+  }
+
+  /**
+   * Resolve a claimed_by session id to "@PersonaName". Falls back to a
+   * shortened session-id chunk when we don't yet have the session in
+   * our map (e.g. the session refresh races behind the work-item
+   * fetch on the first poll cycle).
+   */
+  private formatClaimant(claimedBy: string | undefined): string {
+    if (!claimedBy) { return ''; }
+    const personaKey = this.sessionPersonaMap.get(claimedBy);
+    if (personaKey) {
+      return `@${personaDisplayName(personaKey)}`;
+    }
+    // Last-resort fallback: short prefix of the session id, never the
+    // useless literal "session-" head. Format is
+    // "session-{date}-{hash}" so we surface the hash if present.
+    const parts = claimedBy.split('-');
+    const tail = parts.length >= 3 ? parts[parts.length - 1] : parts[0];
+    return `@${tail.slice(0, 8)}`;
   }
 
   dispose(): void {

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../project/ProjectDetector.js';
+import type { PromptNotifier } from '../notifications/PromptNotifier.js';
 
 const PARTICIPANT_ID = 'vibeflow.chat';
 
@@ -12,13 +13,14 @@ export function registerChatParticipant(
   context: vscode.ExtensionContext,
   client: VibeFlowClient,
   detector: ProjectDetector,
+  promptNotifier: PromptNotifier,
 ): void {
   if (!vscode.chat?.createChatParticipant) {
     return;
   }
 
   const participant = vscode.chat.createChatParticipant(PARTICIPANT_ID, async (request, chatContext, stream, token) => {
-    const handler = new ChatHandler(client, detector);
+    const handler = new ChatHandler(client, detector, promptNotifier);
     await handler.handle(request, chatContext, stream, token);
   });
 
@@ -31,6 +33,7 @@ class ChatHandler {
   constructor(
     private readonly client: VibeFlowClient,
     private readonly detector: ProjectDetector,
+    private readonly promptNotifier: PromptNotifier,
   ) {}
 
   async handle(
@@ -245,26 +248,67 @@ class ChatHandler {
   }
 
   private async handleRespond(
-    project: DetectedProject,
+    _project: DetectedProject,
     request: vscode.ChatRequest,
     stream: vscode.ChatResponseStream,
   ): Promise<void> {
     const responseText = request.prompt.trim();
+    const pending = this.promptNotifier.getPending();
 
+    // No text → tell the user how to use it, and list pending prompts
+    // so they can see the context they're responding to.
     if (!responseText) {
       stream.markdown(
         'Provide a response to send to the pending prompt.\n\n' +
-        'Example: `@vibeflow /respond Use JWT tokens with 15 minute expiry`\n',
+        'Example: `@vibeflow /respond Use JWT tokens with 15 minute expiry`\n\n',
       );
+      if (pending.length > 0) {
+        stream.markdown(`### Pending prompts (${pending.length})\n\n`);
+        for (const p of pending) {
+          stream.markdown(`- **${p.personaName}**: ${p.text}\n`);
+        }
+      }
       return;
     }
 
-    // For now, guide user to the Quick Pick — full MCP integration
-    // (calling respond_to_prompt) requires the prompt_id which we'd
-    // need to fetch from wait_for_work. Defer to the notification flow.
+    // No pending prompts to respond to.
+    if (pending.length === 0) {
+      stream.markdown('No pending prompts. Nothing to respond to.\n');
+      return;
+    }
+
+    // Exactly one pending — send straight through.
+    if (pending.length === 1) {
+      const target = pending[0];
+      try {
+        await this.promptNotifier.respondTo(target.id, responseText);
+        stream.markdown(
+          `✓ Response sent to **${target.personaName}**.\n\n` +
+          `> ${target.text}\n\n` +
+          `Your reply: ${responseText}\n`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        stream.markdown(`**Error**: ${msg}\n`);
+      }
+      return;
+    }
+
+    // Multiple pending — can't disambiguate from chat alone. Show
+    // the list and route through the existing quick-pick command,
+    // which will prompt for selection and re-collect the response
+    // via input box (the chat-typed text is lost in this branch
+    // because vscode.commands.executeCommand can't pre-seed an input
+    // box across the participant boundary).
     stream.markdown(
-      `Response ready: "${responseText}"\n\n` +
-      'Use the button below to send it via the prompt notification flow:\n\n',
+      `### ${pending.length} pending prompts — pick one to respond to\n\n`,
+    );
+    for (const p of pending) {
+      stream.markdown(`- **${p.personaName}**: ${p.text}\n`);
+    }
+    stream.markdown(
+      '\nUse the button below to pick the prompt; you\'ll be asked to ' +
+      'retype the response (chat → quick-pick can\'t carry the text).\n\n',
     );
     stream.button({ command: 'vibeflow.respondToPrompt', title: 'Respond to Prompt' });
   }

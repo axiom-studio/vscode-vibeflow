@@ -96,6 +96,29 @@ export class PromptNotifier implements vscode.Disposable {
     return this.pending.find(p => p.id === promptId);
   }
 
+  /**
+   * Read-only snapshot of currently-pending prompts. Returned array is
+   * a copy so callers can iterate or filter without observing later
+   * mutations from handlePrompts.
+   */
+  getPending(): readonly PendingPrompt[] {
+    return [...this.pending];
+  }
+
+  /**
+   * Send a response without prompting via input box. Used by callers
+   * that already have the response text in hand (chat participant,
+   * future webview-form flows). Throws if not yet connected — callers
+   * decide how to surface the failure.
+   */
+  async respondTo(promptId: string, response: string): Promise<void> {
+    if (!this.respondFn) {
+      throw new Error('VibeFlow: not connected — cannot send response');
+    }
+    await this.respondFn(promptId, response);
+    this.markResolved(promptId);
+  }
+
   private async showPromptNotification(prompt: PendingPrompt): Promise<void> {
     const truncated = prompt.text.length > 100
       ? prompt.text.slice(0, 97) + '...'
