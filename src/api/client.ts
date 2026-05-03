@@ -15,6 +15,8 @@ import type {
   VibeFlowWorkSummary,
   VibeFlowComplianceFinding,
   VibeFlowPrompt,
+  VibeFlowAttachment,
+  VibeFlowSecurityReview,
 } from './types.js';
 
 /**
@@ -211,12 +213,20 @@ export class VibeFlowClient {
    */
   async listComplianceFindings(
     projectId: number,
-    filters?: { status?: string; severity?: string; framework?: string },
+    filters?: {
+      status?: string;
+      severity?: string;
+      framework?: string;
+      work_item_type?: 'todo' | 'issue';
+      work_item_id?: number;
+    },
   ): Promise<VibeFlowComplianceFinding[]> {
     const args: Record<string, unknown> = { project_id: projectId };
     if (filters?.status) { args.status = filters.status; }
     if (filters?.severity) { args.severity = filters.severity; }
     if (filters?.framework) { args.framework = filters.framework; }
+    if (filters?.work_item_type) { args.work_item_type = filters.work_item_type; }
+    if (filters?.work_item_id !== undefined) { args.work_item_id = filters.work_item_id; }
     const result = await this.mcp.callTool('list_compliance_findings', args);
     if (Array.isArray(result)) { return result as VibeFlowComplianceFinding[]; }
     // Some list endpoints wrap in `{ findings: [...] }`; tolerate either shape.
@@ -224,6 +234,51 @@ export class VibeFlowClient {
       return (result as { findings: VibeFlowComplianceFinding[] }).findings;
     }
     return [];
+  }
+
+  // --- Attachments ---
+
+  /**
+   * List attachments on a work item (todo|issue). Returns the array
+   * directly per axiomcloud REST convention. Each row carries an
+   * embedded `asset` blob (filename, size, content_type) when
+   * `attachment_type === 'asset'` so renderers don't need a follow-up
+   * fetch per file.
+   *
+   * Source: axiomcloud/handlers/vibeflow_attachments.go:67-93
+   * (Forward lookup: attachments on an entity).
+   */
+  async listAttachments(
+    entityType: 'todo' | 'issue',
+    entityId: number,
+  ): Promise<VibeFlowAttachment[]> {
+    try {
+      return await this.request<VibeFlowAttachment[]>(
+        `/rest/v1/vibeflow/attachments?entity_type=${entityType}&entity_id=${entityId}`,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch the security-review verification marker for a work item, if
+   * one exists. Returns undefined when no review has been recorded yet
+   * (404 from server).
+   *
+   * Source: axiomcloud/handlers/vibeflow_security_review.go:43-72.
+   */
+  async getSecurityReview(
+    type: 'todo' | 'issue',
+    id: number,
+  ): Promise<VibeFlowSecurityReview | undefined> {
+    try {
+      return await this.request<VibeFlowSecurityReview>(
+        `/rest/v1/vibeflow/${type}s/${id}/security/review`,
+      );
+    } catch {
+      return undefined;
+    }
   }
 
   // --- Branch Review Status ---
