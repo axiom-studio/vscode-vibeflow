@@ -300,6 +300,69 @@ export class VibeFlowClient {
   }
 
   /**
+   * Two-step upload: POST /assets/upload as multipart, then POST
+   * /attachments to link the new asset to the work item. Returns the
+   * created attachment row. Backend caps at 32 MB per file
+   * (handlers/vibeflow_assets.go ParseMultipartForm).
+   */
+  async uploadAttachment(
+    entityType: 'todo' | 'issue',
+    entityId: number,
+    fileBuffer: Uint8Array,
+    fileName: string,
+    contentType: string,
+    category?: string,
+  ): Promise<VibeFlowAttachment> {
+    const token = this.auth.getToken();
+    if (!token) { throw new Error('Not authenticated'); }
+
+    // Step 1 — upload bytes. We can't reuse `request()` because it
+    // hardcodes Content-Type: application/json; multipart needs the
+    // browser-style FormData with auto-generated boundary.
+    const form = new FormData();
+    form.append('file', new Blob([new Uint8Array(fileBuffer)], { type: contentType }), fileName);
+    const uploadRes = await fetch(`${this.baseUrl}/rest/v1/vibeflow/assets/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    if (!uploadRes.ok) {
+      throw new Error(`Asset upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+    }
+    const asset = (await uploadRes.json()) as { id: number };
+
+    // Step 2 — link asset to work item.
+    return await this.request<VibeFlowAttachment>('/rest/v1/vibeflow/attachments', {
+      method: 'POST',
+      body: JSON.stringify({
+        attachment_type: 'asset',
+        attachment_id: asset.id,
+        entity_type: entityType,
+        entity_id: entityId,
+        category: category ?? 'general',
+      }),
+    });
+  }
+
+  /**
+   * Detach a file from a work item. Deletes the attachment row only —
+   * the underlying VibeflowAsset is preserved (it may be linked from
+   * other entities). To purge the asset itself, call deleteAsset.
+   */
+  async deleteAttachment(attachmentId: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/attachments/${attachmentId}`, { method: 'DELETE' });
+  }
+
+  /**
+   * Returns a Webview-safe URL for downloading an asset. The download
+   * endpoint streams the file with the original content-type so an
+   * `<img src="...">` will render an image attachment inline.
+   */
+  assetDownloadUrl(assetId: number): string {
+    return `${this.baseUrl}/rest/v1/vibeflow/assets/${assetId}/download`;
+  }
+
+  /**
    * Fetch the security-review verification marker for a work item, if
    * one exists. Returns undefined when no review has been recorded yet
    * (404 from server).
