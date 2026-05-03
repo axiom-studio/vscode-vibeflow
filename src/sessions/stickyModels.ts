@@ -1,6 +1,4 @@
-import * as vscode from 'vscode';
-
-const GLOBAL_STATE_KEY = 'vibeflow.stickyModels';
+import type { ContextProxy } from '../core/ContextProxy.js';
 
 /**
  * Default model assignments per persona.
@@ -39,8 +37,8 @@ export const KNOWN_MODELS: Record<string, string[]> = {
 export class StickyModels {
   private models: Record<string, string>;
 
-  constructor(private readonly globalState: vscode.Memento) {
-    const stored = globalState.get<Record<string, string>>(GLOBAL_STATE_KEY);
+  constructor(private readonly context: ContextProxy) {
+    const stored = context.get('vibeflow.stickyModels');
     this.models = { ...DEFAULT_MODELS, ...stored };
   }
 
@@ -56,7 +54,7 @@ export class StickyModels {
    */
   async setModel(persona: string, model: string): Promise<void> {
     this.models[persona] = model;
-    await this.globalState.update(GLOBAL_STATE_KEY, this.models);
+    await this.context.set('vibeflow.stickyModels', this.models);
   }
 
   /**
@@ -72,6 +70,6 @@ export class StickyModels {
   async resetToDefault(persona: string): Promise<void> {
     const defaultModel = DEFAULT_MODELS[persona] ?? 'claude-sonnet-4-6';
     this.models[persona] = defaultModel;
-    await this.globalState.update(GLOBAL_STATE_KEY, this.models);
+    await this.context.set('vibeflow.stickyModels', this.models);
   }
 }

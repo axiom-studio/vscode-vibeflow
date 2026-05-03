@@ -2,12 +2,9 @@ import * as vscode from 'vscode';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
+import type { ContextProxy } from '../core/ContextProxy.js';
 
 const execAsync = promisify(exec);
-
-const KEY_PROJECT_ID = 'vibeflow.projectId';
-const KEY_PROJECT_NAME = 'vibeflow.projectName';
-const KEY_GIT_REMOTE = 'vibeflow.gitRemoteUrl';
 
 export interface DetectedProject {
   projectId: number;
@@ -27,18 +24,21 @@ export interface ProjectMatchResult {
  */
 export class ProjectDetector {
   /**
-   * Use globalState so the project persists across F5 launches and survives
-   * dev host windows that don't have a workspace folder loaded.
+   * Persistence runs through ContextProxy so all keys live in one
+   * registry and a single resetAll() wipes them. globalState (rather
+   * than workspaceState) is intentional — projects persist across F5
+   * launches and survive dev-host windows that don't have a
+   * workspace folder loaded.
    */
-  constructor(private readonly globalState: vscode.Memento) {}
+  constructor(private readonly context: ContextProxy) {}
 
   /**
    * Get the cached project from global state, if any.
    */
   getCachedProject(): DetectedProject | undefined {
-    const projectId = this.globalState.get<number>(KEY_PROJECT_ID);
-    const projectName = this.globalState.get<string>(KEY_PROJECT_NAME);
-    const gitRemoteUrl = this.globalState.get<string>(KEY_GIT_REMOTE);
+    const projectId = this.context.get('vibeflow.projectId');
+    const projectName = this.context.get('vibeflow.projectName');
+    const gitRemoteUrl = this.context.get('vibeflow.gitRemoteUrl');
     if (projectId && projectName) {
       return { projectId, projectName, gitRemoteUrl: gitRemoteUrl ?? '', gitBranch: '' };
     }
@@ -49,18 +49,18 @@ export class ProjectDetector {
    * Cache detected project in global state.
    */
   async cacheProject(project: DetectedProject): Promise<void> {
-    await this.globalState.update(KEY_PROJECT_ID, project.projectId);
-    await this.globalState.update(KEY_PROJECT_NAME, project.projectName);
-    await this.globalState.update(KEY_GIT_REMOTE, project.gitRemoteUrl);
+    await this.context.set('vibeflow.projectId', project.projectId);
+    await this.context.set('vibeflow.projectName', project.projectName);
+    await this.context.set('vibeflow.gitRemoteUrl', project.gitRemoteUrl);
   }
 
   /**
    * Clear cached project.
    */
   async clearCache(): Promise<void> {
-    await this.globalState.update(KEY_PROJECT_ID, undefined);
-    await this.globalState.update(KEY_PROJECT_NAME, undefined);
-    await this.globalState.update(KEY_GIT_REMOTE, undefined);
+    await this.context.set('vibeflow.projectId', undefined);
+    await this.context.set('vibeflow.projectName', undefined);
+    await this.context.set('vibeflow.gitRemoteUrl', undefined);
   }
 
   /**
