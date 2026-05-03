@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/types.js';
+import { assertNever, type KanbanClientMessage } from '../../core/webviewMessages.js';
 
 /**
  * Five logical kanban columns mapped to the eight backend statuses.
@@ -41,18 +42,8 @@ export interface KanbanCard {
   updatedAt: string;
 }
 
-interface KanbanLoadMessage { type: 'kanbanLoad' }
-interface KanbanRefreshMessage { type: 'kanbanRefresh' }
-interface KanbanMoveMessage {
-  type: 'kanbanMove';
-  payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string };
-}
-interface KanbanOpenItemMessage {
-  type: 'kanbanOpenItem';
-  payload: { itemType: 'todo' | 'issue'; itemId: number; title: string };
-}
-
-type KanbanInbound = KanbanLoadMessage | KanbanRefreshMessage | KanbanMoveMessage | KanbanOpenItemMessage;
+// Canonical message types live in src/core/webviewMessages.ts so each
+// panel's protocol is documented in one place. Imported below.
 
 const POLL_INTERVAL_MS = 30_000;
 /** Status set valid as a drag target — also enforced server-side. */
@@ -108,12 +99,12 @@ export class KanbanPanel {
   }
 
   private attach(): void {
-    this.panel.webview.onDidReceiveMessage((msg: KanbanInbound) => this.handleMessage(msg));
+    this.panel.webview.onDidReceiveMessage((msg: KanbanClientMessage) => this.handleMessage(msg));
     this.panel.onDidDispose(() => this.dispose());
     // Initial load is triggered by the webview sending `kanbanLoad` on mount.
   }
 
-  private async handleMessage(msg: KanbanInbound): Promise<void> {
+  private async handleMessage(msg: KanbanClientMessage): Promise<void> {
     switch (msg.type) {
       case 'kanbanLoad':
         await this.sendData();
@@ -135,10 +126,12 @@ export class KanbanPanel {
           '',
         );
         return;
+      default:
+        assertNever(msg);
     }
   }
 
-  private async handleMove(payload: KanbanMoveMessage['payload']): Promise<void> {
+  private async handleMove(payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string }): Promise<void> {
     const { itemType, itemId, newStatus } = payload;
 
     if (!ALLOWED_PRIMARY_STATUSES.has(newStatus)) {
