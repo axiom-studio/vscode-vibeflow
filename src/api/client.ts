@@ -135,8 +135,16 @@ export class VibeFlowClient {
     await this.mcp.callTool('create_todo', { feature_id: featureId, title, priority, target_branch: targetBranch });
   }
 
-  async updateTodoStatus(todoId: number, status: string): Promise<void> {
-    await this.mcp.callTool('update_todo_status', { id: todoId, status });
+  /**
+   * Transition a todo's status. `rejection_comment` is required when
+   * status is 'rejected' (backend returns 400 otherwise). The other
+   * fields (`expected_status`, git info) aren't yet plumbed — they're
+   * populated by the agent on its own update path.
+   */
+  async updateTodoStatus(todoId: number, status: string, opts?: { rejectionComment?: string }): Promise<void> {
+    const args: Record<string, unknown> = { id: todoId, status };
+    if (opts?.rejectionComment) { args.rejection_comment = opts.rejectionComment; }
+    await this.mcp.callTool('update_todo_status', args);
   }
 
   /**
@@ -175,8 +183,10 @@ export class VibeFlowClient {
     await this.mcp.callTool('create_issue', { project_id: projectId, title, priority, target_branch: targetBranch });
   }
 
-  async updateIssueStatus(issueId: number, status: string): Promise<void> {
-    await this.mcp.callTool('update_issue_status', { id: issueId, status });
+  async updateIssueStatus(issueId: number, status: string, opts?: { rejectionComment?: string }): Promise<void> {
+    const args: Record<string, unknown> = { id: issueId, status };
+    if (opts?.rejectionComment) { args.rejection_comment = opts.rejectionComment; }
+    await this.mcp.callTool('update_issue_status', args);
   }
 
   /**
