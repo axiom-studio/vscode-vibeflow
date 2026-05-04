@@ -349,6 +349,31 @@
         "command": "vibeflow.openDashboard",
         "key": "ctrl+shift+v d",
         "mac": "cmd+shift+v d"
+      },
+      {
+        "command": "vibeflow.respondToPrompt",
+        "key": "ctrl+shift+v r",
+        "mac": "cmd+shift+v r"
+      },
+      {
+        "command": "vibeflow.launchSession",
+        "key": "ctrl+shift+v l",
+        "mac": "cmd+shift+v l"
+      },
+      {
+        "command": "vibeflow.createWorkItem",
+        "key": "ctrl+shift+v n",
+        "mac": "cmd+shift+v n"
+      },
+      {
+        "command": "vibeflow.openSettings",
+        "key": "ctrl+shift+v s",
+        "mac": "cmd+shift+v s"
+      },
+      {
+        "command": "vibeflow.refresh",
+        "key": "ctrl+shift+v f",
+        "mac": "cmd+shift+v f"
       }
     ],
     "walkthroughs": [
