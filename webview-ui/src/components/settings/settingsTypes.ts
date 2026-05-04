@@ -55,27 +55,15 @@ export interface SettingsData {
   version: string;
 }
 
-// Extension -> Webview
+// Webview -> Extension — re-exported from the shared host/webview protocol.
+// The shared union is the single source of truth; the host's SettingsPanel
+// switches on it exhaustively, so any drift fails at compile time on both
+// sides.
+export type { SettingsClientMessage as SettingsCommand } from '../../../../src/core/webviewMessages';
+
+// Extension -> Webview — narrowed locally so the webview can use a typed
+// SettingsData payload instead of the shared `unknown`. Compatible with
+// the shared SettingsHostMessage shape (same variants, tighter payload).
 export type SettingsMessage =
   | { type: 'settingsData'; payload: SettingsData }
   | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
-
-// Webview -> Extension
-export type SettingsCommand =
-  | { type: 'getSetting' }
-  | { type: 'updateSetting'; payload: { key: string; value: unknown } }
-  | { type: 'validateServerUrl'; payload: string }
-  | { type: 'validateApiKey'; payload: string }
-  | { type: 'setApiKey'; payload: string }
-  // Token is collected by the host's InputBox (webview can't open a
-  // password-masked native input), so the message is fire-and-forget
-  // — only the provider key is needed.
-  | { type: 'setProviderToken'; payload: { provider: string } }
-  | { type: 'selectProject'; payload: number }
-  | { type: 'refreshProjects' }
-  // Models tab — per-persona sticky model preferences. updateStickyModel
-  // writes through to extension state; resetStickyModel restores the
-  // hardcoded default for that persona.
-  | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
-  | { type: 'resetStickyModel'; payload: { persona: string } }
-  | { type: 'closeSettings' };

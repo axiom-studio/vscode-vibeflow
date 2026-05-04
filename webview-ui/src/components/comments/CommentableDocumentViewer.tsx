@@ -18,9 +18,7 @@ interface CommentableDocumentViewerProps {
   currentUserId: number | undefined;
 }
 
-const vscode = getVsCodeApi() as {
-  postMessage: (msg: CommentMessage | { type: 'commentsSaveAndNotify'; payload: unknown }) => void;
-};
+const vscode = getVsCodeApi() as { postMessage: (msg: CommentMessage) => void };
 
 /**
  * Top-level document viewer with inline comments.
