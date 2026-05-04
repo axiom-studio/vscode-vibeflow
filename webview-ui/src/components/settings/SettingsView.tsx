@@ -3,7 +3,11 @@ import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsT
 import { ConnectionTab } from './ConnectionTab';
 import { ProvidersTab } from './ProvidersTab';
 import { ModelsTab } from './ModelsTab';
-import { SessionTab } from './SessionTab';
+import { SessionDefaultsTab } from './SessionDefaultsTab';
+import { WorktreesTab } from './WorktreesTab';
+import { NotificationsTab } from './NotificationsTab';
+import { AdvancedTab } from './AdvancedTab';
+import { AboutTab } from './AboutTab';
 import { getVsCodeApi } from '../../vscodeApi';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
@@ -11,8 +15,12 @@ const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void }
 const TABS = [
   { id: 'connection', label: 'Connection', icon: '🔗' },
   { id: 'providers', label: 'Providers', icon: '🤖' },
-  { id: 'models', label: 'Models', icon: '🧠' },
-  { id: 'session', label: 'Session & Advanced', icon: '⚙' },
+  { id: 'session', label: 'Session Defaults', icon: '⚙' },
+  { id: 'models', label: 'Sticky Models', icon: '🧠' },
+  { id: 'worktrees', label: 'Worktrees', icon: '🌿' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'advanced', label: 'Advanced', icon: '🛠' },
+  { id: 'about', label: 'About', icon: 'ℹ' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -85,7 +93,7 @@ export function SettingsView() {
             borderRadius: 3,
             background: 'var(--feed-badge-bg)',
             color: 'var(--feed-badge-fg)',
-          }}>v0.1.0</span>
+          }}>v{data.version}</span>
         </div>
         <button
           onClick={() => sendCommand({ type: 'closeSettings' })}
@@ -103,9 +111,10 @@ export function SettingsView() {
         </button>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs — wrap to a second row when there are too many to fit on one */}
       <div style={{
         display: 'flex',
+        flexWrap: 'wrap',
         gap: 0,
         borderBottom: '1px solid var(--feed-border)',
         padding: '0 32px',
@@ -116,7 +125,7 @@ export function SettingsView() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '10px 20px',
+              padding: '10px 16px',
               fontSize: 12,
               fontWeight: activeTab === tab.id ? 600 : 400,
               color: activeTab === tab.id ? 'var(--feed-fg)' : 'var(--feed-muted)',
@@ -149,11 +158,23 @@ export function SettingsView() {
           {activeTab === 'providers' && (
             <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
+          {activeTab === 'session' && (
+            <SessionDefaultsTab data={data} onUpdate={updateSetting} />
+          )}
           {activeTab === 'models' && (
             <ModelsTab data={data} onCommand={sendCommand} />
           )}
-          {activeTab === 'session' && (
-            <SessionTab data={data} onUpdate={updateSetting} />
+          {activeTab === 'worktrees' && (
+            <WorktreesTab data={data} onUpdate={updateSetting} />
+          )}
+          {activeTab === 'notifications' && (
+            <NotificationsTab data={data} onUpdate={updateSetting} />
+          )}
+          {activeTab === 'advanced' && (
+            <AdvancedTab data={data} onUpdate={updateSetting} />
+          )}
+          {activeTab === 'about' && (
+            <AboutTab data={data} />
           )}
         </div>
       </div>
