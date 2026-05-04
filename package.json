@@ -239,6 +239,36 @@
           "command": "vibeflow.openSessionPanel",
           "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
           "group": "session@3"
+        },
+        {
+          "command": "vibeflow.openWorkItemPanel",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
+          "group": "navigation@0"
+        },
+        {
+          "command": "vibeflow.changeStatus",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.qaVerify",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-done$/",
+          "group": "review@0"
+        },
+        {
+          "command": "vibeflow.qaReject",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-done$/",
+          "group": "review@1"
+        },
+        {
+          "command": "vibeflow.securityApprove",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
+          "group": "review@2"
+        },
+        {
+          "command": "vibeflow.securityReject",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
+          "group": "review@3"
         }
       ],
       "view/title": [

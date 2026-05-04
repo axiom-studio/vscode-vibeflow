@@ -389,21 +389,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
     }),
-    vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (nodeId: string, label?: string, description?: string) => {
-      // nodeId is e.g., "todo-1234" or "issue-567" — passed as a plain string
-      const idMatch = (nodeId ?? '').match(/^(todo|issue)-(\d+)$/);
-      if (idMatch) {
-        workItemPanelManager.open({
-          type: idMatch[1] as 'todo' | 'issue',
-          id: parseInt(idMatch[2]),
-          title: (label ?? '').replace(/^#\d+:\s*/, ''),
-          status: description ?? '',
-          priority: 'medium',
-        });
-      }
+    vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (
+      arg1: string | TreeNodeArg,
+      label?: string,
+      description?: string,
+    ) => {
+      // Accepts either:
+      //  - positional: (nodeId, label, description) — old call sites
+      //    (e.g. WorkItemsTreeProvider's per-row click command, which
+      //    already passes the parsed strings).
+      //  - tree menu: (treeItem) — VS Code hands the TreeItem itself
+      //    when a `view/item/context` entry fires this command.
+      const ref = resolveWorkItemRef(arg1);
+      if (!ref) { return; }
+      // From-tree click: treeItem.label is the work-item label, but
+      // when invoked positionally label is already the user-visible
+      // string and contextValue carries the status. From-tree-menu:
+      // treeItem.contextValue is "todo-{status}" so derive status; we
+      // don't have a clean label string from contextValue alone.
+      const tree = typeof arg1 === 'object' ? arg1 : undefined;
+      const treeLabel = typeof tree?.label === 'string'
+        ? tree.label
+        : (typeof tree?.label === 'object' && tree?.label && 'label' in tree.label ? String(tree.label.label) : '');
+      const resolvedLabel = label ?? treeLabel ?? '';
+      const resolvedDescription = description ?? ref.status ?? '';
+      workItemPanelManager.open({
+        type: ref.type,
+        id: ref.id,
+        title: resolvedLabel.replace(/^#\d+:\s*/, ''),
+        status: resolvedDescription,
+        priority: 'medium',
+      });
     }),
-    vscode.commands.registerCommand('vibeflow.changeStatus', (itemType: string, itemId: number, currentStatus: string) => {
-      changeStatus(client, itemType as 'todo' | 'issue', itemId, currentStatus, workItemsProvider);
+    vscode.commands.registerCommand('vibeflow.changeStatus', (
+      arg1: string | TreeNodeArg,
+      itemId?: number,
+      currentStatus?: string,
+    ) => {
+      const ref = resolveWorkItemRef(arg1, itemId, currentStatus);
+      if (!ref) { return; }
+      changeStatus(client, ref.type, ref.id, ref.status ?? '', workItemsProvider);
     }),
     vscode.commands.registerCommand('vibeflow.viewSessions', () => {
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');
@@ -411,17 +436,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.respondToPrompt', () => {
       promptNotifier.showPendingPromptsQuickPick();
     }),
-    vscode.commands.registerCommand('vibeflow.qaVerify', (_type: string, _id: number) => {
-      qaVerify(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    vscode.commands.registerCommand('vibeflow.qaVerify', (arg1: string | TreeNodeArg, id?: number) => {
+      const ref = resolveWorkItemRef(arg1, id);
+      if (!ref) { return; }
+      qaVerify(client, ref.type, ref.id, workItemsProvider);
     }),
-    vscode.commands.registerCommand('vibeflow.qaReject', (_type: string, _id: number) => {
-      qaReject(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    vscode.commands.registerCommand('vibeflow.qaReject', (arg1: string | TreeNodeArg, id?: number) => {
+      const ref = resolveWorkItemRef(arg1, id);
+      if (!ref) { return; }
+      qaReject(client, ref.type, ref.id, workItemsProvider);
     }),
-    vscode.commands.registerCommand('vibeflow.securityApprove', (_type: string, _id: number) => {
-      securityApprove(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    vscode.commands.registerCommand('vibeflow.securityApprove', (arg1: string | TreeNodeArg, id?: number) => {
+      const ref = resolveWorkItemRef(arg1, id);
+      if (!ref) { return; }
+      securityApprove(client, ref.type, ref.id, workItemsProvider);
     }),
-    vscode.commands.registerCommand('vibeflow.securityReject', (_type: string, _id: number) => {
-      securityReject(client, _type as 'todo' | 'issue', _id, workItemsProvider);
+    vscode.commands.registerCommand('vibeflow.securityReject', (arg1: string | TreeNodeArg, id?: number) => {
+      const ref = resolveWorkItemRef(arg1, id);
+      if (!ref) { return; }
+      securityReject(client, ref.type, ref.id, workItemsProvider);
     }),
     vscode.commands.registerCommand('vibeflow.checkBranchStatus', () => {
       checkBranchReviewStatus(client, detector);
@@ -662,4 +695,63 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   // Cleanup handled by disposables
+}
+
+/**
+ * Subset of `vscode.TreeItem` fields we read when a work-item command
+ * is invoked from a tree's right-click menu. VS Code passes the
+ * TreeItem itself; these are the only fields we use, so the type is
+ * deliberately narrow rather than re-exporting the full interface.
+ */
+interface TreeNodeArg {
+  id?: string;
+  label?: string | { label: string };
+  contextValue?: string;
+}
+
+/**
+ * Resolve a `(type, id, status?)` triple from the polymorphic command
+ * argument shape used by work-item commands. Two call patterns:
+ *
+ *   1. Positional from existing code paths:
+ *        vibeflow.qaVerify('todo', 1234)
+ *        vibeflow.changeStatus('todo', 1234, 'done')
+ *
+ *   2. From a tree right-click menu, where VS Code passes the
+ *      TreeItem itself as the first argument. Our tree nodes carry
+ *      `id = "todo-1234"` and `contextValue = "todo-done"`, both of
+ *      which we parse to recover the same triple.
+ *
+ * Returns undefined when neither shape parses — every command's
+ * registration handles that as a no-op.
+ */
+function resolveWorkItemRef(
+  arg1: string | TreeNodeArg | undefined,
+  itemId?: number,
+  status?: string,
+): { type: 'todo' | 'issue'; id: number; status?: string } | undefined {
+  if (typeof arg1 === 'string') {
+    const t = arg1 === 'todo' || arg1 === 'issue' ? arg1 : undefined;
+    if (t && typeof itemId === 'number') {
+      return { type: t, id: itemId, status };
+    }
+    // Single-string form: `"todo-1234"` (e.g. from openWorkItemPanel
+    // call sites that already pre-flatten the node id).
+    const m = arg1.match(/^(todo|issue)-(\d+)$/);
+    if (m) { return { type: m[1] as 'todo' | 'issue', id: parseInt(m[2], 10), status }; }
+    return undefined;
+  }
+  if (arg1 && typeof arg1 === 'object') {
+    const idMatch = (arg1.id ?? '').match(/^(todo|issue)-(\d+)$/);
+    if (!idMatch) { return undefined; }
+    const type = idMatch[1] as 'todo' | 'issue';
+    const id = parseInt(idMatch[2], 10);
+    // contextValue is "todo-{status}" / "issue-{status}" — extract
+    // the suffix, not the prefix. statusGroup nodes use the literal
+    // "statusGroup" so they fail the regex below and fall through.
+    const ctx = arg1.contextValue ?? '';
+    const statusMatch = ctx.match(/^(?:todo|issue)-(.+)$/);
+    return { type, id, status: statusMatch?.[1] ?? status };
+  }
+  return undefined;
 }
