@@ -462,6 +462,26 @@ export class VibeFlowClient {
     return this.request(`/rest/v1/vibeflow/documents/${docId}`);
   }
 
+  /**
+   * Create a new design document. Wire shape mirrors the `create_document`
+   * MCP tool (axiomcloud/mcp/vibeflow_tools.go:2826). Backend types match
+   * VibeFlowDocument['type']: prd | architecture | style_guide |
+   * design_system | general.
+   */
+  async createDocument(args: {
+    projectId: number;
+    title: string;
+    content: string;
+    type: VibeFlowDocument['type'];
+  }): Promise<void> {
+    await this.mcp.callTool('create_document', {
+      project_id: args.projectId,
+      title: args.title,
+      content: args.content,
+      type: args.type,
+    });
+  }
+
   // --- Comments ---
 
   /**

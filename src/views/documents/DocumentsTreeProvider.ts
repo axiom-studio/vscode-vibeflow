@@ -32,6 +32,7 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private documents: VibeFlowDocument[] = [];
+  private pollTimer: ReturnType<typeof setInterval> | undefined;
 
   refresh(): void {
     this.fetchAndRefresh();
@@ -40,7 +41,22 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
   connect(client: VibeFlowClient, projectId: number): void {
     this.client = client;
     this.projectId = projectId;
+    this.startPolling();
     this.fetchAndRefresh();
+  }
+
+  private startPolling(): void {
+    this.stopPolling();
+    const config = vscode.workspace.getConfiguration('vibeflow');
+    const interval = config.get<number>('polling.interval', 30) * 1000;
+    this.pollTimer = setInterval(() => this.fetchAndRefresh(), interval);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
   }
 
   private async fetchAndRefresh(): Promise<void> {
@@ -108,6 +124,7 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
   }
 
   dispose(): void {
+    this.stopPolling();
     this._onDidChangeTreeData.dispose();
   }
 }
