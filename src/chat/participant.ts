@@ -6,6 +6,47 @@ import type { PromptNotifier } from '../notifications/PromptNotifier.js';
 const PARTICIPANT_ID = 'vibeflow.chat';
 
 /**
+ * Render a chat message's attached references as a one-line
+ * acknowledgement at the top of the participant's reply. Returns
+ * empty string when nothing is attached so callers can guard with
+ * a falsy check.
+ *
+ * `ChatPromptReference.value` can be a string (literal text the user
+ * dragged in), a Uri (file/folder), or a Location (Uri + Range for a
+ * specific selection). We collapse Uri/Location to a workspace-
+ * relative path so "scoping to: src/foo.ts" reads naturally; literal
+ * strings get truncated and quoted; unknown shapes get a generic tag.
+ */
+function formatReferences(references: readonly vscode.ChatPromptReference[] | undefined): string {
+  if (!references || references.length === 0) { return ''; }
+
+  const labels: string[] = [];
+  for (const ref of references) {
+    const v = ref.value;
+    if (v instanceof vscode.Uri) {
+      labels.push('`' + vscode.workspace.asRelativePath(v) + '`');
+    } else if (typeof v === 'object' && v && 'uri' in v && (v as { uri: unknown }).uri instanceof vscode.Uri) {
+      // Location-like: show file plus optional line range.
+      const loc = v as { uri: vscode.Uri; range?: { start?: { line?: number }; end?: { line?: number } } };
+      const file = vscode.workspace.asRelativePath(loc.uri);
+      const start = loc.range?.start?.line;
+      const end = loc.range?.end?.line;
+      labels.push(start !== undefined && end !== undefined
+        ? `\`${file}:${start + 1}-${end + 1}\``
+        : `\`${file}\``);
+    } else if (typeof v === 'string') {
+      const trimmed = v.trim().replace(/\s+/g, ' ');
+      labels.push(trimmed.length > 60 ? `"${trimmed.slice(0, 57)}…"` : `"${trimmed}"`);
+    } else {
+      // Unknown shape — tag by id rather than dropping silently.
+      labels.push(`[${ref.id}]`);
+    }
+  }
+
+  return `_Scoping to: ${labels.join(', ')}_`;
+}
+
+/**
  * Register the @vibeflow Chat Participant.
  * Gracefully no-ops if the Chat Participant API is unavailable (no Copilot).
  */
@@ -53,6 +94,16 @@ class ChatHandler {
       stream.markdown('**No project detected.** Open a workspace with a git remote linked to a VibeFlow project.\n');
       return;
     }
+
+    // Surface any references the user attached to the chat message
+    // (e.g. `#file:foo.ts`, a selection, an open editor) so the
+    // participant doesn't silently ignore that signal. We don't yet
+    // route them into specific actions — that's a per-command
+    // decision (e.g. `/create` could pre-fill a description from a
+    // selection). Today it's purely an acknowledgement that the
+    // user's scope was received.
+    const refsLine = formatReferences(request.references);
+    if (refsLine) { stream.markdown(refsLine + '\n\n'); }
 
     switch (request.command) {
       case 'status':
