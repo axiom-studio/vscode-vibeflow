@@ -3,7 +3,7 @@ import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
-import { assertNever, type SessionPanelClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -131,15 +131,17 @@ export class SessionPanelManager implements vscode.Disposable {
 
   private async refreshPanel(session: VibeFlowSession, panel: vscode.WebviewPanel): Promise<void> {
     if (this.projectId === undefined) {
-      panel.webview.postMessage({ type: 'update', payload: { session, logs: [] } });
+      this.postToWebview(panel, { type: 'update', payload: { session, logs: [] } });
       return;
     }
 
     const logs = await this.collectSessionLogs(this.projectId, session.session_id);
-    panel.webview.postMessage({
-      type: 'update',
-      payload: { session, logs },
-    });
+    this.postToWebview(panel, { type: 'update', payload: { session, logs } });
+  }
+
+  /** Typed wrapper so a future drift in SessionPanelHostMessage fails the compile. */
+  private postToWebview(panel: vscode.WebviewPanel, msg: SessionPanelHostMessage): void {
+    panel.webview.postMessage(msg);
   }
 
   /**
