@@ -59,7 +59,9 @@ export type SettingsClientMessage =
   | { type: 'setApiKey'; payload: string }
   | { type: 'setProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
-  | { type: 'refreshProjects' };
+  | { type: 'refreshProjects' }
+  | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
+  | { type: 'resetStickyModel'; payload: { persona: string } };
 
 // ============================================================
 // Work Item Panel

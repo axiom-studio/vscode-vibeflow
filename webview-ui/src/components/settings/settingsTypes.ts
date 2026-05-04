@@ -45,6 +45,12 @@ export interface SettingsData {
   debugSimulateActivity: boolean;
   debugVerboseLogging: boolean;
 
+  // Models — per-persona sticky model preferences. `stickyModels`
+  // maps persona_key -> model_id; `knownModels` is the full picker
+  // catalog grouped by provider key (claude/codex/gemini/cursor).
+  stickyModels?: Record<string, string>;
+  knownModels?: Record<string, string[]>;
+
   // About
   version: string;
 }
@@ -67,4 +73,9 @@ export type SettingsCommand =
   | { type: 'setProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
+  // Models tab — per-persona sticky model preferences. updateStickyModel
+  // writes through to extension state; resetStickyModel restores the
+  // hardcoded default for that persona.
+  | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
+  | { type: 'resetStickyModel'; payload: { persona: string } }
   | { type: 'closeSettings' };
