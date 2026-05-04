@@ -10,6 +10,7 @@ import {
   createSessionStatusBar, createWorkSummaryStatusBar,
   type StatusBarItemWithUpdate, type WorkSummaryBarItem,
 } from './statusBar/sessionStatus.js';
+import { createBranchReviewStatusBar } from './statusBar/branchReview.js';
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
@@ -47,6 +48,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Status bar (created early so it reflects state immediately) ---
   const sessionStatusBar = createSessionStatusBar(authService, promptNotifier) as StatusBarItemWithUpdate;
   const workSummaryStatusBar = createWorkSummaryStatusBar() as WorkSummaryBarItem;
+  const branchReviewStatusBar = createBranchReviewStatusBar();
 
   // --- API Client (needs auth) ---
   const client = new VibeFlowClient(authService);
@@ -116,6 +118,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Update status bars
     sessionStatusBar.updateProject(project);
     workSummaryStatusBar.updateCounts(0, 0); // Will be updated by polling
+    branchReviewStatusBar.start(client, detector);
   }
 
   /**
@@ -126,6 +129,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activityPoller = undefined;
     sessionStatusBar.updateProject(undefined);
     workSummaryStatusBar.setDisconnected();
+    branchReviewStatusBar.stop();
     // TreeViews will show placeholder/empty state on next refresh
   }
 
@@ -531,6 +535,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessionsProvider.refresh();
       workItemsProvider.refresh();
       documentsProvider.refresh();
+      void branchReviewStatusBar.refresh();
     }),
   );
 
@@ -551,6 +556,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,
+    branchReviewStatusBar,
     { dispose: () => activityPoller?.stop() },
   );
 
