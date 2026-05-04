@@ -28,7 +28,8 @@ import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecora
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
-import { generateBatch, generateOne } from './views/activity/simulateActivity.js';
+// simulateActivity is dev-only — imported dynamically so esbuild
+// tree-shakes it out of production bundles when the debug flag is off.
 import { ContextProxy } from './core/ContextProxy.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -685,6 +686,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // vibeflow.debug.simulateActivity = true
   const debugConfig = vscode.workspace.getConfiguration('vibeflow');
   if (debugConfig.get<boolean>('debug.simulateActivity', false)) {
+    // Dynamic import: keeps the dev-only simulator out of the
+    // production bundle entirely when the flag is off (esbuild emits
+    // a separate chunk and only fetches it on activation if the
+    // setting is enabled).
+    const { generateBatch, generateOne } = await import('./views/activity/simulateActivity.js');
     activityFeedProvider.pushEntries(generateBatch(500));
     const simTimer = setInterval(() => {
       activityFeedProvider.pushEntry(generateOne());
