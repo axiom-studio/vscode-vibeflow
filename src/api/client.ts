@@ -434,7 +434,7 @@ export class VibeFlowClient {
   async getWorkItemLogs(
     type: 'todo' | 'issue',
     id: number,
-  ): Promise<{ id?: number; content: string; message_type?: string; created_at: string }[]> {
+  ): Promise<{ id?: number; content: string; message_type?: string; created_at: string; source?: string }[]> {
     try {
       const data = await this.request<{ logs: string }>(
         `/rest/v1/vibeflow/${type}s/${id}/logs`,
@@ -579,23 +579,34 @@ export class VibeFlowClient {
 }
 
 /**
- * Parse the concatenated log string returned by the server into individual entries.
- * Server format: "*[timestamp | session-id]*\n\nlog content\n\n*[next entry]*..."
+ * Parse the concatenated log string returned by the server into individual
+ * entries. Backend writers in axiomcloud/mcp/vibeflow_tools.go emit one of:
+ *   *[timestamp | session-id]*    — normal agent log (annotateLogEntry)
+ *   *[timestamp | security_review]* — pseudo-source for security rejections
+ *   *[timestamp]*                  — bare timestamp (no source field)
+ *
+ * The parser captures both the timestamp (group 1) and the optional source
+ * field (group 2) so callers can attribute each entry to a specific session
+ * or pseudo-source. Without per-entry source, the Activity Feed cannot color-
+ * code by persona because a work item's `claimed_by` may not match the
+ * session that wrote a given log line (multi-persona workflows).
  */
-function parseLogString(raw: string): { id?: number; content: string; message_type?: string; created_at: string }[] {
+function parseLogString(raw: string): { id?: number; content: string; message_type?: string; created_at: string; source?: string }[] {
   if (!raw.trim()) { return []; }
 
-  const entries: { content: string; created_at: string; message_type?: string }[] = [];
-  // Split on the timestamp marker pattern
-  const parts = raw.split(/\n*\*\[([^|]+)\s*\|\s*[^\]]+\]\*\n+/);
+  const entries: { content: string; created_at: string; message_type?: string; source?: string }[] = [];
+  // Split on the marker pattern; the source field is optional. Capture
+  // groups: [1] timestamp, [2] source (undefined for bare-timestamp form).
+  const parts = raw.split(/\n*\*\[([^|\]]+?)(?:\s*\|\s*([^\]]+?))?\]\*\n+/);
 
-  // parts is interleaved: [pre-text, timestamp1, content1, timestamp2, content2, ...]
-  // Skip parts[0] if it's empty (text before first marker)
+  // parts is interleaved: [pre, ts1, src1, content1, ts2, src2, content2, ...]
+  // Skip parts[0] if it's empty (text before first marker).
   let i = parts[0].trim() ? 0 : 1;
 
-  while (i < parts.length - 1) {
+  while (i < parts.length - 2) {
     const timestamp = parts[i]?.trim();
-    const content = parts[i + 1]?.trim();
+    const source = parts[i + 1]?.trim() || undefined;
+    const content = parts[i + 2]?.trim();
     if (timestamp && content) {
       // Detect message type from emoji prefix
       let messageType = 'action';
@@ -610,9 +621,10 @@ function parseLogString(raw: string): { id?: number; content: string; message_ty
         created_at: timestamp,
         content,
         message_type: messageType,
+        source,
       });
     }
-    i += 2;
+    i += 3;
   }
 
   return entries;
