@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
-import { assertNever, type ActivityFeedClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type ActivityFeedClientMessage, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -11,6 +11,11 @@ import { assertNever, type ActivityFeedClientMessage } from '../../core/webviewM
 export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private pendingEntries: ActivityEntry[] = [];
+  /**
+   * Latest progress payload buffered for delivery on `ready`. Replaced (not
+   * appended) so a late-arriving webview only ever sees the freshest snapshot.
+   */
+  private pendingProgress: ProgressIndicatorPayload | null = null;
   settingsHandler: ((message: unknown) => void) | undefined;
 
   constructor(
@@ -40,6 +45,10 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
           if (this.pendingEntries.length > 0) {
             this.postMessage({ type: 'activityEntries', payload: this.pendingEntries });
             this.pendingEntries = [];
+          }
+          if (this.pendingProgress) {
+            this.postMessage({ type: 'progressIndicator', payload: this.pendingProgress });
+            this.pendingProgress = null;
           }
           break;
         case 'respondToPrompt':
@@ -89,6 +98,20 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'activityEntries', payload: entries });
     } else {
       this.pendingEntries.push(...entries);
+    }
+  }
+
+  /**
+   * Update the progress indicator pinned above the feed. Pass `null` to
+   * clear it (no active work item with structured progress). Called by
+   * ActivityPoller after each cycle so the UI tracks whichever item just
+   * published progress most recently.
+   */
+  pushProgress(payload: ProgressIndicatorPayload | null): void {
+    if (this.view) {
+      this.postMessage({ type: 'progressIndicator', payload });
+    } else {
+      this.pendingProgress = payload;
     }
   }
 
