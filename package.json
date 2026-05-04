@@ -196,6 +196,11 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "vibeflow.clearActivityFeed",
+        "title": "VibeFlow: Clear Activity Feed",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "vibeflow.openSettings",
         "title": "VibeFlow: Settings",
         "icon": {
@@ -321,6 +326,16 @@
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.documents",
           "group": "navigation@2"
+        },
+        {
+          "command": "vibeflow.clearActivityFeed",
+          "when": "view == vibeflow.activityFeed",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.openSettings",
+          "when": "view == vibeflow.activityFeed",
+          "group": "navigation@99"
         }
       ]
     },
