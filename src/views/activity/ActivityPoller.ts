@@ -125,7 +125,12 @@ export class ActivityPoller {
   private entryCounter = 0;
   /** Per work item, the count of log entries we've already processed. */
   private lastLogLengths = new Map<string, number>();
-  /** session_id → persona_key, refreshed each poll cycle. */
+  /**
+   * session_id → persona_key. Accumulated across poll cycles — once we know
+   * a session's persona, that mapping is immutable, so we keep it even after
+   * the session ends. Otherwise log entries written by an ended session
+   * would lose their persona attribution mid-task.
+   */
   private sessionPersonaMap = new Map<string, string>();
 
   constructor(
@@ -198,8 +203,9 @@ export class ActivityPoller {
       return;
     }
 
-    // Refresh session_id → persona map.
-    this.sessionPersonaMap.clear();
+    // Merge into the session_id → persona map. Don't clear: a session that
+    // dropped off the active list still owns logs it already wrote, and the
+    // mapping is immutable for the lifetime of that session.
     for (const s of sessions) {
       if (s.session_id && s.persona_key) {
         this.sessionPersonaMap.set(s.session_id, s.persona_key);
@@ -269,7 +275,7 @@ export class ActivityPoller {
     claimedBy: string | undefined,
     workspaceRoot: string | undefined,
   ): Promise<void> {
-    let logs: { id?: number; content: string; message_type?: string; created_at: string }[];
+    let logs: { id?: number; content: string; message_type?: string; created_at: string; source?: string }[];
     try {
       logs = await this.client.getWorkItemLogs(type, id);
     } catch {
@@ -283,10 +289,11 @@ export class ActivityPoller {
 
     if (newLogs.length === 0) { return; }
 
-    // Resolve the persona that owns this work item. claimedBy is a session_id;
-    // map it via the snapshot we built in pollSessions.
-    const personaKey = (claimedBy && this.sessionPersonaMap.get(claimedBy)) || 'developer';
-    const personaName = personaDisplayName(personaKey);
+    // The work item's claimed_by is a final fallback. Each log entry carries
+    // its own session_id (or pseudo-source) so a single work item can show
+    // entries from multiple personas correctly — e.g. an architect plans,
+    // hands off to a developer, then security_review rejects.
+    const fallbackPersona = (claimedBy && this.sessionPersonaMap.get(claimedBy)) || 'developer';
 
     // Aggregate file mentions across this batch so we issue one
     // decoration event for the whole work item rather than per log line.
@@ -299,6 +306,8 @@ export class ActivityPoller {
 
       const logType = log.message_type ?? '';
       const messageType = LOG_TYPE_MAP[logType] ?? detectMessageType(log.content);
+      const personaKey = this.resolvePersonaForLog(log.source, fallbackPersona);
+      const personaName = personaDisplayName(personaKey);
 
       this.feedProvider.pushEntry({
         id: eventId,
@@ -332,6 +341,25 @@ export class ActivityPoller {
     if (activeFiles.length > 0 && this.fileDecorations) {
       this.fileDecorations.markActiveBatch(activeFiles);
     }
+  }
+
+  /**
+   * Map a log entry's source field to a persona_key.
+   *
+   * Source can be:
+   *   - a session_id ("session-..."): look up via sessionPersonaMap
+   *   - a pseudo-source token ("security_review"): map to the persona that
+   *     emits it (axiomcloud only emits one such token today, for security
+   *     rejections written by security_lead)
+   *   - undefined: fall back to the work item's claimed_by persona
+   */
+  private resolvePersonaForLog(source: string | undefined, fallback: string): string {
+    if (!source) { return fallback; }
+    if (source.startsWith('session-')) {
+      return this.sessionPersonaMap.get(source) ?? fallback;
+    }
+    if (source === 'security_review') { return 'security_lead'; }
+    return fallback;
   }
 
   private truncate(content: string): string {
