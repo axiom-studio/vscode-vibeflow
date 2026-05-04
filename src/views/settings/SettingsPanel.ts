@@ -4,7 +4,7 @@ import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
-import { assertNever, type SettingsClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -82,10 +82,15 @@ export class SettingsPanel {
 </body>
 </html>`;
 
+    /** Typed wrapper so a future drift in SettingsHostMessage fails the compile. */
+    const postToWebview = (msg: SettingsHostMessage) => {
+      panel.webview.postMessage(msg);
+    };
+
     /** Push a fresh settings snapshot to the webview. */
     const pushSettings = async () => {
       const payload = await buildSettingsPayload(deps);
-      panel.webview.postMessage({ type: 'settingsData', payload });
+      postToWebview({ type: 'settingsData', payload });
     };
 
     // Handle messages from the settings webview
@@ -142,10 +147,10 @@ export class SettingsPanel {
           const url = msg.payload;
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
+            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {
-            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
+            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
             vscode.window.showWarningMessage('VibeFlow: Server unreachable');
           }
           break;
@@ -157,12 +162,12 @@ export class SettingsPanel {
           }
           try {
             const projects = await deps.client.listProjects();
-            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: true } });
+            postToWebview({ type: 'validationResult', payload: { field: 'apiKey', valid: true } });
             vscode.window.showInformationMessage(`VibeFlow: API key valid — found ${projects.length} project(s)`);
             await pushSettings();
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            panel.webview.postMessage({ type: 'validationResult', payload: { field: 'apiKey', valid: false, message: errMsg } });
+            postToWebview({ type: 'validationResult', payload: { field: 'apiKey', valid: false, message: errMsg } });
             vscode.window.showWarningMessage(`VibeFlow: API key invalid — ${errMsg}`);
           }
           break;

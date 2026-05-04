@@ -15,7 +15,7 @@ import type {
 import { qaVerify, qaReject, securityApprove, securityReject } from '../../commands/governanceCommands.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
-import { assertNever, type WorkItemPanelClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type WorkItemPanelClientMessage, type WorkItemPanelHostMessage } from '../../core/webviewMessages.js';
 
 interface WorkItemInfo {
   type: 'todo' | 'issue';
@@ -237,7 +237,12 @@ export class WorkItemPanelManager implements vscode.Disposable {
       qa_review: qaRes.status === 'fulfilled' ? qaRes.value : undefined,
     };
 
-    panel.webview.postMessage({ type: 'snapshot', payload: snapshot });
+    this.postToWebview(panel, { type: 'snapshot', payload: snapshot });
+  }
+
+  /** Typed wrapper so a future drift in WorkItemPanelHostMessage fails the compile. */
+  private postToWebview(panel: vscode.WebviewPanel, msg: WorkItemPanelHostMessage): void {
+    panel.webview.postMessage(msg);
   }
 
   /**
