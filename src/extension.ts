@@ -479,6 +479,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onProjectSwitched: connectToProject,
       });
     }),
+    vscode.commands.registerCommand('vibeflow.clearActivityFeed', () => {
+      activityFeedProvider.clearFeed();
+    }),
     vscode.commands.registerCommand('vibeflow.openDashboard', () => {
       const project = detector.getCachedProject();
       if (!project) {
