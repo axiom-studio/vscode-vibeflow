@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
+import type { KanbanClientMessage, KanbanHostMessage } from '../../../src/core/webviewMessages';
 
-const vscode = getVsCodeApi();
+const vscode = getVsCodeApi() as { postMessage: (msg: KanbanClientMessage) => void };
 
 interface KanbanCard {
   type: 'todo' | 'issue';
@@ -78,18 +79,22 @@ export function KanbanView() {
     vscode.postMessage({ type: 'kanbanLoad' });
   }, []);
 
-  // Inbound: kanbanData / kanbanError from host.
+  // Inbound: kanbanData / kanbanError from host. The host's payload type
+  // is `unknown` (the wire shape lives in src/views/kanban/KanbanPanel.ts);
+  // we narrow at the field level because that boundary is where the
+  // unsafe cast belongs — not throughout the React tree below.
   useEffect(() => {
-    function handleMessage(event: MessageEvent) {
+    function handleMessage(event: MessageEvent<KanbanHostMessage>) {
       const msg = event.data;
       if (msg?.type === 'kanbanData' && msg.payload) {
+        const data = msg.payload as { projectName?: string; cards?: KanbanCard[] };
         setState({
-          projectName: msg.payload.projectName ?? '',
-          cards: msg.payload.cards ?? [],
+          projectName: data.projectName ?? '',
+          cards: data.cards ?? [],
           loading: false,
           error: undefined,
         });
-      } else if (msg?.type === 'kanbanError' && msg.payload?.message) {
+      } else if (msg?.type === 'kanbanError') {
         setState(s => ({ ...s, loading: false, error: msg.payload.message }));
       }
     }

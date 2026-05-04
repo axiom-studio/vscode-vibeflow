@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
-import { assertNever, type ActivityFeedClientMessage, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
+import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessage, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -137,7 +137,7 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private postMessage(message: unknown): void {
+  private postMessage(message: ActivityFeedHostMessage): void {
     this.view?.webview.postMessage(message);
   }
 

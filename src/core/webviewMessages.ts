@@ -131,7 +131,8 @@ export type KanbanClientMessage =
 // ============================================================
 
 export type DashboardHostMessage =
-  | { type: 'dashboardSnapshot'; payload: unknown };
+  | { type: 'dashboardData'; payload: unknown }
+  | { type: 'dashboardError'; payload: { message: string } };
 
 export type DashboardClientMessage =
   | { type: 'dashboardLoad' }
@@ -150,8 +151,8 @@ export type CommentsHostMessage =
   | { type: 'commentError'; payload: { message: string } };
 
 export type CommentsClientMessage =
-  | { type: 'listComments'; entityType: string; entityId: number }
-  | { type: 'createComment'; entityType: string; entityId: number; projectId: number; sectionHeading: string; content: string }
+  | { type: 'listComments'; entityType: 'document' | 'context'; entityId: number }
+  | { type: 'createComment'; entityType: 'document' | 'context'; entityId: number; projectId: number; sectionHeading: string; content: string }
   | { type: 'deleteComment'; commentId: number }
   | { type: 'commentsSaveAndNotify'; payload: unknown };
 

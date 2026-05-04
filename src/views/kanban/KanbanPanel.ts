@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/types.js';
-import { assertNever, type KanbanClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type KanbanClientMessage, type KanbanHostMessage } from '../../core/webviewMessages.js';
 
 /**
  * Five logical kanban columns mapped to the eight backend statuses.
@@ -174,7 +174,7 @@ export class KanbanPanel {
     try {
       const swimlane = await this.client.getSwimlane();
       const cards = flattenForProject(swimlane, this.projectId);
-      this.panel.webview.postMessage({
+      this.postToWebview({
         type: 'kanbanData',
         payload: {
           projectId: this.projectId,
@@ -183,11 +183,16 @@ export class KanbanPanel {
         },
       });
     } catch (err) {
-      this.panel.webview.postMessage({
+      this.postToWebview({
         type: 'kanbanError',
         payload: { message: err instanceof Error ? err.message : String(err) },
       });
     }
+  }
+
+  /** Typed wrapper so host/webview union drift fails the compile. */
+  private postToWebview(msg: KanbanHostMessage): void {
+    this.panel.webview.postMessage(msg);
   }
 
   private startPolling(): void {

@@ -10,7 +10,7 @@ import type {
 } from '../../api/types.js';
 import type { DetectedProject } from '../../project/ProjectDetector.js';
 import type { TerminalRegistry } from '../../sessions/TerminalRegistry.js';
-import { assertNever, type DashboardClientMessage } from '../../core/webviewMessages.js';
+import { assertNever, type DashboardClientMessage, type DashboardHostMessage } from '../../core/webviewMessages.js';
 
 /** Persona keys that drive the topology nodes. */
 export const DASHBOARD_PERSONAS = [
@@ -135,13 +135,18 @@ export class DashboardPanel {
   private async sendSnapshot(): Promise<void> {
     try {
       const snapshot = await composeSnapshot(this.client, this.project);
-      this.panel.webview.postMessage({ type: 'dashboardData', payload: snapshot });
+      this.postToWebview({ type: 'dashboardData', payload: snapshot });
     } catch (err) {
-      this.panel.webview.postMessage({
+      this.postToWebview({
         type: 'dashboardError',
         payload: { message: err instanceof Error ? err.message : String(err) },
       });
     }
+  }
+
+  /** Typed wrapper so a future drift between host and webview unions fails the compile. */
+  private postToWebview(msg: DashboardHostMessage): void {
+    this.panel.webview.postMessage(msg);
   }
 
   private startPolling(): void {

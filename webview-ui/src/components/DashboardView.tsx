@@ -7,8 +7,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
+import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
 
-const vscode = getVsCodeApi();
+const vscode = getVsCodeApi() as { postMessage: (msg: DashboardClientMessage) => void };
 
 type PersonaStatus = 'active' | 'stale' | 'inactive';
 
@@ -108,11 +109,11 @@ export function DashboardView() {
   }, []);
 
   useEffect(() => {
-    function onMessage(event: MessageEvent) {
+    function onMessage(event: MessageEvent<DashboardHostMessage>) {
       const msg = event.data;
       if (msg?.type === 'dashboardData' && msg.payload) {
         setState({ snapshot: msg.payload as DashboardSnapshot, loading: false, error: undefined });
-      } else if (msg?.type === 'dashboardError' && msg.payload?.message) {
+      } else if (msg?.type === 'dashboardError') {
         setState(s => ({ ...s, loading: false, error: msg.payload.message }));
       }
     }
