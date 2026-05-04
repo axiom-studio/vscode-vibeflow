@@ -12,7 +12,23 @@
  * a message from another panel's protocol.
  */
 
-import type { ActivityEntry, VibeFlowComment } from '../api/types.js';
+import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot } from '../api/types.js';
+
+/**
+ * Progress payload pushed to the Activity Feed when an agent publishes a
+ * structured progress field via publish_todo_log / publish_issue_log. This
+ * replaces the old "Pinned Plan" pattern of scraping log text — agents
+ * publish structured progress per the wire shape, and we render it
+ * directly. `null` clears the indicator.
+ */
+export interface ProgressIndicatorPayload {
+  personaName: string;
+  personaKey: string;
+  workItemType: 'todo' | 'issue';
+  workItemId: number;
+  workItemTitle: string;
+  progress: VibeFlowProgressSnapshot;
+}
 
 // ============================================================
 // Activity Feed
@@ -24,6 +40,7 @@ export type ActivityFeedHostMessage =
   | { type: 'clearActivity' }
   | { type: 'showSettings' }
   | { type: 'showActivity' }
+  | { type: 'progressIndicator'; payload: ProgressIndicatorPayload | null }
   | { type: 'settingsData'; payload: unknown }
   | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
 

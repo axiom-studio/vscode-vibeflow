@@ -3,30 +3,27 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import type { ActivityEntry } from '../types';
 import { useMessages, applyEntries } from '../hooks/useMessages';
 import { ActivityItem } from './ActivityItem';
-import { PinnedPlan, parsePlanFromLog, type PlanStep } from './PinnedPlan';
+import { PinnedPlan, type PinnedProgressData } from './PinnedPlan';
 
 export function ActivityFeed() {
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
   const [atBottom, setAtBottom] = useState(true);
-  const [planSteps, setPlanSteps] = useState<PlanStep[]>([]);
-  const [planPersona, setPlanPersona] = useState<string>('');
+  const [progress, setProgress] = useState<PinnedProgressData | null>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
 
-  // Extract plan from the latest summary entry whenever entries change
+  // Subscribe to host-pushed progress snapshots. Replaces the previous
+  // approach of scraping plan steps from log text — the backend already
+  // stamps structured progress on each todo/issue and the host poller
+  // forwards the freshest one each cycle.
   useEffect(() => {
-    // Find the most recent summary or plan entry
-    for (let i = entries.length - 1; i >= 0; i--) {
-      const entry = entries[i];
-      if (entry.messageType === 'summary' && entry.content.includes('PLAN')) {
-        const steps = parsePlanFromLog(entry.content);
-        if (steps.length > 0) {
-          setPlanSteps(steps);
-          setPlanPersona(entry.personaName);
-          break;
-        }
+    function handleMessage(event: MessageEvent<{ type: string; payload: PinnedProgressData | null }>) {
+      if (event.data?.type === 'progressIndicator') {
+        setProgress(event.data.payload ?? null);
       }
     }
-  }, [entries]);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   const handleEntries = useCallback((incoming: ActivityEntry[], replace?: boolean) => {
     setEntries(prev => applyEntries(prev, incoming, replace ?? false));
@@ -58,8 +55,8 @@ export function ActivityFeed() {
 
   return (
     <div className="relative h-screen flex flex-col">
-      {/* Pinned Plan — doesn't scroll with the feed */}
-      <PinnedPlan personaName={planPersona} steps={planSteps} />
+      {/* Progress indicator — doesn't scroll with the feed */}
+      <PinnedPlan data={progress} />
 
       {/* Scrolling activity feed */}
       <div className="relative flex-1">

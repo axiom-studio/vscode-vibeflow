@@ -2,11 +2,12 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { ActivityEntry, VibeFlowSession } from '../../api/types.js';
+import type { ActivityEntry, VibeFlowIssue, VibeFlowSession, VibeFlowTodo } from '../../api/types.js';
 import type { ActivityFeedProvider } from './ActivityFeedProvider.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import type { AgentFileDecorationProvider, FileAction } from '../decorations/AgentFileDecorationProvider.js';
 import { personaDisplayName } from '../../sessions/personas.js';
+import type { ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 
 const LOG_TYPE_MAP: Record<string, ActivityEntry['messageType']> = {
   thinking: 'thinking',
@@ -240,11 +241,39 @@ export class ActivityPoller {
   private async pollWorkItemLogs(): Promise<void> {
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
+    // Track the freshest structured-progress snapshot across all active
+    // work items this cycle. We push the newest one (by last_progress_at)
+    // so the pinned indicator follows whichever agent moved most recently.
+    let freshestProgress: ProgressIndicatorPayload | undefined;
+    const considerProgress = (
+      type: 'todo' | 'issue',
+      item: VibeFlowTodo | VibeFlowIssue,
+    ): void => {
+      if (!item.progress?.last_progress_at) { return; }
+      if (
+        freshestProgress
+        && freshestProgress.progress.last_progress_at >= item.progress.last_progress_at
+      ) {
+        return;
+      }
+      const personaKey =
+        (item.claimed_by && this.sessionPersonaMap.get(item.claimed_by)) || 'developer';
+      freshestProgress = {
+        personaName: personaDisplayName(personaKey),
+        personaKey,
+        workItemType: type,
+        workItemId: item.id,
+        workItemTitle: item.title,
+        progress: item.progress,
+      };
+    };
+
     try {
       // Implementing issues
       const issues = await this.client.listIssues(this.projectId);
       const activeIssues = issues.filter(i => i.status === 'implementing');
       for (const issue of activeIssues) {
+        considerProgress('issue', issue);
         await this.fetchAndPushLogs('issue', issue.id, issue.claimed_by, workspaceRoot);
       }
 
@@ -258,6 +287,7 @@ export class ActivityPoller {
           const todos = await this.client.listTodos(feature.id);
           const activeTodos = todos.filter(t => t.status === 'implementing');
           for (const todo of activeTodos) {
+            considerProgress('todo', todo);
             await this.fetchAndPushLogs('todo', todo.id, todo.claimed_by, workspaceRoot);
           }
         } catch {
@@ -267,6 +297,10 @@ export class ActivityPoller {
     } catch {
       // Silent
     }
+
+    // Push (or clear) the indicator. Sending null when no active item has
+    // progress lets the UI hide the widget rather than render stale state.
+    this.feedProvider.pushProgress(freshestProgress ?? null);
   }
 
   private async fetchAndPushLogs(

@@ -120,6 +120,27 @@ export interface VibeFlowFeature {
   description?: string;
 }
 
+/**
+ * Structured progress snapshot embedded on todo/issue rows. Wire shape:
+ *   axiomcloud/database/vibeflow_models.go ProgressSnapshot (line 759).
+ *
+ * Pointer-typed fields on the backend mean unsupplied values arrive as
+ * undefined here; only `last_progress_at` is always present when the
+ * snapshot itself is emitted. Written by `publish_todo_log` /
+ * `publish_issue_log` when the agent passes any of: progress_pct,
+ * milestone_name, milestone_index, milestone_total, eta_seconds,
+ * current_action — or sets message_type='progress'.
+ */
+export interface VibeFlowProgressSnapshot {
+  progress_pct?: number;
+  milestone_name?: string;
+  milestone_index?: number;
+  milestone_total?: number;
+  eta_seconds?: number;
+  current_action?: string;
+  last_progress_at: string;
+}
+
 export interface VibeFlowTodo {
   id: number;
   title: string;
@@ -136,6 +157,7 @@ export interface VibeFlowTodo {
   qa_verified?: boolean;
   security_reviewed?: boolean;
   compliance_tags?: VibeFlowComplianceTag[];
+  progress?: VibeFlowProgressSnapshot;
 }
 
 export interface VibeFlowIssue {
@@ -155,6 +177,7 @@ export interface VibeFlowIssue {
   qa_verified?: boolean;
   security_reviewed?: boolean;
   compliance_tags?: VibeFlowComplianceTag[];
+  progress?: VibeFlowProgressSnapshot;
 }
 
 export interface VibeFlowDocument {
