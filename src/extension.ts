@@ -18,6 +18,7 @@ import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
+import { createDocument } from './commands/documentCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
 import { manageWorktrees } from './commands/worktreeCommands.js';
@@ -389,6 +390,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.createDocument', () => {
+      createDocument(client, detector, documentsProvider);
     }),
     vscode.commands.registerCommand('vibeflow.openWorkItemPanel', (
       arg1: string | TreeNodeArg,
