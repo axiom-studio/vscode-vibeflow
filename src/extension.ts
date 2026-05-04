@@ -471,6 +471,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         authService,
         client,
         detector,
+        stickyModels,
         onProjectSwitched: connectToProject,
       });
     }),

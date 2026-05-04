@@ -3,6 +3,7 @@ import { getNonce } from '../../utils/nonce.js';
 import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
+import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage } from '../../core/webviewMessages.js';
 
 /**
@@ -15,6 +16,8 @@ export interface SettingsPanelDeps {
   authService?: AuthService;
   client?: VibeFlowClient;
   detector?: ProjectDetector;
+  /** Per-persona sticky model store; the Models tab reads/writes through this. */
+  stickyModels?: StickyModels;
   /**
    * Callback invoked after the user picks a different project from the
    * Settings dropdown. extension.ts wires this to its connectToProject
@@ -204,6 +207,22 @@ export class SettingsPanel {
           }
           break;
         }
+        case 'updateStickyModel':
+          if (!deps.stickyModels) {
+            vscode.window.showWarningMessage('VibeFlow: model preferences are not initialized');
+            break;
+          }
+          await deps.stickyModels.setModel(msg.payload.persona, msg.payload.model);
+          await pushSettings();
+          break;
+        case 'resetStickyModel':
+          if (!deps.stickyModels) {
+            vscode.window.showWarningMessage('VibeFlow: model preferences are not initialized');
+            break;
+          }
+          await deps.stickyModels.resetToDefault(msg.payload.persona);
+          await pushSettings();
+          break;
         default:
           assertNever(msg);
       }
@@ -270,6 +289,10 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     debugSimulateActivity: config.get('debug.simulateActivity', false),
     debugVerboseLogging: false,
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
+    // Models tab data — empty objects when stickyModels isn't wired
+    // so the tab can still render its empty-state UI.
+    stickyModels: deps.stickyModels?.getAll() ?? {},
+    knownModels: KNOWN_MODELS,
     version: '0.1.0',
   };
 }

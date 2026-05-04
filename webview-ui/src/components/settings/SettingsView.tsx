@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsTypes';
 import { ConnectionTab } from './ConnectionTab';
 import { ProvidersTab } from './ProvidersTab';
+import { ModelsTab } from './ModelsTab';
 import { SessionTab } from './SessionTab';
 import { getVsCodeApi } from '../../vscodeApi';
 
@@ -10,6 +11,7 @@ const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void }
 const TABS = [
   { id: 'connection', label: 'Connection', icon: '🔗' },
   { id: 'providers', label: 'Providers', icon: '🤖' },
+  { id: 'models', label: 'Models', icon: '🧠' },
   { id: 'session', label: 'Session & Advanced', icon: '⚙' },
 ] as const;
 
@@ -146,6 +148,9 @@ export function SettingsView() {
           )}
           {activeTab === 'providers' && (
             <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
+          )}
+          {activeTab === 'models' && (
+            <ModelsTab data={data} onCommand={sendCommand} />
           )}
           {activeTab === 'session' && (
             <SessionTab data={data} onUpdate={updateSetting} />
