@@ -116,6 +116,18 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Clear all activity entries from the feed (UI-only). The poller keeps
+   * its `seenEventIds` set so only NEW events appear after a clear — the
+   * intuitive semantic for a "clear feed" button.
+   */
+  clearFeed(): void {
+    this.pendingEntries = [];
+    if (this.view) {
+      this.postMessage({ type: 'clearActivity' });
+    }
+  }
+
+  /**
    * Toggle the webview to show the Settings panel.
    */
   showSettings(): void {
