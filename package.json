@@ -136,6 +136,11 @@
         "icon": "$(add)"
       },
       {
+        "command": "vibeflow.createDocument",
+        "title": "VibeFlow: Create Document",
+        "icon": "$(new-file)"
+      },
+      {
         "command": "vibeflow.viewSessions",
         "title": "VibeFlow: View Sessions"
       },
@@ -306,6 +311,16 @@
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.workItems",
           "group": "navigation@3"
+        },
+        {
+          "command": "vibeflow.createDocument",
+          "when": "view == vibeflow.documents",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.refresh",
+          "when": "view == vibeflow.documents",
+          "group": "navigation@2"
         }
       ]
     },
