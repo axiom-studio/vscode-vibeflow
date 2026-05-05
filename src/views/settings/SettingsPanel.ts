@@ -195,12 +195,20 @@ export class SettingsPanel {
             }
             // Preserve the workspace's git remote/branch — we're switching
             // the linked project, not the workspace itself.
+            //
+            // gitBranch must come from the live workspace, NOT from the
+            // cached DetectedProject: getCachedProject() always returns
+            // gitBranch: '' because the cache schema (ContextProxy
+            // GlobalStateSchema) doesn't persist the branch. Pre-fix this
+            // path passed '' to connectToProject, which silently kept the
+            // empty-state placeholder showing "main" forever.
             const previous = deps.detector.getCachedProject();
+            const liveBranch = await deps.detector.getGitBranch();
             const detected: DetectedProject = {
               projectId: matched.id,
               projectName: matched.name,
               gitRemoteUrl: matched.git_remote_url ?? previous?.gitRemoteUrl ?? '',
-              gitBranch: previous?.gitBranch ?? '',
+              gitBranch: liveBranch,
             };
             await deps.detector.cacheProject(detected);
             deps.onProjectSwitched?.(detected);
