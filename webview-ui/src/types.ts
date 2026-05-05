@@ -22,16 +22,30 @@ export interface ActivityEntry {
   metadata?: Record<string, unknown>;
 }
 
+// Mirror of FeedState in src/core/webviewMessages.ts. Kept duplicated to
+// avoid cross-project imports; the host is the source of truth and the
+// webview combines this with `entries.length` to render one of the four
+// presentations from Design Spec Doc #224 §"Activity Feed States".
+export type FeedState =
+  | { kind: 'unauthenticated' }
+  | { kind: 'noSessions' }
+  | { kind: 'sessionsActive' }
+  | { kind: 'disconnected' };
+
 // Extension -> Webview
 export type ExtensionMessage =
   | { type: 'activityEntry'; payload: ActivityEntry }
   | { type: 'activityEntries'; payload: ActivityEntry[] }
-  | { type: 'clearActivity'; payload: undefined };
+  | { type: 'clearActivity'; payload: undefined }
+  | { type: 'feedState'; payload: FeedState };
 
 // Webview -> Extension
 export type WebviewMessage =
   | { type: 'respondToPrompt'; payload: { promptId: string; response: string } }
-  | { type: 'ready'; payload: undefined };
+  | { type: 'ready'; payload: undefined }
+  // Empty-state CTA dispatches.
+  | { type: 'runSetup'; payload: undefined }
+  | { type: 'launchSession'; payload: undefined };
 
 // Persona color mapping
 export const PERSONA_COLORS: Record<string, string> = {
