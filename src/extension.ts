@@ -30,6 +30,7 @@ import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecora
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
+import { FeedStateController } from './views/activity/feedStateController.js';
 // simulateActivity is dev-only — imported dynamically so esbuild
 // tree-shakes it out of production bundles when the debug flag is off.
 import { ContextProxy } from './core/ContextProxy.js';
@@ -71,10 +72,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
 
+  // --- Activity Feed empty/connection state controller ---
+  // Centralizes the four facts the empty-state UX depends on (auth,
+  // project, session count, poll health) into one FeedState. Each
+  // observer below pushes its fact into the controller; the controller
+  // emits to the webview only on actual state change.
+  const feedStateController = new FeedStateController(activityFeedProvider);
+  // Re-emit on webview `ready` so a panel revealed after state was
+  // already computed renders the right empty state (instead of the
+  // bare "No activity yet" fallback).
+  activityFeedProvider.onReady = () => feedStateController.flush();
+  // Auth → controller. The pre-existing onDidChangeState handler farther
+  // below disconnects MCP; this one keeps the empty-state UX in sync.
+  context.subscriptions.push(
+    authService.onDidChangeState(state => {
+      feedStateController.setAuth(state === 'authenticated');
+    }),
+  );
+
   // Status-bar work summary follows the trees: each successful
   // poll (which fires onDidChangeTreeData) recomputes the counts.
+  // The same event also drives the Activity Feed empty-state controller
+  // so "No active agent sessions" flips to "Connecting…" the moment a
+  // session appears (or the other way on the next clean poll).
   context.subscriptions.push(
-    sessionsProvider.onDidChangeTreeData(() => refreshWorkSummary()),
+    sessionsProvider.onDidChangeTreeData(() => {
+      refreshWorkSummary();
+      feedStateController.setActiveSessionCount(sessionsProvider.getActiveSessionCount());
+    }),
     workItemsProvider.onDidChangeTreeData(() => refreshWorkSummary()),
   );
 
@@ -131,6 +156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       promptNotifier,
       project.projectId,
       fileDecorationProvider,
+      feedStateController,
     );
     activityPoller.start();
 
@@ -142,6 +168,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Tell the empty-state placeholder which branch we're actually on, so
     // it doesn't keep saying "main" when the user is sitting on feature/foo.
     sessionsProvider.setBranch(project.gitBranch);
+
+    // Project is connected → tell the activity-feed state machine. Initial
+    // session count comes from the cached value (likely 0); the
+    // onDidChangeTreeData subscription below keeps it fresh.
+    feedStateController.setProjectActive(true);
+    feedStateController.setActiveSessionCount(sessionsProvider.getActiveSessionCount());
   }
 
   /**
@@ -166,6 +198,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionStatusBar.updateProject(undefined);
     workSummaryStatusBar.setDisconnected();
     branchReviewStatusBar.stop();
+    // Flip the activity feed to its unauthenticated empty state. Auth
+    // state alone may still be 'authenticated' here (logout path fires
+    // its own auth event), but a no-project state is functionally the
+    // same: nothing to show, route the user to setup.
+    feedStateController.setProjectActive(false);
+    feedStateController.setActiveSessionCount(0);
     // TreeViews will show placeholder/empty state on next refresh
   }
 

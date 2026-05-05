@@ -30,6 +30,24 @@ export interface ProgressIndicatorPayload {
   progress: VibeFlowProgressSnapshot;
 }
 
+/**
+ * Resolved empty/connection state for the Activity Feed. The host derives
+ * this from auth state, project selection, active session count, and poll
+ * health (see FeedStateController) and the webview combines it with
+ * `entries.length` to pick between four spec'd presentations from
+ * Design Spec Doc #224 §"Activity Feed States":
+ *   - unauthenticated → "Connect to VibeFlow…" CTA
+ *   - noSessions      → "No active agent sessions" CTA
+ *   - sessionsActive  → spinner if no entries yet, otherwise the live feed
+ *   - disconnected    → top banner "Connection lost. Retrying…" overlaying
+ *                       whatever else is rendered (entries persist underneath)
+ */
+export type FeedState =
+  | { kind: 'unauthenticated' }
+  | { kind: 'noSessions' }
+  | { kind: 'sessionsActive' }
+  | { kind: 'disconnected' };
+
 // ============================================================
 // Activity Feed
 // ============================================================
@@ -41,6 +59,7 @@ export type ActivityFeedHostMessage =
   | { type: 'showSettings' }
   | { type: 'showActivity' }
   | { type: 'progressIndicator'; payload: ProgressIndicatorPayload | null }
+  | { type: 'feedState'; payload: FeedState }
   | { type: 'settingsData'; payload: unknown }
   | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
 
@@ -48,6 +67,11 @@ export type ActivityFeedClientMessage =
   | { type: 'ready' }
   | { type: 'closeSettings' }
   | { type: 'respondToPrompt'; payload: { promptId: string } }
+  // Empty-state CTA buttons. The webview dispatches these instead of the
+  // host registering a per-button command — keeps the React side stateless
+  // and routes through the existing extension command IDs.
+  | { type: 'runSetup' }
+  | { type: 'launchSession' }
   // Settings forwarded through the activity feed when it's the
   // active webview view (see ActivityFeedProvider.settingsHandler).
   | { type: 'getSetting' }
