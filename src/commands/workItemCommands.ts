@@ -241,11 +241,17 @@ export async function changePriority(
   if (!selected) { return; }
 
   try {
-    // Priority update goes through the same status endpoint with priority field
-    // For now, show info — full API integration when REST endpoints are confirmed
+    // PUT /rest/v1/vibeflow/{todos|issues}/{id} with priority in the body
+    // (axiomcloud accepts priority alongside the other editable fields).
+    if (itemType === 'todo') {
+      await client.updateTodo(itemId, { priority: selected.value });
+    } else {
+      await client.updateIssue(itemId, { priority: selected.value });
+    }
     vscode.window.showInformationMessage(`VibeFlow: Priority set to ${selected.value} for ${itemType} #${itemId}`);
     workItemsProvider.refresh();
   } catch (err) {
-    vscode.window.showErrorMessage(`VibeFlow: Failed to change priority — ${err}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: Failed to change priority — ${msg}`);
   }
 }

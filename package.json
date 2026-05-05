@@ -167,6 +167,10 @@
         "title": "VibeFlow: Change Status"
       },
       {
+        "command": "vibeflow.changePriority",
+        "title": "VibeFlow: Change Priority"
+      },
+      {
         "command": "vibeflow.checkBranchStatus",
         "title": "VibeFlow: Check Branch Review Status"
       },
@@ -259,6 +263,11 @@
           "command": "vibeflow.changeStatus",
           "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
           "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.changePriority",
+          "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
+          "group": "navigation@2"
         },
         {
           "command": "vibeflow.qaVerify",

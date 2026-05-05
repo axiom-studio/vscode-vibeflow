@@ -524,3 +524,173 @@ Five-minute end-to-end run that exercises most fixes:
     entries should appear afterward.
 
 If all eleven steps work, every audit item is functionally closed.
+
+---
+
+## Deferred — bundle size / no code-split
+
+**Status:** accepted, revisit at scale
+**Audit text:** *Webview UI is single-bundle, no code-split.
+`webview-ui/vite.config.ts` forces `inlineDynamicImports: true` and one
+chunk for all 5 modes (activity/settings/document/dashboard/kanban).
+Every panel loads the full React Flow + react-virtuoso + remark-gfm +
+highlight.js — that's 811KB confirmed by today's build.*
+
+**Why deferred.** The complaint frames this as a network or activation
+cost, but neither applies:
+
+- **Webviews load from disk, not network.** 257 KB gzip read off SSD
+  is ~5 ms — there is nothing to download.
+- **Activation isn't affected.** Webviews don't load until the user
+  opens a panel, so the bundle has zero impact on
+  `vscode-vibeflow.activationEvents` startup time.
+- **Subsequent opens are free.** Every panel manager sets
+  `retainContextWhenHidden: true`, so each panel pays its first-mount
+  cost once per session.
+
+The user-perceived cost is **first-panel-open**: ~16 ms parse
+(M-series V8) + ~100–200 ms React mount = ~250 ms total. Per-mode
+splitting would shave 100–150 ms off Settings and Kanban — exactly the
+panels users open deliberately, where 100 ms is invisible against the
+mouse-click intent. Dashboard (where 100 ms could matter on a hotkey)
+gets the smallest shrink because `@xyflow/react` is unavoidable there.
+
+**What the bundle contains today:**
+
+| Slice | Size | Used by |
+|---|---|---|
+| `react` + `react-dom` | ~140 KB | every panel |
+| `@xyflow/react` | ~250 KB | Dashboard only |
+| `highlight.js` (~30 langs) | ~150 KB | Document Viewer only |
+| `react-markdown` + `remark-gfm` + `rehype-highlight` | ~80 KB | Activity Feed, Document Viewer |
+| `react-virtuoso` | ~50 KB | Activity Feed only |
+| App code + Tailwind in JS | ~140 KB | every panel |
+
+**Two cheap wins to revisit when this bites:**
+
+1. **Trim `highlight.js` languages.** `rehype-highlight` defaults to
+   ~30 languages via its `common` bundle. Restrict to {bash, ts, tsx,
+   js, jsx, py, go, json, yaml, md}. Saves ~80 KB everywhere. ~30 min.
+2. **Lazy-load `@xyflow/react`.** VS Code webviews have supported
+   `<script type="module">` since 1.71+ and our CSP already permits
+   it. Switch the script tag and do
+   `const { ReactFlow, Background } = await import('@xyflow/react')`
+   inside `DashboardView`. Saves ~250 KB from Settings, Kanban,
+   Activity Feed, and Document Viewer — ~70% of what a full per-mode
+   split would buy. ~30 min.
+
+**Trigger to revisit:** if first-panel-open ever crosses ~500 ms on a
+mid-tier laptop, or if we add a heavier dep (e.g. a charting library
+to Dashboard), do W1 + W2 first. Per-mode splitting only makes sense
+if both fall short.
+
+**What we won't do:** full per-mode entry-point split. N Vite entries,
+N HTML templates, N maintenance surfaces forever. Maintenance cost
+outweighs the benefit at this scale.
+
+---
+
+## Deferred — no shared state library / ExtensionStateContext
+
+**Status:** intentional, not deferred to a date
+**Audit text:** *No state library. Each React component manages its own
+state and message listener; no ExtensionStateContext like Roo-Code.
+Cross-component sync (e.g. comments updated → activity feed reacts) is
+impossible today.*
+
+**Why we don't need it.** The Roo-Code analogy doesn't fit. Roo-Code is
+one webview that owns the entire UI — a context provider lets every
+nested component subscribe. We have **6 separate webviews**, each in
+its own iframe. They cannot share React state directly even with a
+context. Cross-webview reactivity has to flow through the host
+anyway — and we already do that (poller → `feedProvider.pushEntry` →
+Activity Feed), which is the right shape for VS Code's webview model.
+
+Inside any single webview, the components are small and pass props
+top-down (Settings has 8 tabs, all driven by one `data` prop;
+ActivityFeed has Virtuoso + PinnedPlan, fed by one entries array).
+None has grown past the point where a context provider would help.
+
+**When to revisit.** If a single webview grows three+ levels of
+prop-drilling for the same shared shape, or if we adopt Zustand /
+Jotai for unrelated reasons, then sweep this. Until then, props +
+local hooks remain the simpler tool.
+
+---
+
+## API / MCP coverage holes
+
+**Status:** triaged
+**Audit text:** *PRD claims "100% MCP tool coverage". Today's client.ts
+exposes ~26 tools.*
+
+**Reality check first.** Today's `client.ts` exposes **44 methods**, not
+26 (count: `grep -c "async [a-zA-Z]*(" src/api/client.ts`). The
+"100% coverage" claim is still overreach — backend has 72 MCP tools —
+but the gap is smaller than the audit suggests.
+
+**Triaged below into three buckets.** The principle: a client method
+costs nothing to maintain, but only matters if some UI calls it. We
+wire when there's an obvious user surface; we leave the rest.
+
+### Wire now (have natural UI homes)
+
+| Tool | Status | Why |
+|---|---|---|
+| Priority update on todos/issues | **fixed in this change** | `changePriority` previously returned "coming soon"; now POSTs through existing `updateTodo`/`updateIssue`. Wired into a `vibeflow.changePriority` command + work-item right-click menu. |
+
+The other "wire now" candidates and their gating UI:
+
+- `update_feature_status` — needs Feature detail surface; not yet present
+- `archive_project` / `unarchive_project` — could add to command palette + Settings, but no user has asked for project-level archival
+- `acknowledge_prompt` — useful as one-tap dismiss for stale prompts, but the existing `respond` flow already clears them. Marginal win.
+
+### Wire when there's a UI for it
+
+These tools work but no current panel has a place to invoke them. Each
+is a small client method + ~20 lines of UI when needed.
+
+- `update_document` / `delete_document` — Documents tree currently
+  read-only after create. Add when we add a Document detail panel.
+- `create_security_review_link` — security_lead workflow surface
+  doesn't exist in the extension yet.
+- `create_github_pr` / `create_bitbucket_pr` — generic `createPR` covers
+  the user need today; specific routing is a Settings preference.
+- `record_commit` — agent-driven (called by CLI/MCP); would only matter
+  if the extension auto-commits on a user action.
+- `sync/link_github_issue` — workflow nice-to-have.
+- `update_project_status` — narrower surface than feature/work-item;
+  rare.
+- `create/update/list_compliance_finding`, `tag/untag/list_compliance_tags`
+  — all need a Compliance UI we haven't designed.
+- All `create/get/update/list_contexts` — needs a Context tab/tree.
+- `download_asset`, `get_asset`, `update_asset`, `list_assets`,
+  `create_attachment` direct path — `uploadAttachment` +
+  `listAttachments` + `deleteAttachment` already cover the user need
+  via the Attachments tab.
+- `get_feature` — only useful if we add a Feature detail panel.
+
+### Won't expose (server / agent only)
+
+- **`wait_for_work`** — agent-side polling tool. Agents call it from
+  their MCP loop. The IDE's equivalent is `listPendingPrompts` +
+  toast/QuickPick, which is already wired.
+- **`respond_to_prompt`** MCP tool — for the user→agent direction. The
+  extension uses REST `PUT /prompts/{id}/respond` for the agent→user
+  reply path (verified against
+  `axiomcloud/handlers/vibeflow_prompts.go`). The MCP tool is correctly
+  not exposed.
+- **`session_init`, `session_register`, `session_heartbeat`,
+  `clear_session_lock`, `acquire_poll_lock`, `release_poll_lock`** —
+  agent-lifecycle plumbing. Not for the IDE.
+- **`prompt_user`** — agent emits this to ask the human. The IDE
+  receives it via the prompt list, doesn't call it.
+
+### What "100% coverage" should mean
+
+The PRD wording was aspirational. Honest target: **every MCP tool that
+has a sensible UI surface has a client method, and every client method
+has at least one caller.** Today we satisfy that for ~95% of the user-
+facing surface. The remaining 5% (compliance UI, context UI, document
+mutation UI) are gated on building those UIs first — wiring the client
+method without a caller would be dead code.
