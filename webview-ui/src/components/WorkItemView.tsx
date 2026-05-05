@@ -173,7 +173,7 @@ export function WorkItemView() {
 // ============================================================
 
 function DetailsTab({ snapshot }: { snapshot: WorkItemPanelSnapshot | null }) {
-  const description = snapshot?.description?.trim() ?? '';
+  const description = normalizeEscapedMarkdown(snapshot?.description ?? '').trim();
   return (
     <>
       <h2 style={h2Style}>Description</h2>
@@ -445,6 +445,31 @@ const LOG_ICONS: Record<string, string> = {
   diff: '📝',
   test_result: '🧪',
 };
+
+/**
+ * Some descriptions land with literal backslash-escape sequences instead of
+ * actual newline / tab characters — usually because an MCP agent passed an
+ * already-JSON-encoded payload to create_todo / create_issue, so the escape
+ * sequences got stored as text rather than being unescaped at the boundary.
+ * The previous DOM-panel hid the issue (textContent + white-space:pre-wrap
+ * doesn't transform escapes either, so it just looked like a wall of text).
+ * react-markdown actually parses structure, so the literal `\n` becomes
+ * visible as text instead of paragraph breaks.
+ *
+ * Heuristic: only unescape when the string has zero real newlines but does
+ * contain literal `\n`. That avoids corrupting descriptions that legitimately
+ * include the two-character sequence as part of, say, a code example.
+ */
+function normalizeEscapedMarkdown(s: string): string {
+  if (!s) { return s; }
+  if (s.includes('\n')) { return s; }
+  if (!s.includes('\\n') && !s.includes('\\t') && !s.includes('\\r')) { return s; }
+  return s
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t');
+}
 
 function fmtDate(s: string | undefined): string {
   if (!s) { return ''; }
