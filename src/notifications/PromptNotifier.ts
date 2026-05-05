@@ -148,9 +148,16 @@ export class PromptNotifier implements vscode.Disposable {
       prompt: `Reply to ${prompt.personaName}: "${prompt.text}"`,
       placeHolder: 'Type your response...',
       ignoreFocusOut: true,
+      // Backend rejects empty response_text with 400. Block submit at the
+      // input box rather than letting it round-trip — clearer UX and one
+      // fewer toast.
+      validateInput: (value) => value.trim().length === 0
+        ? 'Response cannot be empty — type a reply or press Esc to cancel.'
+        : null,
     });
 
     if (response === undefined) { return; } // Cancelled
+    if (response.trim().length === 0) { return; } // Defensive: shouldn't happen with validateInput
 
     if (!this.respondFn) {
       vscode.window.showErrorMessage('VibeFlow: not connected — cannot send response');
