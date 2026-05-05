@@ -5,8 +5,9 @@ import { MarkdownRenderer } from './components/MarkdownRenderer';
 import { CommentableDocumentViewer } from './components/comments/CommentableDocumentViewer';
 import { DashboardView } from './components/DashboardView';
 import { KanbanView } from './components/KanbanView';
+import { WorkItemView } from './components/WorkItemView';
 
-type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban';
+type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem';
 
 interface DocumentContext {
   content: string;
@@ -30,6 +31,8 @@ export function App() {
       setView('dashboard');
     } else if (initialMode === 'kanban') {
       setView('kanban');
+    } else if (initialMode === 'workitem') {
+      setView('workitem');
     } else if (initialMode === 'document') {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
@@ -69,6 +72,7 @@ export function App() {
   if (view === 'settings') { return <SettingsView />; }
   if (view === 'dashboard') { return <DashboardView />; }
   if (view === 'kanban') { return <KanbanView />; }
+  if (view === 'workitem') { return <WorkItemView />; }
   if (view === 'document' && doc) {
     // Use CommentableDocumentViewer when we have project/entity context
     if (doc.entityId && doc.projectId) {
