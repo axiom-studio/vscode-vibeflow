@@ -42,6 +42,9 @@ interface DashboardSnapshot {
   branch: string;
   generatedAt: string;
   personaStatus: Record<string, PersonaStatus>;
+  // null = no status-driven intake (project_manager tracker, customer input);
+  // numbers are item counts pending action by that persona.
+  personaQueues: Record<string, number | null>;
   sessions: { active: number; stale: number; total: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -127,6 +130,21 @@ const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?
   { id: 'sec-qa',   source: 'security_lead',      target: 'qa_lead' },
 ];
 
+/**
+ * Hover-text shown on each persona's queue badge. Explains *which* statuses
+ * count toward the number so users don't have to cross-reference the docs.
+ * Code agents share one tooltip — the queue is shared across the cluster.
+ */
+const QUEUE_TOOLTIPS: Record<string, string> = {
+  product_manager:    'Items in `in_review` waiting for PM triage.',
+  architect:          'Shared code-agent queue: `planning` + `ready_to_implement` + `architecture_review_complete`. Only one of Architect/Developer/Principal Engineer runs per branch.',
+  developer:          'Shared code-agent queue: `planning` + `ready_to_implement` + `architecture_review_complete`. Only one of Architect/Developer/Principal Engineer runs per branch.',
+  principal_engineer: 'Shared code-agent queue: `planning` + `ready_to_implement` + `architecture_review_complete`. Only one of Architect/Developer/Principal Engineer runs per branch.',
+  security_lead:      'Items in `done` where security_reviewed=false.',
+  qa_lead:            'Items in `done` where security_reviewed=true. Upper bound — swimlane wire shape doesn\'t expose qa_verified yet, so already-verified items are still counted.',
+  ux_designer:        'Items in `needs_ux_input`.',
+};
+
 const STATUS_COLOR: Record<PersonaStatus, string> = {
   active: 'var(--feed-success)',
   stale: 'var(--feed-warning)',
@@ -174,20 +192,30 @@ export function DashboardView() {
   }, [focusPersona]);
 
   const personaStatus = state.snapshot?.personaStatus ?? {};
+  const personaQueues = state.snapshot?.personaQueues ?? {};
   const nodes: Node[] = useMemo(
     () => Object.keys(PERSONA_DISPLAY).map(key => {
       const status = personaStatus[key] ?? 'inactive';
       const isCodeAgent = CODE_AGENT_KEYS.has(key);
+      const queue = personaQueues[key];
       return {
         id: key,
         position: PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
         data: {
-          label: <PersonaNodeLabel name={PERSONA_DISPLAY[key]} status={status} isCodeAgent={isCodeAgent} />,
+          label: (
+            <PersonaNodeLabel
+              name={PERSONA_DISPLAY[key]}
+              status={status}
+              isCodeAgent={isCodeAgent}
+              queue={queue === undefined ? null : queue}
+              queueTooltip={QUEUE_TOOLTIPS[key]}
+            />
+          ),
         },
         style: nodeStyle(status, isCodeAgent),
       };
     }),
-    [personaStatus],
+    [personaStatus, personaQueues],
   );
 
   const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => ({
@@ -255,10 +283,12 @@ export function DashboardView() {
   );
 }
 
-function PersonaNodeLabel({ name, status, isCodeAgent }: {
+function PersonaNodeLabel({ name, status, isCodeAgent, queue, queueTooltip }: {
   name: string;
   status: PersonaStatus;
   isCodeAgent: boolean;
+  queue: number | null;
+  queueTooltip: string | undefined;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -284,6 +314,33 @@ function PersonaNodeLabel({ name, status, isCodeAgent }: {
         title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
         >
           1/branch
+        </span>
+      )}
+      {queueTooltip !== undefined && (
+        // Queue badge: solid when there's pending work, dimmed when empty,
+        // dash when this persona has no status-driven intake at all
+        // (project_manager / customer). Tooltip names the source statuses.
+        <span style={{
+          fontSize: 10,
+          fontWeight: 600,
+          minWidth: 18,
+          padding: '1px 5px',
+          borderRadius: 9,
+          textAlign: 'center',
+          background: queue && queue > 0
+            ? 'var(--vscode-badge-background, #4d4d4d)'
+            : 'transparent',
+          color: queue && queue > 0
+            ? 'var(--vscode-badge-foreground, #fff)'
+            : 'var(--feed-muted)',
+          border: queue && queue > 0
+            ? 'none'
+            : '1px solid var(--feed-border)',
+          flexShrink: 0,
+        }}
+        title={queueTooltip}
+        >
+          {queue === null ? '—' : queue}
         </span>
       )}
     </div>
