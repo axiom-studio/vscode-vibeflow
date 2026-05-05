@@ -234,6 +234,16 @@
         "command": "vibeflow.restartSession",
         "title": "VibeFlow: Restart Session",
         "icon": "$(debug-restart)"
+      },
+      {
+        "command": "vibeflow.deleteSession",
+        "title": "VibeFlow: Delete Session",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vibeflow.copySessionId",
+        "title": "VibeFlow: Copy Session ID",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
@@ -257,6 +267,16 @@
           "command": "vibeflow.openSessionPanel",
           "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
           "group": "session@3"
+        },
+        {
+          "command": "vibeflow.copySessionId",
+          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
+          "group": "session@4"
+        },
+        {
+          "command": "vibeflow.deleteSession",
+          "when": "view == vibeflow.agentFleet && viewItem == inactiveSession",
+          "group": "session_destructive@0"
         },
         {
           "command": "vibeflow.openWorkItemPanel",
