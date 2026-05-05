@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { AuthService } from './auth/AuthService.js';
 import { readCliConfig } from './auth/cliConfig.js';
+import { validateServerUrl } from './auth/serverUrl.js';
 import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
@@ -268,8 +269,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       value: currentUrl,
       title: 'VibeFlow Setup (1/3)',
       ignoreFocusOut: true,
+      // Live HTTPS / scheme validation BEFORE the HEAD probe runs — we
+      // can't let a plaintext URL get persisted because the very next
+      // step attaches the API key as a Bearer token.
+      validateInput: v => {
+        const r = validateServerUrl(v);
+        return r.ok ? null : r.message ?? 'Invalid server URL';
+      },
     });
     if (serverUrl === undefined) { return; }
+
+    // Defense in depth: validateInput rejects bad values before submit,
+    // but a future caller change shouldn't be the only thing standing
+    // between an HTTP URL and a leaked key.
+    const schemeCheck = validateServerUrl(serverUrl);
+    if (!schemeCheck.ok) {
+      vscode.window.showErrorMessage(`VibeFlow: ${schemeCheck.message}`);
+      return;
+    }
 
     if (serverUrl !== currentUrl) {
       await config.update('serverUrl', serverUrl, vscode.ConfigurationTarget.Global);
@@ -771,8 +788,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Step 2: Always sync project from CLI config if present (overrides stale cache)
   if (authService.getState() === 'authenticated' && cliConfig?.defaultProject) {
     if (cliConfig.serverUrl) {
-      const config = vscode.workspace.getConfiguration('vibeflow');
-      await config.update('serverUrl', cliConfig.serverUrl, vscode.ConfigurationTarget.Global);
+      // Reject CLI-imported plaintext URLs with the same rule as the
+      // wizard — a CLI config that happens to point at HTTP would
+      // otherwise auto-import and silently leak the key on the next
+      // poll cycle.
+      const cliCheck = validateServerUrl(cliConfig.serverUrl);
+      if (cliCheck.ok) {
+        const config = vscode.workspace.getConfiguration('vibeflow');
+        await config.update('serverUrl', cliConfig.serverUrl, vscode.ConfigurationTarget.Global);
+      } else {
+        console.warn('[VibeFlow] Rejected CLI serverUrl:', cliCheck.message);
+        vscode.window.showWarningMessage(
+          `VibeFlow: ignored CLI-imported server URL — ${cliCheck.message}`,
+        );
+      }
     }
     const cached = detector.getCachedProject();
     if (!cached || cached.projectName !== cliConfig.defaultProject) {
