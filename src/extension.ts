@@ -359,9 +359,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   async function pickProject(projects: { id: number; name: string }[]): Promise<{ id: number; name: string } | undefined> {
-    const items = [
-      ...projects.map(p => ({ label: p.name, description: `ID: ${p.id}`, project: p as { id: number; name: string } | undefined })),
-      { label: '$(add) Create New Project', description: '', project: undefined as { id: number; name: string } | undefined },
+    // Use `tag` (not `kind`) — `vscode.QuickPickItem.kind` already exists for
+    // separator items, so a `kind` discriminator on our intersected type
+    // would collide and degrade the picked result to `string`.
+    type ProjectPickTag =
+      | { tag: 'project'; project: { id: number; name: string } }
+      | { tag: 'create' }
+      | { tag: 'enter-id' };
+    const items: Array<vscode.QuickPickItem & ProjectPickTag> = [
+      ...projects.map(p => ({
+        tag: 'project' as const,
+        project: p,
+        label: p.name,
+        description: `ID: ${p.id}`,
+      })),
+      { tag: 'create' as const, label: '$(add) Create New Project', description: '' },
+      { tag: 'enter-id' as const, label: '$(search) Enter Project ID', description: 'Select by numeric ID' },
     ];
 
     const picked = await vscode.window.showQuickPick(items, {
@@ -371,8 +384,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     if (!picked) { return undefined; }
 
-    if (picked.project) {
+    if (picked.tag === 'project') {
       return picked.project;
+    }
+
+    if (picked.tag === 'enter-id') {
+      const raw = await vscode.window.showInputBox({
+        prompt: 'Enter VibeFlow project ID',
+        placeHolder: '1234',
+        ignoreFocusOut: true,
+        validateInput: v => /^\d+$/.test(v.trim()) ? null : 'Project ID must be a positive integer',
+      });
+      if (!raw) { return undefined; }
+      const id = parseInt(raw.trim(), 10);
+      // Resolve the name via the already-fetched project list when possible —
+      // saves a round-trip and keeps the connect path identical to the
+      // dropdown branch. Fall back to a labeled placeholder so the user
+      // sees a meaningful project name in the status bar; the next
+      // tryAutoConnect cycle refreshes the cache.
+      const known = projects.find(p => p.id === id);
+      return known ?? { id, name: `Project #${id}` };
     }
 
     // Create new project
