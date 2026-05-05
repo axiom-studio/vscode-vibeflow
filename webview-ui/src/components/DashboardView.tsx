@@ -64,23 +64,37 @@ const PERSONA_DISPLAY: Record<string, string> = {
 };
 
 /**
+ * Code agents share a single "git-modifying" slot per branch — only one of
+ * {Architect, Developer, Principal Engineer} can run on a branch at a time,
+ * enforced by GitModifyingPersonas in axiomcloud/database/vibeflow_models.go
+ * and mirrored in vibeflow-cli/internal/vibeflowcli/tui_wizard.go:codeAgentKeys.
+ * Advisory personas (qa_lead, security_lead, product_manager, etc.) have no
+ * such limit — multiple can run alongside a code agent on the same branch.
+ *
+ * The diagram surfaces this rule two ways:
+ *   1. The three code agents are clustered horizontally between PM and
+ *      Security on the top row, signalling they occupy one shared role.
+ *   2. Each code-agent node carries a `1/branch` badge.
+ */
+const CODE_AGENT_KEYS = new Set(['architect', 'developer', 'principal_engineer']);
+
+/**
  * Topology layout — left-to-right pipeline matching the canonical flow in
  * axiomcloud/docs/VibeFlow/docs/process.md. Top row is the forward path
- * (planning → implement → review). Bottom row holds inputs (customer, UX),
- * the alternative implementer (Principal Engineer, mutually exclusive with
- * Developer+Architect on a branch — see personas.md "Deployment Model"),
- * and the standalone Project Manager observer.
+ * (planning → implement → review) with the code-agent cluster between PM
+ * and Security. Bottom row holds ad-hoc inputs (Customer, UX) and the
+ * standalone Project Manager observer.
  */
 const PERSONA_POSITIONS: Record<string, { x: number; y: number }> = {
-  product_manager:    { x: 80,  y: 50  },
-  architect:          { x: 260, y: 50  },
-  developer:          { x: 440, y: 50  },
-  security_lead:      { x: 620, y: 50  },
-  qa_lead:            { x: 800, y: 50  },
-  customer:           { x: 80,  y: 200 },
-  ux_designer:        { x: 260, y: 200 },
-  principal_engineer: { x: 440, y: 200 },
-  project_manager:    { x: 800, y: 200 },
+  product_manager:    { x: 40,  y: 50  },
+  architect:          { x: 220, y: 50  },
+  developer:          { x: 380, y: 50  },
+  principal_engineer: { x: 540, y: 50  },
+  security_lead:      { x: 720, y: 50  },
+  qa_lead:            { x: 900, y: 50  },
+  customer:           { x: 40,  y: 200 },
+  ux_designer:        { x: 220, y: 200 },
+  project_manager:    { x: 900, y: 200 },
 };
 
 /**
@@ -163,11 +177,14 @@ export function DashboardView() {
   const nodes: Node[] = useMemo(
     () => Object.keys(PERSONA_DISPLAY).map(key => {
       const status = personaStatus[key] ?? 'inactive';
+      const isCodeAgent = CODE_AGENT_KEYS.has(key);
       return {
         id: key,
         position: PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
-        data: { label: <PersonaNodeLabel name={PERSONA_DISPLAY[key]} status={status} /> },
-        style: nodeStyle(status),
+        data: {
+          label: <PersonaNodeLabel name={PERSONA_DISPLAY[key]} status={status} isCodeAgent={isCodeAgent} />,
+        },
+        style: nodeStyle(status, isCodeAgent),
       };
     }),
     [personaStatus],
@@ -200,7 +217,10 @@ export function DashboardView() {
       )}
 
       {/* Topology */}
-      <Section title="Agent Topology" subtitle="Click a persona to focus its terminal">
+      <Section
+        title="Agent Topology"
+        subtitle="Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit."
+      >
         <div style={{ height: 380, width: '100%', borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
           <ReactFlow
             nodes={nodes}
@@ -235,7 +255,11 @@ export function DashboardView() {
   );
 }
 
-function PersonaNodeLabel({ name, status }: { name: string; status: PersonaStatus }) {
+function PersonaNodeLabel({ name, status, isCodeAgent }: {
+  name: string;
+  status: PersonaStatus;
+  isCodeAgent: boolean;
+}) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
       <span style={{
@@ -246,15 +270,33 @@ function PersonaNodeLabel({ name, status }: { name: string; status: PersonaStatu
         flexShrink: 0,
       }} />
       {name}
+      {isCodeAgent && (
+        <span style={{
+          fontSize: 9,
+          fontWeight: 600,
+          letterSpacing: 0.3,
+          padding: '1px 5px',
+          borderRadius: 3,
+          background: 'var(--vscode-charts-orange, #d18616)',
+          color: 'var(--vscode-editor-background)',
+          flexShrink: 0,
+        }}
+        title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
+        >
+          1/branch
+        </span>
+      )}
     </div>
   );
 }
 
-function nodeStyle(status: PersonaStatus): React.CSSProperties {
+function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProperties {
   const color = STATUS_COLOR[status];
   return {
     background: 'var(--vscode-editor-background)',
-    border: `2px solid ${color}`,
+    // Code-agent nodes carry a thicker border to read as a cluster even
+    // when the user can't see the badge color (e.g., colorblind users).
+    border: `${isCodeAgent ? 3 : 2}px solid ${color}`,
     borderRadius: 8,
     padding: '8px 14px',
     fontSize: 12,
