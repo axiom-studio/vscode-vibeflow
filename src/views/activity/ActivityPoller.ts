@@ -284,8 +284,9 @@ export class ActivityPoller {
       );
       for (const feature of activeFeatures) {
         try {
-          const todos = await this.client.listTodos(feature.id);
-          const activeTodos = todos.filter(t => t.status === 'implementing');
+          // Server-side filter so a project with 50 features doesn't
+          // round-trip 50× the entire todo list every poll cycle.
+          const activeTodos = await this.client.listTodos(feature.id, { status: 'implementing' });
           for (const todo of activeTodos) {
             considerProgress('todo', todo);
             await this.fetchAndPushLogs('todo', todo.id, todo.claimed_by, workspaceRoot);
