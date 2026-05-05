@@ -53,6 +53,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- API Client (needs auth) ---
   const client = new VibeFlowClient(authService);
 
+  // The MCP transport captures the bearer token at construction time, so a
+  // token swap (Settings → "Set API Key") would otherwise leave it talking
+  // to the server with the OLD token until the next full logout. Forcing a
+  // disconnect on every auth-state change makes the next callTool() rebuild
+  // the transport with the fresh token. disconnect() is idempotent, so this
+  // is safe even when the state change is the first 'authenticated' event.
+  context.subscriptions.push(
+    authService.onDidChangeState(() => {
+      void client.disconnectMcp();
+    }),
+  );
+
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
@@ -126,6 +138,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionStatusBar.updateProject(project);
     refreshWorkSummary();
     branchReviewStatusBar.start(client, detector);
+
+    // Tell the empty-state placeholder which branch we're actually on, so
+    // it doesn't keep saying "main" when the user is sitting on feature/foo.
+    sessionsProvider.setBranch(project.gitBranch);
   }
 
   /**
@@ -707,12 +723,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // Default provider from settings; user can override at reattach time
       const defaultProvider = vscode.workspace.getConfiguration('vibeflow')
         .get<string>('defaultProvider', 'claude');
-      // Use vibeflow mode by default for reattachment (agent was running before)
+      // The .vibeflow-session-{persona} file only stores the session id, not
+      // the launch mode — so we can't recover the original mode after a
+      // window reload. Default to vanilla (safe: per-action permission
+      // prompts) and let the user opt in to skip-permissions reattach
+      // explicitly via vibeflow.session.reattachMode. Pre-fix this hardcoded
+      // 'vibeflow', which silently upgraded a vanilla agent to YOLO mode.
+      const reattachMode = vscode.workspace.getConfiguration('vibeflow')
+        .get<string>('session.reattachMode', 'vanilla');
       SessionReattacher.promptReattach(
         phantoms,
         terminalRegistry,
         defaultProvider,
-        'vibeflow',
+        reattachMode,
         gitBranch,
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
         serverUrl,
