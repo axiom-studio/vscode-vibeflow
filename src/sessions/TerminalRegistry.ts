@@ -157,6 +157,26 @@ export class TerminalRegistry implements vscode.Disposable {
     }));
   }
 
+  /**
+   * Reveal every registered terminal in the VS Code UI, even ones launched
+   * with hideFromUser: true. Used by the "Show All VibeFlow Terminals"
+   * command — without this, hidden advisory-agent terminals are invisible
+   * because VS Code excludes them from both the dropdown and the Tabs view.
+   *
+   * Returns the count of terminals revealed so the caller can surface a
+   * "0 terminals" hint when nothing's running.
+   */
+  revealAll(): number {
+    let count = 0;
+    for (const entry of this.terminals.values()) {
+      // show(true) = preserveFocus, so we don't yank focus to whichever
+      // terminal happens to be last in the iteration order.
+      entry.terminal.show(true);
+      count++;
+    }
+    return count;
+  }
+
   dispose(): void {
     this.disposeListener.dispose();
     this._onDidChange.dispose();

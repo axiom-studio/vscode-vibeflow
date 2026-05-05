@@ -244,6 +244,11 @@
         "command": "vibeflow.copySessionId",
         "title": "VibeFlow: Copy Session ID",
         "icon": "$(copy)"
+      },
+      {
+        "command": "vibeflow.showAllTerminals",
+        "title": "VibeFlow: Show All Agent Terminals",
+        "icon": "$(eye)"
       }
     ],
     "menus": {
@@ -334,6 +339,11 @@
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.agentFleet",
           "group": "navigation@3"
+        },
+        {
+          "command": "vibeflow.showAllTerminals",
+          "when": "view == vibeflow.agentFleet",
+          "group": "navigation@4"
         },
         {
           "command": "vibeflow.createWorkItem",

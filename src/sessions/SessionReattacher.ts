@@ -147,11 +147,10 @@ function buildReattachCommand(provider: string, sessionMode: string): string {
   };
   const binary = binaries[provider] ?? 'claude';
 
-  if (sessionMode === 'vanilla') { return binary; }
-  if (sessionMode === 'auto' && provider === 'claude') {
-    return `${binary} --enable-auto-mode`;
-  }
-  // vibeflow mode
+  // Two modes only: vanilla (per-action prompts) and vibeflow (YOLO).
+  // Anything else (e.g. legacy 'auto' written by older builds) falls
+  // through to vanilla so we never reattach with an unexpected flag.
+  if (sessionMode !== 'vibeflow') { return binary; }
   if (provider === 'claude') { return `${binary} --dangerously-skip-permissions`; }
   if (provider === 'codex' || provider === 'gemini') { return `${binary} --yolo`; }
   if (provider === 'cursor') { return `${binary} --yolo --approve-mcps`; }
