@@ -432,6 +432,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { void copySessionId(session); }
     }),
+    vscode.commands.registerCommand('vibeflow.showAllTerminals', () => {
+      // Reveal every registered VibeFlow terminal — including ones launched
+      // with hideFromUser:true (advisory agents in hybrid mode). VS Code
+      // has no built-in command to surface hidden terminals, so without
+      // this users can't see/approve a permission prompt blocking
+      // session_init in a hidden advisory terminal.
+      const count = terminalRegistry.revealAll();
+      if (count === 0) {
+        vscode.window.showInformationMessage('VibeFlow: no agent terminals running.');
+      } else {
+        vscode.window.showInformationMessage(`VibeFlow: revealed ${count} terminal${count === 1 ? '' : 's'}.`);
+      }
+    }),
     vscode.commands.registerCommand('vibeflow.openSessionPanel', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
