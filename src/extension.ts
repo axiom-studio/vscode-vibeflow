@@ -18,7 +18,7 @@ import { launchSession, killSession, restartSession, focusTerminal } from './com
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { StickyModels } from './sessions/stickyModels.js';
-import { createWorkItem, changeStatus } from './commands/workItemCommands.js';
+import { createWorkItem, changeStatus, changePriority } from './commands/workItemCommands.js';
 import { createDocument } from './commands/documentCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
@@ -438,6 +438,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const ref = resolveWorkItemRef(arg1, itemId, currentStatus);
       if (!ref) { return; }
       changeStatus(client, ref.type, ref.id, ref.status ?? '', workItemsProvider);
+    }),
+    vscode.commands.registerCommand('vibeflow.changePriority', (
+      arg1: string | TreeNodeArg,
+      itemId?: number,
+    ) => {
+      const ref = resolveWorkItemRef(arg1, itemId);
+      if (!ref) { return; }
+      changePriority(client, ref.type, ref.id, workItemsProvider);
     }),
     vscode.commands.registerCommand('vibeflow.viewSessions', () => {
       vscode.commands.executeCommand('vibeflow.agentFleet.focus');
