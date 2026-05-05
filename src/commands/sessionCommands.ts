@@ -505,6 +505,48 @@ export async function killSession(
 }
 
 /**
+ * Remove an inactive session record from the project. The active path is
+ * killSession (which both kills the local terminal and deletes the server
+ * record); this is the lighter-weight cleanup for sessions whose terminals
+ * are already gone but whose server records linger.
+ */
+export async function deleteSession(
+  client: VibeFlowClient,
+  session: VibeFlowSession,
+  sessionsProvider: SessionsTreeProvider,
+): Promise<void> {
+  const persona = session.persona_name ?? session.persona_key;
+  const confirm = await vscode.window.showWarningMessage(
+    `Delete the ${persona} session record on ${session.git_branch}? This removes it from the Agent Fleet permanently.`,
+    { modal: true },
+    'Delete',
+  );
+  if (confirm !== 'Delete') { return; }
+
+  try {
+    // killSession already calls DELETE /sessions/{id} on the backend; we
+    // just give it a different prompt so the wording matches the user's
+    // intent ("delete the record" vs "kill the running agent").
+    await client.killSession(session.session_id);
+    vscode.window.showInformationMessage(`VibeFlow: ${persona} session removed`);
+    sessionsProvider.refresh();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: Failed to delete session — ${msg}`);
+  }
+}
+
+/**
+ * Copy a session id to the clipboard. Useful for filing bug reports,
+ * pasting into Cloud UI's session detail view, or the agent's
+ * `session_init(session_id: ...)` recovery path.
+ */
+export async function copySessionId(session: VibeFlowSession): Promise<void> {
+  await vscode.env.clipboard.writeText(session.session_id);
+  vscode.window.showInformationMessage(`VibeFlow: Copied session id ${session.session_id}`);
+}
+
+/**
  * Restart a session — kill then re-launch with same params.
  */
 export async function restartSession(
