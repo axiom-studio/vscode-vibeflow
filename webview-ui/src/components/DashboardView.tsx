@@ -63,29 +63,54 @@ const PERSONA_DISPLAY: Record<string, string> = {
   customer: 'Customer',
 };
 
-/** Static topology layout — same positions as the Phase 4 PRD wireframe. */
+/**
+ * Topology layout — left-to-right pipeline matching the canonical flow in
+ * axiomcloud/docs/VibeFlow/docs/process.md. Top row is the forward path
+ * (planning → implement → review). Bottom row holds inputs (customer, UX),
+ * the alternative implementer (Principal Engineer, mutually exclusive with
+ * Developer+Architect on a branch — see personas.md "Deployment Model"),
+ * and the standalone Project Manager observer.
+ */
 const PERSONA_POSITIONS: Record<string, { x: number; y: number }> = {
-  product_manager:   { x: 50,  y: 50 },
-  architect:         { x: 250, y: 50 },
-  qa_lead:           { x: 450, y: 50 },
-  security_lead:     { x: 650, y: 50 },
-  ux_designer:       { x: 50,  y: 200 },
-  developer:         { x: 250, y: 200 },
-  principal_engineer:{ x: 450, y: 200 },
-  project_manager:   { x: 650, y: 200 },
-  customer:          { x: 350, y: 350 },
+  product_manager:    { x: 80,  y: 50  },
+  architect:          { x: 260, y: 50  },
+  developer:          { x: 440, y: 50  },
+  security_lead:      { x: 620, y: 50  },
+  qa_lead:            { x: 800, y: 50  },
+  customer:           { x: 80,  y: 200 },
+  ux_designer:        { x: 260, y: 200 },
+  principal_engineer: { x: 440, y: 200 },
+  project_manager:    { x: 800, y: 200 },
 };
 
-/** Conventional persona handoffs, used as topology edges. */
+/**
+ * Persona handoffs derived from the status-to-persona table in
+ * personas.md §"Work Item Routing":
+ *   in_review → planning → ready_to_implement → architecture_review_complete
+ *     → implementing → done → security_reviewed → qa_verified
+ *
+ * Edge semantics:
+ *   - Solid: status-driven handoff in the main pipeline.
+ *   - Dashed: optional/alternative path (ad-hoc inputs, the PE alternative).
+ *
+ * Project Manager is a tracker and is not in the status-routing table, so it
+ * has no edges — it surfaces in the diagram as a standalone status node.
+ */
 const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?: boolean }> = [
-  { id: 'pm-arch',      source: 'product_manager',  target: 'architect' },
-  { id: 'arch-dev',     source: 'architect',        target: 'developer' },
-  { id: 'dev-qa',       source: 'developer',        target: 'qa_lead' },
-  { id: 'qa-sec',       source: 'qa_lead',          target: 'security_lead' },
-  { id: 'dev-pe',       source: 'developer',        target: 'principal_engineer', dashed: true },
-  { id: 'ux-pm',        source: 'ux_designer',      target: 'product_manager', dashed: true },
-  { id: 'cust-pm',      source: 'customer',         target: 'product_manager', dashed: true },
-  { id: 'sec-projm',    source: 'security_lead',    target: 'project_manager' },
+  // Inputs into requirements (ad-hoc, not status-driven).
+  { id: 'cust-pm',  source: 'customer',           target: 'product_manager',    dashed: true },
+  { id: 'ux-pm',    source: 'ux_designer',        target: 'product_manager',    dashed: true },
+  // Forward pipeline.
+  { id: 'pm-arch',  source: 'product_manager',    target: 'architect' },
+  { id: 'arch-dev', source: 'architect',          target: 'developer' },
+  // Principal Engineer alternative — picks up at architecture_review_complete
+  // OR ready_to_implement, replacing Developer+Architect on the branch.
+  { id: 'arch-pe',  source: 'architect',          target: 'principal_engineer', dashed: true },
+  // Both implementer paths feed the post-done review pipeline.
+  { id: 'dev-sec',  source: 'developer',          target: 'security_lead' },
+  { id: 'pe-sec',   source: 'principal_engineer', target: 'security_lead',      dashed: true },
+  // Security gate runs first — QA only picks up where security_reviewed=true.
+  { id: 'sec-qa',   source: 'security_lead',      target: 'qa_lead' },
 ];
 
 const STATUS_COLOR: Record<PersonaStatus, string> = {
