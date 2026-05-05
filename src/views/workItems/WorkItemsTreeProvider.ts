@@ -50,6 +50,17 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private features: VibeFlowFeature[] = [];
   private todos: VibeFlowTodo[] = [];
   private issues: VibeFlowIssue[] = [];
+
+  /**
+   * Count of todos+issues an agent could pick up right now — anything in
+   * `ready_to_implement` or `architecture_review_complete`. Drives the
+   * "M ready" half of the work-summary status bar.
+   */
+  getReadyWorkItemCount(): number {
+    const ready = (s: string) => s === 'ready_to_implement' || s === 'architecture_review_complete';
+    return this.todos.filter(t => ready(t.status)).length
+      + this.issues.filter(i => ready(i.status)).length;
+  }
   /**
    * session_id → persona_key, refreshed each poll cycle. Used to render
    * the "claimed by" tag on tree nodes — `claimed_by` on a work item is
