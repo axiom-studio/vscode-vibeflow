@@ -635,31 +635,98 @@ export async function copySessionId(session: VibeFlowSession): Promise<void> {
 }
 
 /**
- * Restart a session — kill then re-launch with same params.
+ * Restart a session — kill the existing record + terminal, then spawn a
+ * fresh terminal for the same persona / provider / branch / workdir so
+ * the agent re-enters its polling loop without the user having to walk
+ * the wizard again.
+ *
+ * The agent itself calls `session_init` from inside the new terminal
+ * (via the standard init prompt that launchSession also uses), so the
+ * extension still doesn't touch session_init directly — same constraint
+ * documented in the P3-B notes, just executed via the agent binary
+ * instead of bouncing the user back to "Launch Session" manually.
  */
 export async function restartSession(
   client: VibeFlowClient,
   session: VibeFlowSession,
   detector: ProjectDetector,
   sessionsProvider: SessionsTreeProvider,
+  terminalRegistry: TerminalRegistry,
+  stickyModels: StickyModels,
 ): Promise<void> {
+  const personaLabel = session.persona_name ?? session.persona_key;
   const confirm = await vscode.window.showWarningMessage(
-    `Restart ${session.persona_name ?? session.persona_key} session on ${session.git_branch}?`,
+    `Restart ${personaLabel} session on ${session.git_branch}?`,
     { modal: true },
     'Restart',
   );
   if (confirm !== 'Restart') { return; }
 
+  const project = detector.getCachedProject();
+  if (!project) {
+    vscode.window.showErrorMessage('VibeFlow: No project cached. Run "VibeFlow: Setup" first.');
+    return;
+  }
+
   try {
     await client.killSession(session.session_id);
-    // For full restart, user should re-run VibeFlow: Launch Session.
-    // A full programmatic restart needs session_init via MCP, which we
-    // deliberately don't call from the extension (see P3-B docs).
+  } catch (err) {
+    // Backend kill failure shouldn't block the respawn — the local
+    // terminal might already be gone and the user just wants the agent
+    // back. Log and continue; the new session_init will reconcile.
+    console.warn('[VibeFlow] killSession failed during restart, continuing:', err);
+  }
+
+  // Resolve respawn parameters from the session record + config.
+  // Prefer the session's worktree path so a worktree-launched agent
+  // restarts inside the worktree, not the main workspace.
+  const config = vscode.workspace.getConfiguration('vibeflow');
+  const provider = session.agent_type || config.get<string>('defaultProvider', 'claude');
+  const persona = session.persona_key;
+  const branch = session.git_branch;
+  const workDir = session.git_worktree_path
+    || session.working_directory
+    || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    || '';
+  if (!workDir) {
+    vscode.window.showErrorMessage('VibeFlow: cannot resolve a working directory for restart.');
+    return;
+  }
+
+  // sessionMode picks up the user's preferred reattach behavior so a
+  // restart doesn't silently upgrade a vanilla agent to YOLO. Same
+  // setting reattachMode that SessionReattacher consults on cold start.
+  const sessionMode = config.get<string>('session.reattachMode', 'vanilla');
+  const terminalMode = config.get<TerminalMode>('session.terminalMode', 'hybrid');
+  const serverUrl = config.get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+
+  const binary = binaries[provider] ?? 'claude';
+  const command = buildLaunchCommand(binary, provider, sessionMode);
+  const model = stickyModels.getModel(persona);
+  const initPrompt = `Initialize a vibeflow session for project ${project.projectName} with persona ${persona} and follow the agent prompt. Call session_init with project_name: ${project.projectName}, persona: ${persona}, git_branch: ${branch} and begin Phase 1 immediately.`;
+
+  try {
+    terminalRegistry.create({
+      persona,
+      branch,
+      provider,
+      workDir,
+      command,
+      env: {
+        VIBEFLOW_SERVER_URL: serverUrl,
+        VIBEFLOW_PERSONA: persona,
+        VIBEFLOW_BRANCH: branch,
+        VIBEFLOW_MODEL: model,
+      },
+      terminalMode,
+      initPrompt,
+    });
     vscode.window.showInformationMessage(
-      `VibeFlow: Session ${session.persona_key} removed. Run "Launch Session" to spawn a new one.`,
+      `VibeFlow: Restarted ${personaLabel} on ${branch}.`,
     );
     sessionsProvider.refresh();
   } catch (err) {
-    vscode.window.showErrorMessage(`VibeFlow: Failed to restart session — ${err}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: Failed to respawn terminal — ${msg}`);
   }
 }

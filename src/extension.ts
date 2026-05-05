@@ -506,7 +506,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.restartSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
-      if (session) { restartSession(client, session, detector, sessionsProvider); }
+      if (session) { restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels); }
     }),
     vscode.commands.registerCommand('vibeflow.deleteSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
