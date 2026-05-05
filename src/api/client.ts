@@ -121,9 +121,14 @@ export class VibeFlowClient {
 
   // --- Todos ---
 
-  async listTodos(featureId: number): Promise<VibeFlowTodo[]> {
+  async listTodos(featureId: number, opts?: { status?: string }): Promise<VibeFlowTodo[]> {
+    // Backend supports `?status=` (single value or comma-separated), see
+    // axiomcloud/handlers/vibeflow_todos.go ListTodosByFeature. We pass the
+    // filter through so callers like ActivityPoller don't have to fetch
+    // every todo for every feature just to drop most of them client-side.
+    const qs = opts?.status ? `?status=${encodeURIComponent(opts.status)}` : '';
     return this.request<VibeFlowTodo[]>(
-      `/rest/v1/vibeflow/features/${featureId}/todos`,
+      `/rest/v1/vibeflow/features/${featureId}/todos${qs}`,
     );
   }
 

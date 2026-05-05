@@ -13,42 +13,63 @@ import * as vscode from 'vscode';
 export class VibeFlowMcpClient {
   private client: Client | undefined;
   private connected = false;
+  /**
+   * In-flight connect promise. Concurrent callers (e.g. two parallel
+   * callTool() calls before the first connect resolves) all await the
+   * same promise, so we never spawn two transports racing to connect.
+   * Cleared after success or failure so a later call can retry.
+   */
+  private connectPromise: Promise<void> | undefined;
 
   constructor(private readonly auth: AuthService) {}
 
   /**
    * Connect to the MCP server. Call after authentication.
+   * Idempotent + concurrency-safe: if a connect is already in flight,
+   * subsequent callers wait for its result rather than starting a second.
    */
   async connect(): Promise<void> {
     if (this.connected) { return; }
+    if (this.connectPromise) { return this.connectPromise; }
 
-    const token = this.auth.getToken();
-    if (!token) {
-      throw new Error('Not authenticated');
-    }
+    this.connectPromise = (async () => {
+      const token = this.auth.getToken();
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
 
-    const serverUrl = vscode.workspace.getConfiguration('vibeflow')
-      .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+      const serverUrl = vscode.workspace.getConfiguration('vibeflow')
+        .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
-    const transport = new StreamableHTTPClientTransport(
-      new URL(`${serverUrl}/rest/v1/vibeflow/mcp`),
-      {
-        requestInit: {
-          headers: {
-            'Authorization': `Bearer ${token}`,
+      const transport = new StreamableHTTPClientTransport(
+        new URL(`${serverUrl}/rest/v1/vibeflow/mcp`),
+        {
+          requestInit: {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+            },
           },
         },
-      },
-    );
+      );
 
-    this.client = new Client({
-      name: 'vscode-vibeflow',
-      version: '0.1.0',
-    });
+      const client = new Client({
+        name: 'vscode-vibeflow',
+        version: '0.1.0',
+      });
 
-    await this.client.connect(transport);
-    this.connected = true;
-    console.log('[VibeFlow] MCP client connected');
+      await client.connect(transport);
+      this.client = client;
+      this.connected = true;
+      console.log('[VibeFlow] MCP client connected');
+    })();
+
+    try {
+      await this.connectPromise;
+    } finally {
+      // Clear regardless of outcome — on success the `connected` flag
+      // makes future calls fast-path; on failure we want to allow retry.
+      this.connectPromise = undefined;
+    }
   }
 
   /**

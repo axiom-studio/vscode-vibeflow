@@ -824,3 +824,245 @@ If we add it, the right shape is: when the active workspace's git
 branch is the rejected item's `target_branch`, fire a single
 condensed toast with a "Show in Work Items" button. Open question
 when we get there.
+
+---
+
+## File-by-file notes (§8)
+
+Triaged each item against current code. Several were stale (the
+audit referenced earlier commits); the live ones got fixed in this
+batch. End-to-end sweep at the bottom verifies the data flow still
+hangs together.
+
+### Fixed in this batch
+
+**`STATUS_GROUP_CONFIG` was missing 2 of 10 statuses.** Pre-fix
+items in `archived` or `rejected` silently disappeared from the
+Work Items tree. Added a fifth "Closed" bucket covering both, with
+a coverage assertion in the comment so the next reviewer notices
+when the backend status set changes.
+
+**`SessionsTreeProvider.buildPlaceholderTree` was hardcoded to
+"main".** The empty-state branch label now reflects the workspace's
+detected branch via a new `setBranch(branch)` setter, called from
+`connectToProject` with `project.gitBranch`.
+
+**`SessionReattacher` defaulted to `vibeflow` (skip-permissions)
+mode.** A vanilla agent that survived a window reload would be
+silently re-launched in YOLO mode. `extension.ts:711` now reads
+`vibeflow.session.reattachMode` (new setting, default `vanilla`).
+Power users who want skip-permissions reattach can opt in
+explicitly. The `.vibeflow-session-{persona}` file format only
+records the session id, not the launch mode, so we can't recover
+the original mode after a reload — defaulting to safe is the only
+correct call.
+
+**`mcpClient.connect()` had no concurrency guard.** Two parallel
+`callTool()` calls before the first connect resolved would both
+pass the `if (this.connected) return` check and start two
+transports racing for the same session. Added a `connectPromise`
+singleton: concurrent callers await the same promise; cleared
+after success or failure so retries work.
+
+**MCP transport got stuck on a stale token after `setApiKey`.**
+The `StreamableHTTPClientTransport` captures the bearer at
+construction time, so changing the API key in Settings updated
+REST calls immediately but left the MCP transport talking to the
+server with the old token. Now subscribed to
+`authService.onDidChangeState` in `extension.ts`: every state
+change forces `client.disconnectMcp()`, and the next `callTool`
+rebuilds the transport with the fresh token. `disconnect()` is
+idempotent so the first `'authenticated'` event is a no-op.
+
+**`ActivityPoller` was an N+1 query nightmare.** On a project with
+50 features it was issuing 50+ list-todos calls every 5s and
+dropping all but the `implementing` ones client-side. Backend
+already supports `?status=` on the todos endpoint
+(`axiomcloud/handlers/vibeflow_todos.go:34`); `client.listTodos`
+now accepts an optional `{ status }` filter and the poller passes
+`status: 'implementing'`. Same call count, dramatically less
+payload — the server returns one row per active todo per feature
+instead of every todo.
+
+**Launch-Session wizard's worktree answer was thrown away.** Step
+8 asked "Current directory" vs "New worktree" but `_worktreeChoice`
+sat unused. New `createOrAttachWorktree(workDir, branch)` exported
+from `worktreeCommands.ts` reuses the existing path-confinement
++ `isSafeBranchName` checks. When the user picks "New worktree",
+we now run `git worktree add` and use the new path as `workDir`
+for the spawned terminal. Falls back to current-dir on failure
+with a toast, so the user knows it didn't take.
+
+**Launch-Session wizard's LLM gateway answer was thrown away.**
+Step 6 captured `_llmGateway` but never propagated it. Wired
+`VIBEFLOW_LLM_GATEWAY=1` into the spawned terminal env when the
+gateway path is selected. The wizard step is gated behind
+`vibeflow.llmGateway.show` (off by default), so for most users
+this code path stays dormant; for dev builds with the flag on,
+the answer now reaches the agent binary.
+
+### Stale audit claims (already fixed before this batch)
+
+| Audit claim | Actual state | Where |
+|---|---|---|
+| `apiKeySet: true` hardcoded in SettingsPanel | reads `!!authService.getToken()` | `SettingsPanel.ts:271` |
+| `ActivityPoller` hardcodes `developer` for every entry | resolves per-log via `source` field, falls back to `claimed_by` | `ActivityPoller.ts` (commit `541b64f`) |
+| `AgentFileDecorationProvider` never invoked | called from `ActivityPoller.fetchAndPushLogs` for every recognized verb | commit `39d2dff` |
+| `VALID_TRANSITIONS` is incomplete | covers all 10 backend statuses | commit `31a4e01` |
+| `KanbanView.tsx:39-52` uses `useState(() => {...})` as `useEffect` | those lines are static module constants; `useEffect` is used correctly | confirmed by `grep` |
+
+### Deferred with rationale
+
+**`extension.ts` 600 lines doing connection + setup + activation.**
+A refactor into Bootstrapper / Setup / Activator is real polish but
+not a bug — every block in `activate()` has one job, the data flow
+is clear (see end-to-end sweep below), and splitting it would
+fragment the wire-up across 3 files for no functional gain.
+Revisit when adding a new top-level concern (e.g. telemetry) makes
+the file actually unwieldy.
+
+**`AuthService` has no Secrets-API path for codex/gemini/cursor
+provider tokens.** Today those tokens flow through `process.env`
+on the spawned terminal. Putting them behind the Secrets API would
+mean `vscode.SecretStorage` for read-back at every launch, and
+managing rotation. The wizard's password-masked InputBox already
+keeps the token off-screen; persistence is a small win against a
+sizeable refactor. Defer.
+
+**`cliConfig.ts` minimal YAML parser.** Brittle for multi-line
+strings, fine for the three keys (`server_url`, `default_provider`,
+`default_persona`) it actually consumes from
+`~/.vibeflow-cli/config.yaml`. If the schema grows, swap for
+`js-yaml`; until then a 30-line scanner is the right tool.
+
+**`client.ts` no retry/backoff, no auth-refresh on 401.** axiomcloud
+issues long-lived API keys, not OAuth tokens; there's no refresh
+endpoint. Network reliability hasn't surfaced as a real problem.
+The right time to add retry-with-jitter is when we see actual
+transient-failure pain in user logs.
+
+**`stickyModels.ts` KNOWN_MODELS hardcoded.** No `/rest/v1/models`
+endpoint exists today. Adding one would require backend work plus
+caching here. Until the backend exposes the model catalog the
+hardcoded list is the simpler tool.
+
+**`useDrafts.ts` in-memory only.** PRD §4.5 wanted
+`workspace-state` persistence as the differentiator over
+axiomcloud. Real but not urgent — drafts are typically resolved
+within a single session. Add when users complain about losing
+drafts on window reload.
+
+**`CommentableDocumentViewer.tsx` polls comments every 5s without
+ETag.** The endpoint doesn't currently return an ETag header, so
+the client has no checksum to gate on. Adding `If-None-Match`
+needs server cooperation. Negligible cost today (small payloads,
+local network) — defer until either bandwidth or backend ETags
+become real.
+
+---
+
+## End-to-end data-flow sweep
+
+Verified the complete flow after the §8 batch lands. All touchpoints
+typecheck and the wire-shape contracts match between host and
+backend.
+
+### Activation → connect
+
+```
+extension.activate()
+  → authService.initialize()           // restores token from Secrets
+  → tryAutoConnect()
+    → detector.getCachedProject()
+    → connectToProject(project)
+      → sessionsProvider.connect()      // starts 30s poll
+      → workItemsProvider.connect()
+      → documentsProvider.connect()
+      → promptNotifier.setRespondHandler() ← FIXED earlier batch
+      → sessionPanelManager.setProjectId()
+      → workItemPanelManager.setProjectId()
+      → activityPoller = new ActivityPoller(...).start()  // 5s tick
+      → sessionStatusBar.updateProject()
+      → refreshWorkSummary()           ← FIXED this batch
+      → branchReviewStatusBar.start()
+      → sessionsProvider.setBranch()   ← FIXED this batch
+```
+
+### Polling cadence
+
+| Poller | Interval | Source | Sink |
+|---|---|---|---|
+| SessionsTreeProvider | `polling.interval` (30s) | `client.listSessions` | tree + `getActiveSessionCount()` → workSummaryBar |
+| WorkItemsTreeProvider | same | `client.listFeatures/Issues` + filtered todos | tree + `getReadyWorkItemCount()` → workSummaryBar |
+| DocumentsTreeProvider | same | `client.listDocuments` | tree |
+| BranchReviewStatusBar | same | `client.checkBranchReviewStatus` | right status bar |
+| ActivityPoller | 5s | sessions + work items + prompts | feedProvider, fileDecorations, promptNotifier |
+
+### Cross-component reactivity
+
+- **Tree poll → status bar**: each tree fires `onDidChangeTreeData`;
+  `extension.ts` subscribes both → `refreshWorkSummary()` reads
+  `getActiveSessionCount` + `getReadyWorkItemCount`.
+- **ActivityPoller → Activity Feed webview**: typed
+  `ActivityFeedHostMessage` via `feedProvider.postMessage`.
+- **ActivityPoller → progress widget**: typed `progressIndicator`
+  message; widget auto-hides when null.
+- **ActivityPoller → file decorations**: `markActiveBatch` /
+  `markCommitted` per recognized verb in log content.
+- **ActivityPoller → prompt toast**: `promptNotifier.handlePrompts`
+  → `onDidChangeCount` → `sessionStatusBar` re-renders with badge.
+- **Auth state change → MCP**: `authService.onDidChangeState` →
+  `client.disconnectMcp()` → next `callTool` reconnects with
+  fresh token. ← FIXED this batch
+- **Settings → project switch**: webview `selectProject` → host
+  `detector.cacheProject` → `onProjectSwitched: connectToProject`
+  → all of the above re-runs against new projectId.
+
+### Webview message contracts
+
+All 6 panels typed both directions:
+
+| Panel | Outbound (webview → host) | Inbound (host → webview) |
+|---|---|---|
+| Activity Feed | `ActivityFeedClientMessage` | `ActivityFeedHostMessage` |
+| Settings | `SettingsClientMessage` | `SettingsHostMessage` (locally narrowed payload for `settingsData`) |
+| Work Item | `WorkItemPanelClientMessage` | `WorkItemPanelHostMessage` |
+| Session | `SessionPanelClientMessage` | `SessionPanelHostMessage` |
+| Kanban | `KanbanClientMessage` | `KanbanHostMessage` |
+| Dashboard | `DashboardClientMessage` | `DashboardHostMessage` |
+| Comments | `CommentMessage` (re-export) | `CommentEvent` (re-export) |
+
+`assertNever` on every host switch's default branch. `postToWebview`
+typed wrapper on every host's outbound path. Adding a new variant
+fails the compile end-to-end.
+
+### Risk areas reviewed and clean
+
+- **Logout flow**: `vibeflow.logout` → `client.disconnectMcp` →
+  `authService.logout` → `onDidChangeState('unauthenticated')` →
+  status bars clear, `disconnect()` stops poller. MCP cleanup
+  happens twice (explicit + via auth-state hook) but `disconnect`
+  is idempotent.
+- **Branch validation in worktree path**: launch wizard accepts
+  arbitrary branch input (no inline validation), but
+  `createOrAttachWorktree` rejects unsafe names via
+  `isSafeBranchName` before running git. Defense in depth.
+- **N+1 prevention**: ActivityPoller now passes
+  `?status=implementing` to `listTodos`, dropping per-feature
+  payload by ~one order of magnitude on busy projects.
+- **Stale persona attribution**: `sessionPersonaMap` accumulates
+  across cycles (clear was the bug), so log entries written by
+  ended sessions still get the right persona name.
+- **STATUS_GROUP_CONFIG / VALID_TRANSITIONS coverage**: both now
+  include all 10 backend statuses. Coverage assertions in comments.
+
+### One thing left to watch
+
+- **`SessionsTreeProvider.setBranch`** is only called once at
+  connect. If the user switches branches in the workspace without
+  reconnecting, the empty-state placeholder will keep showing the
+  old branch until next connect. Acceptable — placeholder only
+  appears when zero sessions exist; a session launch reconnects
+  the wiring. If users complain, hook into
+  `vscode.workspace.onDidChangeWorkspaceFolders` or a git-branch
+  watcher.

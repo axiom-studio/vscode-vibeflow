@@ -18,11 +18,26 @@ interface WorkItemNode {
   contextValue?: string;
 }
 
+/**
+ * Maps the 10 backend statuses (axiomcloud/database/vibeflow_models.go:36-46)
+ * onto the 5 UI buckets the user sees. Every status MUST appear in exactly
+ * one bucket — otherwise items in the missing status disappear from the
+ * tree silently.
+ *
+ * Coverage assertion: in_review, needs_pm_input, needs_ux_input, planning,
+ * ready_to_implement, architecture_review_complete, implementing, done,
+ * archived, rejected. (10 total.)
+ */
 const STATUS_GROUP_CONFIG: { key: string; label: string; icon: string; statuses: string[] }[] = [
   { key: 'implementing', label: 'In Progress', icon: 'zap', statuses: ['implementing', 'planning'] },
   { key: 'ready', label: 'Ready', icon: 'checklist', statuses: ['ready_to_implement', 'architecture_review_complete'] },
   { key: 'review', label: 'In Review', icon: 'search', statuses: ['in_review', 'needs_pm_input', 'needs_ux_input'] },
   { key: 'done', label: 'Done', icon: 'check', statuses: ['done'] },
+  // Terminal states get their own bucket so users can audit closed work
+  // without scrolling — and so items in `archived` or `rejected` don't
+  // silently vanish (which they did pre-fix, with the same set missing
+  // from VALID_TRANSITIONS in workItemCommands.ts).
+  { key: 'closed', label: 'Closed', icon: 'archive', statuses: ['archived', 'rejected'] },
 ];
 
 const PRIORITY_ICONS: Record<string, string> = {

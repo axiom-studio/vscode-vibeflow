@@ -18,7 +18,7 @@ interface Worktree {
  * an exotic-but-valid name than miss a path that could be parsed as a flag or shell
  * metacharacter when piped through any future code path.
  */
-function isSafeBranchName(name: string): boolean {
+export function isSafeBranchName(name: string): boolean {
   if (!name || name.length > 250) { return false; }
   if (name.startsWith('-')) { return false; }
   if (name.includes('..')) { return false; }
@@ -37,6 +37,59 @@ function runGit(args: string[], cwd: string): string {
     encoding: 'utf-8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+}
+
+/**
+ * Resolve the path where a worktree for the given branch would live, then
+ * create it via `git worktree add`. Returns the absolute path on success,
+ * undefined when the branch name fails safety checks or path traversal
+ * would escape the configured base directory.
+ *
+ * Reuses the same path-confinement logic as `manageWorktrees` so the
+ * Launch-Session wizard can't be tricked into writing outside the
+ * configured worktree base directory.
+ *
+ * If `branch` already exists locally, omits `-b` and just attaches the
+ * worktree to the existing branch.
+ */
+export function createOrAttachWorktree(
+  workDir: string,
+  branch: string,
+): string | undefined {
+  if (!isSafeBranchName(branch)) { return undefined; }
+
+  const baseDirSetting = vscode.workspace.getConfiguration('vibeflow')
+    .get<string>('worktree.baseDir', '.claude/worktrees');
+  const folderName = branch.replace(/\//g, '-');
+  const baseDirAbs = path.isAbsolute(baseDirSetting)
+    ? path.normalize(baseDirSetting)
+    : path.normalize(path.join(workDir, baseDirSetting));
+  const wtPath = path.normalize(path.join(baseDirAbs, folderName));
+
+  if (!wtPath.startsWith(baseDirAbs + path.sep) && wtPath !== baseDirAbs) {
+    return undefined;
+  }
+
+  // If the branch exists locally, `git worktree add <path> <branch>`
+  // attaches without creating a new ref. Otherwise we need `-b`.
+  let branchExists = false;
+  try {
+    runGit(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`], workDir);
+    branchExists = true;
+  } catch {
+    branchExists = false;
+  }
+
+  try {
+    if (branchExists) {
+      runGit(['worktree', 'add', wtPath, branch], workDir);
+    } else {
+      runGit(['worktree', 'add', wtPath, '-b', branch], workDir);
+    }
+    return wtPath;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -60,6 +60,20 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private sessions: VibeFlowSession[] = [];
 
   /**
+   * Detected git branch for the current workspace, used by the empty-state
+   * placeholder so we don't lie that there are zero sessions on `main`
+   * when the user is sitting on `feature/foo`.
+   */
+  private currentBranch = 'main';
+
+  setBranch(branch: string): void {
+    if (branch && branch !== this.currentBranch) {
+      this.currentBranch = branch;
+      this._onDidChangeTreeData.fire();
+    }
+  }
+
+  /**
    * Count of sessions that have a live heartbeat (active and not stale).
    * Used by the right-aligned work-summary status bar to show
    * "N agents · M ready" without re-fetching the session list.
@@ -213,11 +227,12 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildPlaceholderTree(): SessionNode[] {
+    const branch = this.currentBranch || 'main';
     return [
       {
-        id: 'branch-main',
+        id: `branch-${branch}`,
         type: 'branch',
-        label: 'main',
+        label: branch,
         description: '0 active',
         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
         contextValue: 'branch',
