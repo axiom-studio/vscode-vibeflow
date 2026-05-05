@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
-import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessage, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
+import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessage, type FeedState, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -16,6 +16,15 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
    * appended) so a late-arriving webview only ever sees the freshest snapshot.
    */
   private pendingProgress: ProgressIndicatorPayload | null = null;
+  /**
+   * Latest empty/connection state. Replaced (not appended) — same reason
+   * as `pendingProgress`: only the freshest state is meaningful on mount.
+   */
+  private pendingFeedState: FeedState | undefined;
+  /** Re-emit the current state after the webview reports `ready` so a late
+   * mount (e.g., the user revealing the panel after a state was already
+   * pushed) renders the right empty state. Wired by extension.ts. */
+  onReady: (() => void) | undefined;
   settingsHandler: ((message: unknown) => void) | undefined;
 
   constructor(
@@ -50,12 +59,29 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
             this.postMessage({ type: 'progressIndicator', payload: this.pendingProgress });
             this.pendingProgress = null;
           }
+          if (this.pendingFeedState) {
+            this.postMessage({ type: 'feedState', payload: this.pendingFeedState });
+            this.pendingFeedState = undefined;
+          }
+          // Let the FeedStateController re-emit the latest state in case it
+          // was already computed before the webview mounted.
+          this.onReady?.();
           break;
         case 'respondToPrompt':
           this.handlePromptResponse(message.payload.promptId);
           break;
         case 'closeSettings':
           this.postMessage({ type: 'showActivity' });
+          break;
+        case 'runSetup':
+          // Dispatched by the unauthenticated empty-state CTA. The
+          // command is registered in extension.ts and runs the 3-step
+          // setup wizard.
+          void vscode.commands.executeCommand('vibeflow.setup');
+          break;
+        case 'launchSession':
+          // Dispatched by the noSessions empty-state CTA.
+          void vscode.commands.executeCommand('vibeflow.launchSession');
           break;
         case 'getSetting':
         case 'updateSetting':
@@ -112,6 +138,20 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
       this.postMessage({ type: 'progressIndicator', payload });
     } else {
       this.pendingProgress = payload;
+    }
+  }
+
+  /**
+   * Push the resolved empty/connection state. Replaces (does not stack)
+   * any pending state — only the freshest is meaningful for a late-mounted
+   * webview. The FeedStateController is the single caller and dedupes
+   * before invoking, so this method does not need its own change check.
+   */
+  pushFeedState(state: FeedState): void {
+    if (this.view) {
+      this.postMessage({ type: 'feedState', payload: state });
+    } else {
+      this.pendingFeedState = state;
     }
   }
 
