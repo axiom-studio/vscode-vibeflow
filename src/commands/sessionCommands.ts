@@ -11,18 +11,18 @@ import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistr
 import { createOrAttachWorktree } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
 
+// Two modes: Vanilla (per-action permission prompts) and VibeFlow (YOLO).
+// Auto mode (--enable-auto-mode) was a third option but Claude Code 2.1+
+// still prompts on every MCP tool's first use even with auto mode on, so
+// it didn't deliver the "fewer prompts" UX it advertised. Removed to keep
+// the wizard short — vanilla for safety, vibeflow when you want zero
+// interruptions in an isolated workspace.
 const SESSION_MODES = [
   {
     label: '$(shield) Vanilla',
-    description: 'Normal mode — Claude asks permission before each action',
+    description: 'Normal mode — agent asks permission before each action',
     detail: 'Safest. Use for sensitive or exploratory work.',
     value: 'vanilla',
-  },
-  {
-    label: '$(sparkle) Auto Mode',
-    description: 'Classifier-approved actions run without prompts',
-    detail: 'Safer middle ground. Requires Claude Team/Enterprise/API + Sonnet 4.6+. (--enable-auto-mode)',
-    value: 'auto',
   },
   {
     label: '$(rocket) VibeFlow Mode',
@@ -435,20 +435,14 @@ const binaries: Record<string, string> = {
 
 /**
  * Build the agent binary launch command with session mode flags.
- * vanilla  → no flags (normal claude with permission prompts)
- * auto     → --enable-auto-mode (claude only, requires Team/Enterprise/API)
+ * vanilla  → no flags (per-action permission prompts)
  * vibeflow → --dangerously-skip-permissions (claude) / --yolo (codex/gemini)
+ *
+ * Any other sessionMode string falls through to vanilla so a stale
+ * config value (e.g. 'auto' from an older install) doesn't crash launch.
  */
 function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
-  if (sessionMode === 'vanilla') {
-    return binary;
-  }
-
-  if (sessionMode === 'auto') {
-    // Auto mode is a Claude Code feature; other providers fall back to vanilla
-    if (provider === 'claude') {
-      return `${binary} --enable-auto-mode`;
-    }
+  if (sessionMode !== 'vibeflow') {
     return binary;
   }
 
