@@ -261,9 +261,21 @@ export class VibeFlowClient {
   // --- Compliance Findings ---
 
   /**
-   * List compliance findings for a project, optionally filtered by status.
+   * List compliance findings for a project, optionally filtered.
    *
-   * Source: axiomcloud/mcp/vibeflow_tools.go:2705 (list_compliance_findings).
+   * REST source: axiomcloud/handlers/vibeflow_compliance.go:234
+   *   GET /rest/v1/vibeflow/compliance-findings?project_id=...
+   *
+   * We deliberately use REST here instead of the equivalent MCP tool. The
+   * `list_compliance_findings` MCP tool returns a bare array for its
+   * structured content, but the MCP SDK's response Zod schema validates
+   * `structuredContent` as a record — the array fails the
+   * "expected: record, received: array" check and the SDK reports
+   * "Partial data" with a noisy ZodError. The REST endpoint returns the
+   * same shape (a bare array) without the structured-content wrapper, so
+   * it sidesteps that validation entirely. Until the backend wraps the
+   * MCP tool response in `{ findings: [...] }` (or uses the existing
+   * vibeflowPaginatedResponse helper), REST is the correct path.
    */
   async listComplianceFindings(
     projectId: number,
@@ -275,19 +287,19 @@ export class VibeFlowClient {
       work_item_id?: number;
     },
   ): Promise<VibeFlowComplianceFinding[]> {
-    const args: Record<string, unknown> = { project_id: projectId };
-    if (filters?.status) { args.status = filters.status; }
-    if (filters?.severity) { args.severity = filters.severity; }
-    if (filters?.framework) { args.framework = filters.framework; }
-    if (filters?.work_item_type) { args.work_item_type = filters.work_item_type; }
-    if (filters?.work_item_id !== undefined) { args.work_item_id = filters.work_item_id; }
-    const result = await this.mcp.callTool('list_compliance_findings', args);
-    if (Array.isArray(result)) { return result as VibeFlowComplianceFinding[]; }
-    // Some list endpoints wrap in `{ findings: [...] }`; tolerate either shape.
-    if (result && typeof result === 'object' && Array.isArray((result as { findings?: unknown }).findings)) {
-      return (result as { findings: VibeFlowComplianceFinding[] }).findings;
+    const params = new URLSearchParams({ project_id: String(projectId) });
+    if (filters?.status) { params.set('status', filters.status); }
+    if (filters?.severity) { params.set('severity', filters.severity); }
+    if (filters?.framework) { params.set('framework', filters.framework); }
+    if (filters?.work_item_type) { params.set('work_item_type', filters.work_item_type); }
+    if (filters?.work_item_id !== undefined) { params.set('work_item_id', String(filters.work_item_id)); }
+    try {
+      return await this.request<VibeFlowComplianceFinding[]>(
+        `/rest/v1/vibeflow/compliance-findings?${params.toString()}`,
+      );
+    } catch {
+      return [];
     }
-    return [];
   }
 
   // --- Attachments ---
