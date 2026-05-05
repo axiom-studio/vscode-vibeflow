@@ -104,3 +104,67 @@ body {
 }
 .prose-vf img { max-width: 100%; height: auto; }
 .prose-vf input[type="checkbox"] { margin-right: 0.4em; }
+
+/*
+ * Inline prose — same typography as .prose-vf but without the
+ * full-page layout constraints (height: 100vh, max-width: 820px,
+ * centered margin, page padding). Use this when rendering markdown
+ * inside a card, tab, or modal.
+ */
+.prose-vf-block {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--feed-fg);
+}
+.prose-vf-block h1 { font-size: 1.5em; font-weight: 700; margin: 1em 0 0.4em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.2em; }
+.prose-vf-block h2 { font-size: 1.25em; font-weight: 600; margin: 1em 0 0.4em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.15em; }
+.prose-vf-block h3 { font-size: 1.1em; font-weight: 600; margin: 0.8em 0 0.3em; }
+.prose-vf-block h4 { font-size: 1em; font-weight: 600; margin: 0.6em 0 0.3em; }
+.prose-vf-block p { margin: 0.5em 0; }
+.prose-vf-block ul, .prose-vf-block ol { padding-left: 1.5em; margin: 0.5em 0; }
+.prose-vf-block li { margin: 0.15em 0; }
+.prose-vf-block code {
+  background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 0.9em;
+}
+.prose-vf-block pre {
+  background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.1));
+  padding: 0.7em 0.9em;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+  border: 1px solid var(--feed-border);
+}
+.prose-vf-block pre code { background: transparent; padding: 0; font-size: 0.85em; }
+.prose-vf-block blockquote {
+  border-left: 3px solid var(--feed-link);
+  padding: 0.3em 0.7em;
+  margin: 0.6em 0;
+  color: var(--feed-muted);
+  background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.05));
+}
+.prose-vf-block table {
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  width: 100%;
+  font-size: 0.95em;
+}
+.prose-vf-block th, .prose-vf-block td {
+  border: 1px solid var(--feed-border);
+  padding: 0.35em 0.7em;
+  text-align: left;
+}
+.prose-vf-block th {
+  background: var(--vscode-editorHoverWidget-background, rgba(127,127,127,0.1));
+  font-weight: 600;
+}
+.prose-vf-block a { color: var(--feed-link); text-decoration: none; }
+.prose-vf-block a:hover { text-decoration: underline; }
+.prose-vf-block hr { border: none; border-top: 1px solid var(--feed-border); margin: 1.2em 0; }
+.prose-vf-block img { max-width: 100%; height: auto; }
+.prose-vf-block input[type="checkbox"] { margin-right: 0.4em; }
+.prose-vf-block > :first-child { margin-top: 0; }
+.prose-vf-block > :last-child { margin-bottom: 0; }
