@@ -5,6 +5,7 @@ import type { VibeFlowClient } from '../../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
+import { validateServerUrl } from '../../auth/serverUrl.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -145,6 +146,18 @@ export class SettingsPanel {
         }
         case 'validateServerUrl': {
           const url = msg.payload;
+          // Scheme check FIRST — a reachability probe against an HTTP URL
+          // succeeds and would mislead the user into trusting a value
+          // that subsequently leaks the API key on every request.
+          const schemeCheck = validateServerUrl(url);
+          if (!schemeCheck.ok) {
+            postToWebview({
+              type: 'validationResult',
+              payload: { field: 'serverUrl', valid: false, message: schemeCheck.message },
+            });
+            vscode.window.showWarningMessage(`VibeFlow: ${schemeCheck.message}`);
+            break;
+          }
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
