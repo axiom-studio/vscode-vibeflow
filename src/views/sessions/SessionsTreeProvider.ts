@@ -58,6 +58,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private sessions: VibeFlowSession[] = [];
+
+  /**
+   * Count of sessions that have a live heartbeat (active and not stale).
+   * Used by the right-aligned work-summary status bar to show
+   * "N agents · M ready" without re-fetching the session list.
+   */
+  getActiveSessionCount(): number {
+    return this.sessions.filter(s => s.active && !s.stale).length;
+  }
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   // Session lookup by TreeItem id — needed because VSCode strips custom fields
   // from TreeItem arguments when passing to commands

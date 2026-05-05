@@ -108,6 +108,10 @@
           {
             "name": "respond",
             "description": "Respond to a pending agent prompt"
+          },
+          {
+            "name": "compliance",
+            "description": "Show open compliance findings for this project"
           }
         ]
       }

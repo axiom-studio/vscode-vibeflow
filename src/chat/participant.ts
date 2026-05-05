@@ -6,6 +6,52 @@ import type { PromptNotifier } from '../notifications/PromptNotifier.js';
 const PARTICIPANT_ID = 'vibeflow.chat';
 
 /**
+ * Pull item-type, priority, and title out of a free-form `/create`
+ * prompt. The order of the input doesn't matter; we strip the
+ * type/priority tokens and use whatever's left as the title.
+ *
+ * Examples:
+ *   "feature: User Dashboard"        → {feature, medium, "User Dashboard"}
+ *   "high priority bug login broken" → {issue, high, "bug login broken"}
+ *   "todo add date filter"           → {todo, medium, "add date filter"}
+ */
+export function parseCreatePrompt(prompt: string): {
+  itemType: 'feature' | 'todo' | 'issue';
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+} {
+  const lower = prompt.toLowerCase();
+
+  const itemType: 'feature' | 'todo' | 'issue' =
+    /\bfeature\b/.test(lower) ? 'feature'
+      : /\b(todo|enhancement)\b/.test(lower) ? 'todo'
+        : 'issue';
+
+  const priority: 'low' | 'medium' | 'high' =
+    /\bhigh(\s+priority)?\b/.test(lower) ? 'high'
+      : /\blow(\s+priority)?\b/.test(lower) ? 'low'
+        : 'medium';
+
+  // Strip leading type/priority phrases + a trailing colon if present.
+  // Keep the first colon's RHS when the user wrote "feature: User Dashboard".
+  let title = prompt.trim();
+  const colonIdx = title.indexOf(':');
+  if (colonIdx >= 0 && colonIdx < 30) {
+    title = title.slice(colonIdx + 1).trim();
+  } else {
+    title = title
+      .replace(/\b(feature|todo|issue|enhancement|bug)\b/gi, '')
+      .replace(/\b(high|low|medium)(\s+priority)?\b/gi, '')
+      .replace(/\bpriority\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  if (!title) { title = prompt.trim(); }
+
+  return { itemType, priority, title };
+}
+
+/**
  * Render a chat message's attached references as a one-line
  * acknowledgement at the top of the participant's reply. Returns
  * empty string when nothing is attached so callers can guard with
@@ -62,10 +108,52 @@ export function registerChatParticipant(
 
   const participant = vscode.chat.createChatParticipant(PARTICIPANT_ID, async (request, chatContext, stream, token) => {
     const handler = new ChatHandler(client, detector, promptNotifier);
-    await handler.handle(request, chatContext, stream, token);
+    return handler.handle(request, chatContext, stream, token);
   });
 
   participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'vibeflow-icon.svg');
+
+  // Suggest the next likely command after each turn so users discover
+  // the surface without reading docs. We base suggestions on what the
+  // last command produced (e.g. after /status, suggest /review).
+  participant.followupProvider = {
+    provideFollowups(result: vscode.ChatResult): vscode.ChatFollowup[] {
+      const cmd = result.metadata && typeof result.metadata === 'object'
+        ? (result.metadata as { command?: string }).command
+        : undefined;
+      switch (cmd) {
+        case 'status':
+          return [
+            { prompt: 'review pending items', label: '🔍 Review', command: 'review' },
+            { prompt: 'show summary', label: '📊 Summary', command: 'summary' },
+          ];
+        case 'review':
+          return [
+            { prompt: 'show open compliance findings', label: '🛡 Compliance', command: 'compliance' },
+            { prompt: 'show summary', label: '📊 Summary', command: 'summary' },
+          ];
+        case 'create':
+          return [
+            { prompt: 'show project status', label: '📋 Status', command: 'status' },
+            { prompt: 'launch a developer session', label: '🚀 Launch', command: 'launch' },
+          ];
+        case 'summary':
+          return [
+            { prompt: 'show project status', label: '📋 Status', command: 'status' },
+            { prompt: 'review pending items', label: '🔍 Review', command: 'review' },
+          ];
+        case 'compliance':
+          return [
+            { prompt: 'review pending items', label: '🔍 Review', command: 'review' },
+          ];
+        default:
+          return [
+            { prompt: 'show project status', label: '📋 Status', command: 'status' },
+            { prompt: 'review pending items', label: '🔍 Review', command: 'review' },
+          ];
+      }
+    },
+  };
 
   context.subscriptions.push(participant);
 }
@@ -82,17 +170,17 @@ class ChatHandler {
     _context: vscode.ChatContext,
     stream: vscode.ChatResponseStream,
     _token: vscode.CancellationToken,
-  ): Promise<void> {
+  ): Promise<vscode.ChatResult> {
     if (!this.client.isAuthenticated()) {
       stream.markdown('**Not logged in.** Run `VibeFlow: Login` first.\n\n');
       stream.button({ command: 'vibeflow.login', title: 'Login to VibeFlow' });
-      return;
+      return {};
     }
 
     const project = this.detector.getCachedProject();
     if (!project) {
       stream.markdown('**No project detected.** Open a workspace with a git remote linked to a VibeFlow project.\n');
-      return;
+      return {};
     }
 
     // Surface any references the user attached to the chat message
@@ -108,25 +196,67 @@ class ChatHandler {
     switch (request.command) {
       case 'status':
         await this.handleStatus(project, stream);
-        break;
+        return { metadata: { command: 'status' } };
       case 'create':
         await this.handleCreate(project, request, stream);
-        break;
+        return { metadata: { command: 'create' } };
       case 'review':
         await this.handleReview(project, stream);
-        break;
+        return { metadata: { command: 'review' } };
       case 'summary':
         await this.handleSummary(project, stream);
-        break;
+        return { metadata: { command: 'summary' } };
       case 'launch':
         await this.handleLaunch(request, stream);
-        break;
+        return { metadata: { command: 'launch' } };
       case 'respond':
         await this.handleRespond(project, request, stream);
-        break;
+        return { metadata: { command: 'respond' } };
+      case 'compliance':
+        await this.handleCompliance(project, stream);
+        return { metadata: { command: 'compliance' } };
       default:
         await this.handleFreeform(project, request, stream);
-        break;
+        return { metadata: { command: 'freeform' } };
+    }
+  }
+
+  /**
+   * Show open compliance findings — anything not in 'resolved' or
+   * 'accepted_risk' status. Backend wire shape:
+   *   axiomcloud/database/vibeflow_models.go ComplianceFinding (line 513).
+   */
+  private async handleCompliance(
+    project: DetectedProject,
+    stream: vscode.ChatResponseStream,
+  ): Promise<void> {
+    stream.markdown(`## Compliance Findings — ${project.projectName}\n\n`);
+
+    try {
+      const findings = await this.client.listComplianceFindings(project.projectId);
+      const open = findings.filter(f => f.status !== 'resolved' && f.status !== 'accepted_risk');
+
+      if (open.length === 0) {
+        stream.markdown('No open findings. ✓\n');
+        return;
+      }
+
+      // Group by severity so the user sees critical issues first.
+      const order: Array<typeof open[number]['severity']> = ['critical', 'high', 'medium', 'low', 'informational'];
+      for (const sev of order) {
+        const rows = open.filter(f => f.severity === sev);
+        if (rows.length === 0) { continue; }
+        stream.markdown(`### ${sev.toUpperCase()} (${rows.length})\n\n`);
+        stream.markdown('| Type | Item | Description |\n|------|------|-------------|\n');
+        for (const f of rows) {
+          const desc = (f.description ?? '').replace(/\|/g, '\\|').slice(0, 120);
+          stream.markdown(`| ${f.work_item_type} #${f.work_item_id} | ${f.finding_type} | ${desc} |\n`);
+        }
+        stream.markdown('\n');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      stream.markdown(`**Error**: ${msg}\n`);
     }
   }
 
@@ -374,26 +504,59 @@ class ChatHandler {
     if (!prompt) {
       stream.markdown(
         'Tell me what to create. Examples:\n\n' +
-        '- `@vibeflow /create a high-priority bug: login button not responding`\n' +
+        '- `@vibeflow /create high-priority bug: login button not responding`\n' +
         '- `@vibeflow /create feature: User Dashboard`\n' +
-        '- `@vibeflow /create todo: add date filter to reports table`\n',
+        '- `@vibeflow /create todo: add date filter to reports table`\n\n' +
+        'Add `low|medium|high` anywhere in the prompt to set priority (default: medium).\n',
       );
       return;
     }
 
-    const lower = prompt.toLowerCase();
-    let itemType: 'issue' | 'todo' | 'feature' = 'issue';
-    if (lower.includes('feature')) {
-      itemType = 'feature';
-    } else if (lower.includes('todo') || lower.includes('enhancement') || lower.includes('add')) {
-      itemType = 'todo';
-    }
+    // Parse type, priority, and title out of the natural-language prompt.
+    const parsed = parseCreatePrompt(prompt);
 
-    stream.markdown(
-      `I'd create a **${itemType}** from: "${prompt}"\n\n` +
-      `Project: **${project.projectName}** (branch: ${project.gitBranch})\n\n`,
-    );
-    stream.button({ command: 'vibeflow.createWorkItem', title: `Create ${itemType}` });
+    try {
+      if (parsed.itemType === 'feature') {
+        await this.client.createFeature(project.projectId, parsed.title, parsed.priority);
+        stream.markdown(
+          `✓ Created **feature**: "${parsed.title}" (${parsed.priority}) in **${project.projectName}**.\n`,
+        );
+      } else if (parsed.itemType === 'issue') {
+        await this.client.createIssue(project.projectId, parsed.title, parsed.priority, project.gitBranch);
+        stream.markdown(
+          `✓ Created **issue**: "${parsed.title}" (${parsed.priority}, branch ${project.gitBranch}) in **${project.projectName}**.\n`,
+        );
+      } else {
+        // Todo needs a parent feature. Chat can't drive a Quick Pick;
+        // ask the user to use the wizard if there's more than one
+        // feature, otherwise pick the only one.
+        const features = await this.client.listFeatures(project.projectId);
+        if (features.length === 0) {
+          stream.markdown(
+            '**No features yet.** Todos live under features. Either create the feature first ' +
+            '(`@vibeflow /create feature: ...`) or use the wizard:\n',
+          );
+          stream.button({ command: 'vibeflow.createWorkItem', title: 'Create Work Item' });
+          return;
+        }
+        if (features.length > 1) {
+          stream.markdown(
+            `**${features.length} features available** — chat can't disambiguate. Use the wizard ` +
+            'to pick the parent feature:\n',
+          );
+          stream.button({ command: 'vibeflow.createWorkItem', title: 'Create Work Item' });
+          return;
+        }
+        const feature = features[0];
+        await this.client.createTodo(feature.id, parsed.title, parsed.priority, project.gitBranch);
+        stream.markdown(
+          `✓ Created **todo**: "${parsed.title}" (${parsed.priority}) under feature **${feature.name}**.\n`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      stream.markdown(`**Error creating ${parsed.itemType}**: ${msg}\n`);
+    }
   }
 
   private async handleFreeform(
@@ -423,8 +586,10 @@ class ChatHandler {
       '- `/status` — project status, sessions, features, issues\n' +
       '- `/create <description>` — create a work item\n' +
       '- `/review` — items needing QA or security review\n' +
+      '- `/compliance` — open compliance findings\n' +
       '- `/summary` — work summary and metrics\n' +
-      '- `/launch` — launch an agent session\n\n' +
+      '- `/launch` — launch an agent session\n' +
+      '- `/respond <text>` — respond to a pending agent prompt\n\n' +
       'Or ask me anything about the project.\n',
     );
   }

@@ -59,6 +59,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
 
+  // Status-bar work summary follows the trees: each successful
+  // poll (which fires onDidChangeTreeData) recomputes the counts.
+  context.subscriptions.push(
+    sessionsProvider.onDidChangeTreeData(() => refreshWorkSummary()),
+    workItemsProvider.onDidChangeTreeData(() => refreshWorkSummary()),
+  );
+
   // --- File Decorations ---
   const fileDecorationProvider = new AgentFileDecorationProvider();
   context.subscriptions.push(
@@ -117,8 +124,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Update status bars
     sessionStatusBar.updateProject(project);
-    workSummaryStatusBar.updateCounts(0, 0); // Will be updated by polling
+    refreshWorkSummary();
     branchReviewStatusBar.start(client, detector);
+  }
+
+  /**
+   * Recompute the right-aligned summary bar from the trees. Called once
+   * on connect (initial state) and again whenever either tree finishes
+   * a poll. The trees fire onDidChangeTreeData after every successful
+   * fetchAndRefresh, so subscribing to that event keeps the bar fresh
+   * without a separate poller.
+   */
+  function refreshWorkSummary(): void {
+    const agents = sessionsProvider.getActiveSessionCount();
+    const ready = workItemsProvider.getReadyWorkItemCount();
+    workSummaryStatusBar.updateCounts(agents, ready);
   }
 
   /**
