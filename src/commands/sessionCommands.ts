@@ -3,9 +3,9 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
-import type { ProjectDetector } from '../project/ProjectDetector.js';
+import type { DetectedProject, ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
-import type { VibeFlowSession } from '../api/types.js';
+import type { VibeFlowProject, VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 import { createOrAttachWorktree } from './worktreeCommands.js';
@@ -58,8 +58,12 @@ const PROVIDERS = [
 ];
 
 /**
- * 7-step launch wizard matching CLI depth.
- * Steps: Code Agent → Advisory Agents → Provider → Env Token → LLM Gateway → Branch → Worktree
+ * Launch wizard. Mirrors vibeflow-cli's tui_wizard step set: Project →
+ * Mode → Code Agent → Advisory → Provider → [Per-persona override] →
+ * [Env token] → [LLM gateway] → Branch → [Worktree]. Bracketed steps
+ * are conditional. Title strings deliberately omit step counts because
+ * the count varies with conditional branches and stale numbers are
+ * worse than no numbers.
  */
 export async function launchSession(
   client: VibeFlowClient,
@@ -68,41 +72,84 @@ export async function launchSession(
   extensionUri: vscode.Uri,
   terminalRegistry: TerminalRegistry,
   stickyModels: StickyModels,
+  onProjectSwitched?: (project: DetectedProject) => void,
 ): Promise<void> {
-  const project = detector.getCachedProject();
-  if (!project) {
-    vscode.window.showErrorMessage('VibeFlow: No project. Run "VibeFlow: Setup" first.');
-    return;
-  }
   if (!client.isAuthenticated()) {
     vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
     return;
   }
 
-  // Step 1: Session Mode
+  // Step 1: Project — fetch live, default to cached, re-cache if changed.
+  // The CLI's tui_wizard StepProject does the same: every launch is a
+  // chance to switch project. Without this, the only path to switch was
+  // /vibeflow.openSettings → Project, which most users never find.
+  let projects: VibeFlowProject[];
+  try {
+    projects = await client.listProjects();
+  } catch (err) {
+    vscode.window.showErrorMessage(`VibeFlow: Failed to load projects — ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  if (projects.length === 0) {
+    vscode.window.showErrorMessage('VibeFlow: No projects available. Create one in the dashboard first.');
+    return;
+  }
+
+  const cached = detector.getCachedProject();
+  const projectItems = projects.map(p => ({
+    label: cached?.projectId === p.id ? `$(check) ${p.name}` : p.name,
+    description: p.status,
+    detail: p.git_remote_url ?? undefined,
+    project: p,
+  }));
+  const projectPick = await vscode.window.showQuickPick(projectItems, {
+    placeHolder: 'Select VibeFlow project',
+    title: 'VibeFlow: Launch Session — Project',
+  });
+  if (!projectPick) { return; }
+
+  // Resolve the workspace's current branch eagerly — used both for the
+  // gitBranch field below and for the branch step's "current" hint. The
+  // cached project's gitBranch is unreliable (stale, often "").
+  const currentBranch = await detector.getGitBranch();
+  const project: DetectedProject = {
+    projectId: projectPick.project.id,
+    projectName: projectPick.project.name,
+    gitRemoteUrl: projectPick.project.git_remote_url ?? '',
+    gitBranch: currentBranch,
+  };
+  if (cached?.projectId !== project.projectId) {
+    await detector.cacheProject(project);
+    // Fire the host's connect callback so Work Items / Documents /
+    // Sessions providers, status bars, and the activity poller all
+    // re-bind to the new project before we spawn terminals against it.
+    onProjectSwitched?.(project);
+  }
+
+  // Step 2: Session Mode
   const modePick = await vscode.window.showQuickPick([...SESSION_MODES], {
     placeHolder: 'Select session mode',
-    title: 'VibeFlow: Launch Session (1/8) — Session Mode',
+    title: 'VibeFlow: Launch Session — Session Mode',
   });
   if (!modePick) { return; }
   const sessionMode = modePick.value;
 
   const personas: string[] = [];
 
-  // Step 2: Code Agent (single select — max 1 per branch)
+  // Step 3: Code Agent (single select — max 1 per branch)
   const codeAgent = await vscode.window.showQuickPick(CODE_AGENTS, {
     placeHolder: 'Select code agent (max 1 per branch)',
-    title: 'VibeFlow: Launch Session (2/8) — Code Agent',
+    title: 'VibeFlow: Launch Session — Code Agent',
   });
   if (!codeAgent) { return; }
   if (codeAgent.value !== '_skip') {
     personas.push(codeAgent.value);
   }
 
-  // Step 3: Advisory Agents (multi-select)
+  // Step 4: Advisory Agents (multi-select)
   const advisoryPicks = await vscode.window.showQuickPick(ADVISORY_AGENTS, {
     placeHolder: 'Select advisory agents (optional, multi-select)',
-    title: 'VibeFlow: Launch Session (3/8) — Advisory Agents',
+    title: 'VibeFlow: Launch Session — Advisory Agents',
     canPickMany: true,
   });
   if (advisoryPicks === undefined) { return; }
@@ -115,21 +162,67 @@ export async function launchSession(
     return;
   }
 
-  // Step 4: Provider
+  // Step 5: Provider
   const provider = await vscode.window.showQuickPick(PROVIDERS, {
     placeHolder: 'Select AI provider',
-    title: 'VibeFlow: Launch Session (4/8) — Provider',
+    title: 'VibeFlow: Launch Session — Provider',
   });
   if (!provider) { return; }
 
-  // Step 5: Environment Token (conditional — codex/gemini need API keys)
+  // Step 5b: Per-persona provider override (conditional — only when
+  // running 2+ personas, mirrors tui_wizard's teamModeProvider gate).
+  // Default: every persona inherits the main provider. Override mode
+  // lets the user route e.g. principal_engineer → claude and
+  // product_manager → gemini in the same launch.
+  //
+  // Caveat carried over from CLI: the env-token step (5c below) only
+  // collects credentials for the *main* provider. A persona that
+  // overrides to a provider needing a key the user didn't enter falls
+  // back to whatever's in the environment / the binary's own config.
+  // Document this rather than fan out the token step per-override.
+  const personaProviders = new Map<string, string>();
+  for (const p of personas) { personaProviders.set(p, provider.value); }
+
+  if (personas.length > 1) {
+    const overrideChoice = await vscode.window.showQuickPick(
+      [
+        {
+          label: `$(arrow-right) Use ${provider.label} for all`,
+          description: 'Same provider for every persona',
+          value: false,
+        },
+        {
+          label: '$(symbol-color) Customize per persona',
+          description: 'Pick a different provider for each agent',
+          value: true,
+        },
+      ],
+      {
+        placeHolder: 'Provider routing',
+        title: 'VibeFlow: Launch Session — Provider Routing',
+      },
+    );
+    if (overrideChoice === undefined) { return; }
+    if (overrideChoice.value) {
+      for (const persona of personas) {
+        const personaPick = await vscode.window.showQuickPick(PROVIDERS, {
+          placeHolder: `Provider for ${persona}`,
+          title: `VibeFlow: Launch Session — Provider for ${persona}`,
+        });
+        if (!personaPick) { return; }
+        personaProviders.set(persona, personaPick.value);
+      }
+    }
+  }
+
+  // Step 6: Environment Token (conditional — codex/gemini need API keys)
   const envVars: Record<string, string> = {};
   if (provider.value === 'codex') {
     const token = await vscode.window.showInputBox({
       prompt: 'Codex MCP Token (or press Enter to skip if already configured)',
       placeHolder: 'MCP_TOKEN value',
       password: true,
-      title: 'VibeFlow: Launch Session (5/8) — Codex Token',
+      title: 'VibeFlow: Launch Session — Codex Token',
       ignoreFocusOut: true,
     });
     if (token === undefined) { return; }
@@ -139,14 +232,14 @@ export async function launchSession(
       prompt: 'Gemini API Key (or press Enter to skip if already configured)',
       placeHolder: 'GEMINI_API_KEY value',
       password: true,
-      title: 'VibeFlow: Launch Session (5/8) — Gemini Key',
+      title: 'VibeFlow: Launch Session — Gemini Key',
       ignoreFocusOut: true,
     });
     if (token === undefined) { return; }
     if (token) { envVars['GEMINI_API_KEY'] = token; }
   }
 
-  // Step 6: LLM Gateway (conditional — gated by `vibeflow.llmGateway.show`,
+  // Step 7: LLM Gateway (conditional — gated by `vibeflow.llmGateway.show`,
   // off by default). The wizard step is dormant for everyone except dev
   // builds that explicitly enable the flag. When live the answer is wired
   // into the spawned terminal's env via VIBEFLOW_LLM_GATEWAY so the agent
@@ -159,13 +252,13 @@ export async function launchSession(
         { label: '$(cloud) Route through LLM Gateway', description: 'Axiom Cloud proxy', value: true },
         { label: '$(plug) Direct to provider', description: 'No proxy', value: false },
       ],
-      { placeHolder: 'LLM Gateway', title: 'VibeFlow: Launch Session (6/8) — LLM Gateway' },
+      { placeHolder: 'LLM Gateway', title: 'VibeFlow: Launch Session — LLM Gateway' },
     );
     if (gatewayChoice === undefined) { return; }
     llmGateway = gatewayChoice.value;
   }
 
-  // Step 6: Branch
+  // Step 8: Branch
   let branches: string[];
   try {
     const result = execSync('git branch --list --no-color', {
@@ -191,7 +284,7 @@ export async function launchSession(
 
   const branchPick = await vscode.window.showQuickPick(branchItems, {
     placeHolder: 'Select branch',
-    title: 'VibeFlow: Launch Session (7/8) — Branch',
+    title: 'VibeFlow: Launch Session — Branch',
   });
   if (!branchPick) { return; }
 
@@ -214,7 +307,7 @@ export async function launchSession(
         { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' as const },
         { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' as const },
       ],
-      { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session (8/8) — Worktree' },
+      { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session — Worktree' },
     );
     if (!wtPick) { return; }
     worktreeChoice = wtPick.value;
@@ -268,10 +361,11 @@ export async function launchSession(
   // reads CLAUDE.md/AGENTS.md and calls session_init itself via MCP.
   for (const persona of personas) {
     try {
+      const personaProviderKey = personaProviders.get(persona) ?? provider.value;
       const model = stickyModels.getModel(persona);
       const command = buildLaunchCommand(
-        binaries[provider.value] ?? 'claude',
-        provider.value,
+        binaries[personaProviderKey] ?? 'claude',
+        personaProviderKey,
         sessionMode,
       );
 
@@ -282,7 +376,7 @@ export async function launchSession(
       terminalRegistry.create({
         persona,
         branch,
-        provider: provider.value,
+        provider: personaProviderKey,
         workDir,
         command,
         env: {

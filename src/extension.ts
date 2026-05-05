@@ -443,7 +443,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, connectToProject);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
