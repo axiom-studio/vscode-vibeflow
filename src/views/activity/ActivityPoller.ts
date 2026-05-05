@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { ActivityEntry, VibeFlowIssue, VibeFlowSession, VibeFlowTodo } from '../../api/types.js';
 import type { ActivityFeedProvider } from './ActivityFeedProvider.js';
+import type { FeedStateController } from './feedStateController.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import type { AgentFileDecorationProvider, FileAction } from '../decorations/AgentFileDecorationProvider.js';
 import { personaDisplayName } from '../../sessions/personas.js';
@@ -140,6 +141,13 @@ export class ActivityPoller {
     private readonly promptNotifier: PromptNotifier,
     private readonly projectId: number,
     private readonly fileDecorations?: AgentFileDecorationProvider,
+    /**
+     * Optional health observer — receives pollSucceeded/pollFailed signals
+     * so the empty-state UI can flip to "Connection lost. Retrying…" after
+     * a sustained outage. Optional so existing call sites don't break;
+     * extension.ts wires it in `connectToProject`.
+     */
+    private readonly feedStateController?: FeedStateController,
   ) {}
 
   start(): void {
@@ -156,16 +164,24 @@ export class ActivityPoller {
   }
 
   private async poll(): Promise<void> {
+    // pollSessions returns whether listSessions (the primary endpoint) was
+    // reachable this cycle. That's the signal the FeedStateController needs:
+    // if the API is up the feed is "connected", if it's been down N cycles
+    // we flip to "Connection lost. Retrying…". Inner per-track catches keep
+    // the existing partial-data resilience.
+    let healthy = false;
     try {
-      // Track A: session-level activity (last_message from heartbeats). This
-      // also refreshes our session_id → persona_key map for Tracks B and C.
-      await this.pollSessions();
-      // Track B: work item log-level activity (implementing todos/issues).
+      healthy = await this.pollSessions();
       await this.pollWorkItemLogs();
-      // Track C: pending agent → user prompts (toasts + status bar badge).
       await this.pollPendingPrompts();
     } catch {
       // Silent failure — retry next cycle
+    }
+
+    if (healthy) {
+      this.feedStateController?.pollSucceeded();
+    } else {
+      this.feedStateController?.pollFailed();
     }
   }
 
@@ -194,14 +210,16 @@ export class ActivityPoller {
   /**
    * Track A: fetch active sessions and create events from last_message.
    * Updates `sessionPersonaMap` as a side-effect (used by Track B).
+   * Returns `true` when the API call succeeded (the signal used by the
+   * cycle-level health tracker), `false` otherwise.
    */
-  private async pollSessions(): Promise<void> {
+  private async pollSessions(): Promise<boolean> {
     let sessions: VibeFlowSession[] = [];
     try {
       sessions = await this.client.listSessions(this.projectId);
     } catch {
       // Silent — leave map stale, Track B will fall back gracefully.
-      return;
+      return false;
     }
 
     // Merge into the session_id → persona map. Don't clear: a session that
@@ -230,6 +248,7 @@ export class ActivityPoller {
         content: this.truncate(session.last_message),
       });
     }
+    return true;
   }
 
   /**
