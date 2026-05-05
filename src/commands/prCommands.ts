@@ -3,6 +3,7 @@ import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector } from '../project/ProjectDetector.js';
 import { checkBranchReviewStatus } from './governanceCommands.js';
 import { saveAndNotify, deleteCommentWithErrorHandling } from './commentCommands.js';
+import { getNonce } from '../utils/nonce.js';
 
 /**
  * Create a PR with auto-populated body from completed work items.
@@ -196,7 +197,7 @@ function getDocumentViewerHtml(
   const distUri = vscode.Uri.joinPath(extensionUri, 'webview-ui', 'dist');
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'assets', 'index.js'));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'assets', 'index.css'));
-  const nonce = Array.from({ length: 32 }, () => Math.random().toString(36)[2]).join('');
+  const nonce = getNonce();
 
   // Encode content as base64 to safely embed in HTML data attribute
   const encodedContent = Buffer.from(content, 'utf-8').toString('base64');
