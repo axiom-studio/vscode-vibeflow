@@ -694,3 +694,133 @@ has at least one caller.** Today we satisfy that for ~95% of the user-
 facing surface. The remaining 5% (compliance UI, context UI, document
 mutation UI) are gated on building those UIs first — wiring the client
 method without a caller would be dead code.
+
+---
+
+## Chat participant gaps
+
+**Status:** triaged. `/compliance`, follow-up provider, real `/create`
+API call all wired now. `/launch`, `lm.registerTool`, and natural-
+language intent parsing in freeform deferred with rationale below.
+
+### Wired in this batch
+
+- **`/compliance`** — new chat command listing open compliance findings
+  grouped by severity. Uses the existing `client.listComplianceFindings`.
+- **`ChatFollowupProvider`** — every chat turn now suggests 1-2
+  next-likely commands (e.g. after `/status`, suggest `/review` and
+  `/summary`). The handler returns `ChatResult.metadata.command` and
+  the followup provider switches on it.
+- **`/create` actually creates** — the prompt is parsed for type
+  (feature/todo/issue), priority (low/medium/high), and title, then
+  calls `client.createFeature`/`createTodo`/`createIssue`. Falls back
+  to the wizard only when a todo's parent feature is ambiguous.
+  `parseCreatePrompt` is exported so it stays testable.
+
+### Deferred — `/launch` stays button-only
+
+Launching a session is a multi-step Quick Pick (persona → provider →
+model → branch) plus terminal allocation. Chat input has none of those
+affordances and `vscode.commands.executeCommand` can't pre-seed Quick
+Picks across the chat → command boundary. The button is the right
+shape: chat surfaces the intent, the wizard collects the parameters.
+
+### Deferred — `vscode.lm.registerTool` per-tool registrations
+
+The PRD §5.5 P0 wanted each of 72 backend tools registered as a
+`LanguageModelTool` so Copilot Agent Mode could invoke them
+individually. We instead register a single
+`McpServerDefinitionProvider` (`extension.ts:572`) pointing at the
+backend MCP endpoint. Net effect: Copilot Agent Mode (and Continue,
+Cody, etc.) can already reach all 72 tools through MCP without us
+maintaining 72 thin TypeScript wrappers that would drift from the
+backend tool definitions.
+
+The MCP-server-provider path is the modern approach VS Code documents
+for AI tool exposure. If we ever need extension-side tools that aren't
+backend MCP tools (e.g. workspace-only operations), those would
+register via `lm.registerTool`.
+
+### Deferred — natural-language intent parsing in freeform
+
+Today the freeform handler matches keywords ("status", "review",
+"summary") and falls through to a help message otherwise. Anything
+smarter would need an LLM call from the participant itself — possible
+via `vscode.lm.selectChatModels`, but the cost-vs-value is poor when
+the user can just type the slash command. Revisit if user feedback
+shows people typing natural language and getting frustrated.
+
+---
+
+## Notifications & state-sync gaps
+
+**Status:** the work-summary status bar gap is fixed. The two
+"never called" claims about `PromptNotifier` were stale — the wiring
+already exists. Stale-session and QA-rejection toasts deferred with
+rationale.
+
+### Fixed — work summary status bar updates
+
+Previously `workSummaryStatusBar.updateCounts(0, 0)` ran once on
+connect and never again. The bar perpetually showed "0 agents · 0 ready"
+once connected. Now:
+
+- `SessionsTreeProvider.getActiveSessionCount()` returns the count of
+  sessions with a live heartbeat (`active && !stale`).
+- `WorkItemsTreeProvider.getReadyWorkItemCount()` returns todos +
+  issues in `ready_to_implement` or `architecture_review_complete`.
+- `extension.ts` subscribes to each provider's `onDidChangeTreeData`
+  and recomputes the counts. Each successful poll cycle fires
+  `onDidChangeTreeData`, so the bar follows the trees without a
+  separate poller.
+
+**Test.** Connect → bar shows current counts. Launch a session → count
+goes up next poll. Move a todo to `done` → "ready" count drops.
+
+### Audit was wrong — `PromptNotifier.handlePrompts` IS called
+
+The audit said `handlePrompts` and `setRespondHandler` are never
+called. Both ARE called:
+
+- `extension.ts:97` — `promptNotifier.setRespondHandler((id, response) =>
+  client.respondToPrompt(project.projectId, id, response))` runs
+  during `connectToProject`.
+- `ActivityPoller.ts:191` — `this.promptNotifier.handlePrompts(hydrated)`
+  runs in Track C of every poll cycle, after listing pending prompts
+  via `client.listPendingPrompts(projectId)`.
+
+Toast → status bar badge → respond flow is fully wired.
+
+### Deferred — "session heartbeat lost" warning
+
+The session list already exposes `stale` flag from the backend (TTL
+on Redis heartbeat). We render it in the Agent Fleet tree (icon
+swap). A toast on the active → stale transition would need:
+
+1. State diffing between poll cycles (tracked, not present today).
+2. UX guard so we don't spam when the user closed the laptop and
+   the OS stopped polling — the local extension would itself appear
+   "stale" relative to its last good poll, so the dedup logic must
+   distinguish "agent died" from "I went offline and came back".
+
+Worthwhile but not a 1-hour change. Revisit if users actually hit
+silent stale sessions in practice.
+
+### Deferred — "QA rejection" toast back to the developer session
+
+Today QA rejection updates the work item's status to `rejected` with
+a comment. The Activity Feed picks up the log line ("Security Review
+Rejected: ..." or analogous QA log) and renders it with the right
+persona. So the *information* reaches the user — what's missing is a
+proactive toast.
+
+Why deferred:
+- Requires diffing status transitions per-work-item (not tracked).
+- Risks spamming when many items get rejected in a sweep.
+- Activity Feed already shows the rejection within ~5 seconds, with
+  proper persona attribution and content.
+
+If we add it, the right shape is: when the active workspace's git
+branch is the rejected item's `target_branch`, fire a single
+condensed toast with a "Show in Work Items" button. Open question
+when we get there.
