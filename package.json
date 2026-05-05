@@ -42,7 +42,7 @@
           "icon": "media/vibeflow-icon.svg"
         }
       ],
-      "auxiliarybar": [
+      "panel": [
         {
           "id": "vibeflowMonitor",
           "title": "VibeFlow Monitor",
@@ -249,6 +249,10 @@
         "command": "vibeflow.showAllTerminals",
         "title": "VibeFlow: Show All Agent Terminals",
         "icon": "$(eye)"
+      },
+      {
+        "command": "vibeflow.openWorkItemPanel",
+        "title": "VibeFlow: Open Work Item Panel"
       }
     ],
     "menus": {
