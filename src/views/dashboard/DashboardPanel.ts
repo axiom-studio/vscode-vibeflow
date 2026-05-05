@@ -4,6 +4,7 @@ import type { VibeFlowClient } from '../../api/client.js';
 import type {
   BranchReviewStatus,
   VibeFlowSession,
+  VibeFlowSwimlaneItem,
   VibeFlowSwimlaneResult,
   VibeFlowComplianceFinding,
   VibeFlowWorkSummary,
@@ -34,6 +35,21 @@ interface DashboardSnapshot {
   branch: string;
   generatedAt: string;
   personaStatus: Record<string, PersonaStatus>;
+  /**
+   * How many work items are currently waiting for each persona to act.
+   * Routing follows the status-to-persona table in
+   * axiomcloud/docs/VibeFlow/docs/personas.md §"Work Item Routing".
+   *
+   * Code agents (architect, developer, principal_engineer) share a single
+   * queue and report the same number — only one of them can run on a
+   * branch at a time, so the queue is logically shared.
+   *
+   * QA Lead is an upper bound: swimlane wire shape carries `security_reviewed`
+   * but not `qa_verified`, so we count `done && security_reviewed=true`,
+   * which overcounts items already QA-verified. Backend follow-up to extend
+   * VibeflowSwimlaneItem at axiomcloud/database/vibeflow_models.go:830-845.
+   */
+  personaQueues: Record<string, number | null>;
   sessions: { active: number; stale: number; total: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -216,6 +232,7 @@ async function composeSnapshot(
     branch: project.gitBranch,
     generatedAt: new Date().toISOString(),
     personaStatus: derivePersonaStatus(sessions),
+    personaQueues: tallyPersonaQueues(swimlane, project.projectId),
     sessions: tallySessions(sessions),
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
@@ -262,6 +279,51 @@ function tallySessions(sessions: VibeFlowSession[]): { active: number; stale: nu
     if (s.stale) { stale++; } else { active++; }
   }
   return { active, stale, total: DASHBOARD_PERSONAS.length };
+}
+
+/**
+ * How many work items are waiting for each persona, derived from the
+ * org-scoped swimlane filtered to this project. Counts include both
+ * todos and issues (both flow through the same status pipeline).
+ *
+ * `null` for personas with no status-driven intake (project_manager is a
+ * tracker; customer is an input source) — the webview renders "—" so
+ * the user doesn't read a literal 0 as "queue is empty."
+ */
+function tallyPersonaQueues(
+  swimlane: VibeFlowSwimlaneResult | undefined,
+  projectId: number,
+): DashboardSnapshot['personaQueues'] {
+  if (!swimlane) {
+    return {
+      product_manager: 0, architect: 0, developer: 0, principal_engineer: 0,
+      security_lead: 0, qa_lead: 0, ux_designer: 0,
+      project_manager: null, customer: null,
+    };
+  }
+  const inProject = (arr: VibeFlowSwimlaneItem[]) => arr.filter(i => i.project_id === projectId);
+
+  const inReview = inProject(swimlane.in_review).length;
+  const codeQueue = inProject(swimlane.planning).length
+    + inProject(swimlane.ready_to_implement).length
+    + inProject(swimlane.architecture_review_complete).length;
+  const needsUx = inProject(swimlane.needs_ux_input).length;
+  const doneItems = inProject(swimlane.done);
+  const securityQueue = doneItems.filter(i => !i.security_reviewed).length;
+  // QA upper bound — see DashboardSnapshot.personaQueues comment.
+  const qaQueue = doneItems.filter(i => i.security_reviewed === true).length;
+
+  return {
+    product_manager: inReview,
+    architect: codeQueue,
+    developer: codeQueue,
+    principal_engineer: codeQueue,
+    security_lead: securityQueue,
+    qa_lead: qaQueue,
+    ux_designer: needsUx,
+    project_manager: null,
+    customer: null,
+  };
 }
 
 function tallyTodos(
