@@ -8,6 +8,7 @@ import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvide
 import type { VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
+import { createOrAttachWorktree } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
 
 const SESSION_MODES = [
@@ -145,9 +146,13 @@ export async function launchSession(
     if (token) { envVars['GEMINI_API_KEY'] = token; }
   }
 
-  // Step 6: LLM Gateway (conditional)
+  // Step 6: LLM Gateway (conditional — gated by `vibeflow.llmGateway.show`,
+  // off by default). The wizard step is dormant for everyone except dev
+  // builds that explicitly enable the flag. When live the answer is wired
+  // into the spawned terminal's env via VIBEFLOW_LLM_GATEWAY so the agent
+  // binary can route accordingly.
   const config = vscode.workspace.getConfiguration('vibeflow');
-  let _llmGateway = false;
+  let llmGateway = false;
   if (config.get<boolean>('llmGateway.show', false)) {
     const gatewayChoice = await vscode.window.showQuickPick(
       [
@@ -157,7 +162,7 @@ export async function launchSession(
       { placeHolder: 'LLM Gateway', title: 'VibeFlow: Launch Session (6/8) — LLM Gateway' },
     );
     if (gatewayChoice === undefined) { return; }
-    _llmGateway = gatewayChoice.value;
+    llmGateway = gatewayChoice.value;
   }
 
   // Step 6: Branch
@@ -202,21 +207,36 @@ export async function launchSession(
   }
 
   // Step 7: Worktree (conditional — only if branch ≠ current)
-  let _worktreeChoice = 'current';
+  let worktreeChoice: 'current' | 'new' = 'current';
   if (branch !== project.gitBranch) {
     const wtPick = await vscode.window.showQuickPick(
       [
-        { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' },
-        { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' },
+        { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' as const },
+        { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' as const },
       ],
       { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session (8/8) — Worktree' },
     );
     if (!wtPick) { return; }
-    _worktreeChoice = wtPick.value;
+    worktreeChoice = wtPick.value;
   }
 
   // Launch sessions for each persona
-  const workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  let workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+
+  // If the user picked "New worktree", create it now and use the new path
+  // as workDir so all spawned terminals run inside the worktree. Pre-fix
+  // this answer was thrown away — the wizard step did nothing.
+  if (worktreeChoice === 'new' && workDir) {
+    const wtPath = createOrAttachWorktree(workDir, branch);
+    if (!wtPath) {
+      vscode.window.showErrorMessage(
+        `VibeFlow: Failed to create worktree for "${branch}". Falling back to current directory.`,
+      );
+    } else {
+      workDir = wtPath;
+      vscode.window.showInformationMessage(`VibeFlow: Worktree created at ${wtPath}`);
+    }
+  }
   const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
   // Write agent instruction docs (CLAUDE.md / AGENTS.md / GEMINI.md) into workDir.
@@ -237,6 +257,12 @@ export async function launchSession(
     VIBEFLOW_SERVER_URL: serverUrl,
     VIBEFLOW_BRANCH: branch,
   };
+  // Pass the gateway choice through to the agent binary. The variable is
+  // only set when the wizard step actually fired (gated by llmGateway.show);
+  // when off the env stays clean.
+  if (llmGateway) {
+    env.VIBEFLOW_LLM_GATEWAY = '1';
+  }
 
   // Note: we do NOT call session_init from the extension. The agent binary
   // reads CLAUDE.md/AGENTS.md and calls session_init itself via MCP.

@@ -484,6 +484,12 @@
           "default": "claude",
           "description": "Default agent provider"
         },
+        "vibeflow.session.reattachMode": {
+          "type": "string",
+          "enum": ["vanilla", "vibeflow"],
+          "default": "vanilla",
+          "description": "Mode used when reattaching phantom sessions on window reload. 'vanilla' (default) preserves the safe per-action permission prompts; 'vibeflow' reattaches in skip-permissions mode (only do this if your prior session was launched in vibeflow mode and you trust the agent to keep running unattended)."
+        },
         "vibeflow.autoDetectProject": {
           "type": "boolean",
           "default": true,
