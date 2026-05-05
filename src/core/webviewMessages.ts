@@ -108,8 +108,62 @@ export type SettingsClientMessage =
 // Work Item Panel
 // ============================================================
 
+import type {
+  VibeFlowComplianceFinding,
+  VibeFlowAttachment,
+  VibeFlowSecurityReview,
+  VibeFlowQAReview,
+  VibeFlowComplianceTag,
+} from '../api/types.js';
+
+/**
+ * Initial work-item context the host hands to the React webview via a body
+ * data attribute (see WorkItemPanelManager.renderHtml). The webview uses it
+ * to render header chrome immediately on mount, before the first
+ * snapshot lands.
+ */
+export interface WorkItemPanelInfo {
+  type: 'todo' | 'issue';
+  id: number;
+  title: string;
+  status: string;
+  priority: string;
+  featureName?: string;
+  claimedBy?: string;
+}
+
+/**
+ * Snapshot pushed every poll cycle. Single source of truth for the
+ * Details / Attachments / Logs tabs. Built from parallel API calls
+ * via Promise.allSettled so a partial failure degrades only the
+ * affected section.
+ */
+export interface WorkItemPanelSnapshot {
+  // Header / state
+  status: string;
+  qa_verified: boolean;
+  security_reviewed: boolean;
+  // Details tab
+  description: string;
+  user_email: string;
+  created_at: string;
+  updated_at: string;
+  target_branch: string;
+  feature_name: string;
+  claimed_by: string;
+  priority: string;
+  compliance_tags: VibeFlowComplianceTag[];
+  // Attachments tab (count drives the tab label)
+  attachments: VibeFlowAttachment[];
+  // Logs sub-tabs
+  execution_logs: { content: string; message_type?: string; created_at: string }[];
+  security_findings: VibeFlowComplianceFinding[];
+  security_review?: VibeFlowSecurityReview;
+  qa_review?: VibeFlowQAReview;
+}
+
 export type WorkItemPanelHostMessage =
-  | { type: 'snapshot'; payload: unknown };
+  | { type: 'snapshot'; payload: WorkItemPanelSnapshot };
 
 export type WorkItemPanelClientMessage =
   | { type: 'changeStatus' }
