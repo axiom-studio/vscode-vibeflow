@@ -10,6 +10,8 @@ import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 import { createOrAttachWorktree } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
+import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
+import type { ContextProxy } from '../core/ContextProxy.js';
 
 // Two modes: Vanilla (per-action permission prompts) and VibeFlow (YOLO).
 // Auto mode (--enable-auto-mode) was a third option but Claude Code 2.1+
@@ -72,6 +74,7 @@ export async function launchSession(
   extensionUri: vscode.Uri,
   terminalRegistry: TerminalRegistry,
   stickyModels: StickyModels,
+  context: ContextProxy,
   onProjectSwitched?: (project: DetectedProject) => void,
 ): Promise<void> {
   if (!client.isAuthenticated()) {
@@ -387,6 +390,12 @@ export async function launchSession(
         terminalMode,
         initPrompt,
       });
+
+      // Remember the mode so a future window-reload reattach (or a
+      // right-click Restart) doesn't silently downgrade a YOLO agent
+      // back to vanilla. Keyed per-{persona, branch, workDir} so two
+      // worktrees of the same branch can run different modes.
+      void recordLaunchMode(context, persona, branch, workDir, sessionMode);
     } catch (err) {
       vscode.window.showErrorMessage(`VibeFlow: Failed to launch ${persona} — ${err}`);
     }
@@ -653,6 +662,7 @@ export async function restartSession(
   sessionsProvider: SessionsTreeProvider,
   terminalRegistry: TerminalRegistry,
   stickyModels: StickyModels,
+  context: ContextProxy,
 ): Promise<void> {
   const personaLabel = session.persona_name ?? session.persona_key;
   const confirm = await vscode.window.showWarningMessage(
@@ -693,10 +703,17 @@ export async function restartSession(
     return;
   }
 
-  // sessionMode picks up the user's preferred reattach behavior so a
-  // restart doesn't silently upgrade a vanilla agent to YOLO. Same
-  // setting reattachMode that SessionReattacher consults on cold start.
-  const sessionMode = config.get<string>('session.reattachMode', 'vanilla');
+  // Resolution order for sessionMode:
+  //   1. The mode we recorded when this persona was originally launched
+  //      on this branch+workDir (so YOLO stays YOLO and vanilla stays
+  //      vanilla — no surprise downgrade or upgrade).
+  //   2. vibeflow.session.reattachMode config — applies when the launch
+  //      record is missing (e.g. session created before this tracking
+  //      shipped, or workspace state was wiped).
+  //   3. 'vanilla' as the safety floor.
+  const recordedMode = lookupLaunchMode(context, persona, branch, workDir);
+  const sessionMode = recordedMode
+    ?? config.get<string>('session.reattachMode', 'vanilla');
   const terminalMode = config.get<TerminalMode>('session.terminalMode', 'hybrid');
   const serverUrl = config.get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
@@ -721,6 +738,11 @@ export async function restartSession(
       terminalMode,
       initPrompt,
     });
+    // Refresh the launch-mode record. Usually it's already there from
+    // the original launch; this keeps it accurate when a config-driven
+    // fallback resolved the mode (e.g. when the original launch
+    // pre-dates this tracking).
+    void recordLaunchMode(context, persona, branch, workDir, sessionMode);
     vscode.window.showInformationMessage(
       `VibeFlow: Restarted ${personaLabel} on ${branch}.`,
     );

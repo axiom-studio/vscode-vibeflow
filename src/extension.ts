@@ -491,7 +491,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, connectToProject);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, connectToProject);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -506,7 +506,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.restartSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
-      if (session) { restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels); }
+      if (session) { restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels, contextProxy); }
     }),
     vscode.commands.registerCommand('vibeflow.deleteSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -860,6 +860,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         gitBranch,
         vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
         serverUrl,
+        contextProxy,
         cachedProject.projectName,
       ).then(() => sessionsProvider.refresh());
     }

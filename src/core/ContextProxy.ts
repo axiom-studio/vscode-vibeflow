@@ -35,6 +35,14 @@ export interface GlobalStateSchema {
   'vibeflow.projectName': string;
   'vibeflow.gitRemoteUrl': string;
   'vibeflow.stickyModels': Record<string, string>;
+  /**
+   * Per-launch session mode, keyed by `{persona}::{branch}::{workDir}`.
+   * Written when launchSession spawns a terminal, read by SessionReattacher
+   * (window reload) and restartSession so a YOLO-launched agent comes back
+   * up in YOLO instead of silently downgrading to vanilla. The reattachMode
+   * config is the fallback when no entry is recorded for a phantom.
+   */
+  'vibeflow.launchModes': Record<string, string>;
 }
 
 /**
