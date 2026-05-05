@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TerminalRegistry, type TerminalMode } from './TerminalRegistry.js';
 import { personaDisplayName } from './personas.js';
+import { lookupLaunchMode } from './launchModeStore.js';
+import type { ContextProxy } from '../core/ContextProxy.js';
 
 export interface PhantomSession {
   persona: string;
@@ -75,6 +77,7 @@ export class SessionReattacher {
     gitBranch: string,
     workDir: string,
     serverUrl: string,
+    context: ContextProxy,
     projectName?: string,
   ): Promise<PhantomSession[]> {
     if (phantoms.length === 0) { return []; }
@@ -95,7 +98,16 @@ export class SessionReattacher {
     const reattached: PhantomSession[] = [];
     for (const phantom of phantoms) {
       try {
-        const command = buildReattachCommand(provider, sessionMode);
+        // Per-phantom mode resolution: prefer the mode we recorded when
+        // this persona was originally launched on this branch+workDir.
+        // Falls back to the config-driven `sessionMode` when nothing was
+        // recorded (e.g. session predates tracking, or globalState was
+        // wiped). This is what stops a YOLO-launched agent from getting
+        // silently downgraded to vanilla on window reload.
+        const recordedMode = lookupLaunchMode(context, phantom.persona, gitBranch, workDir);
+        const phantomMode = recordedMode ?? sessionMode;
+
+        const command = buildReattachCommand(provider, phantomMode);
 
         const initPrompt = projectName
           ? `Initialize a vibeflow session for project ${projectName} with persona ${phantom.persona} and follow the agent prompt. Call session_init with project_name: ${projectName}, persona: ${phantom.persona}, git_branch: ${gitBranch} and begin Phase 1 immediately.`
