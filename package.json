@@ -253,6 +253,11 @@
       {
         "command": "vibeflow.openWorkItemPanel",
         "title": "VibeFlow: Open Work Item Panel"
+      },
+      {
+        "command": "vibeflow.openCli",
+        "title": "VibeFlow: Open CLI",
+        "icon": "$(terminal)"
       }
     ],
     "menus": {
@@ -331,7 +336,12 @@
         },
         {
           "command": "vibeflow.launchSession",
-          "when": "view == vibeflow.agentFleet",
+          "when": "view == vibeflow.agentFleet && !config.vibeflow.cli.enabled",
+          "group": "navigation@1"
+        },
+        {
+          "command": "vibeflow.openCli",
+          "when": "view == vibeflow.agentFleet && config.vibeflow.cli.enabled",
           "group": "navigation@1"
         },
         {
@@ -517,6 +527,16 @@
           "type": "string",
           "default": "claude",
           "description": "Default agent provider"
+        },
+        "vibeflow.cli.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the VibeFlow CLI (TUI) for session management instead of per-persona VS Code terminals. The left sidebar still shows live agent state. Requires the `vibeflow` binary on PATH — install from https://github.com/axiom-studio/vibeflow-cli/releases."
+        },
+        "vibeflow.cli.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to the vibeflow CLI binary. Leave empty to use PATH lookup."
         },
         "vibeflow.session.reattachMode": {
           "type": "string",
