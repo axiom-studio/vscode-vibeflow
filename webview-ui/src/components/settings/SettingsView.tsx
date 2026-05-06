@@ -8,6 +8,7 @@ import { WorktreesTab } from './WorktreesTab';
 import { NotificationsTab } from './NotificationsTab';
 import { AdvancedTab } from './AdvancedTab';
 import { AboutTab } from './AboutTab';
+import { CliTab } from './CliTab';
 import { getVsCodeApi } from '../../vscodeApi';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'models', label: 'Sticky Models', icon: '🧠' },
   { id: 'worktrees', label: 'Worktrees', icon: '🌿' },
   { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'cli', label: 'CLI Interface', icon: '⌨' },
   { id: 'advanced', label: 'Advanced', icon: '🛠' },
   { id: 'about', label: 'About', icon: 'ℹ' },
 ] as const;
@@ -169,6 +171,9 @@ export function SettingsView() {
           )}
           {activeTab === 'notifications' && (
             <NotificationsTab data={data} onUpdate={updateSetting} />
+          )}
+          {activeTab === 'cli' && (
+            <CliTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
           {activeTab === 'advanced' && (
             <AdvancedTab data={data} onUpdate={updateSetting} />

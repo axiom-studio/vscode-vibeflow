@@ -6,6 +6,7 @@ import type { ProjectDetector, DetectedProject } from '../../project/ProjectDete
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
+import { isVibeflowInstalled } from '../../commands/cliCommands.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -109,7 +110,8 @@ export class SettingsPanel {
           const settingsKeys = ['serverUrl', 'defaultPersona', 'defaultProvider', 'polling.interval',
             'autoDetectProject', 'showStatusBar', 'notifications.agentPrompts',
             'notifications.workItemComplete', 'session.terminalMode',
-            'debug.simulateActivity'];
+            'debug.simulateActivity',
+            'cli.enabled', 'cli.binaryPath'];
 
           if (settingsKeys.includes(key)) {
             config.update(key, value, vscode.ConfigurationTarget.Global);
@@ -249,6 +251,14 @@ export class SettingsPanel {
           await deps.stickyModels.resetToDefault(msg.payload.persona);
           await pushSettings();
           break;
+        case 'runCommand':
+          // Generic command passthrough — used by buttons in tabs that
+          // shouldn't need their own wire shape (e.g. CLI tab "Open
+          // CLI"). The command must already be registered on the
+          // extension; we don't sanitize beyond that because the
+          // webview is host-controlled.
+          await vscode.commands.executeCommand(msg.payload);
+          break;
         default:
           assertNever(msg);
       }
@@ -319,6 +329,13 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // so the tab can still render its empty-state UI.
     stickyModels: deps.stickyModels?.getAll() ?? {},
     knownModels: KNOWN_MODELS,
+    // CLI Interface — toggle drives whether session launches go through
+    // the per-persona TerminalRegistry path or are delegated to the
+    // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
+    // can render install guidance without an extra round-trip.
+    cliEnabled: config.get('cli.enabled', false),
+    cliBinaryPath: config.get('cli.binaryPath', ''),
+    cliInstalled: isVibeflowInstalled(),
     version: '0.1.0',
   };
 }

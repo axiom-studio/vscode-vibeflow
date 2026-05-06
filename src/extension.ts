@@ -16,6 +16,7 @@ import { ProjectDetector, type DetectedProject } from './project/ProjectDetector
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
+import { openCli } from './commands/cliCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { StickyModels } from './sessions/stickyModels.js';
@@ -490,7 +491,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       disconnect();
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
+    vscode.commands.registerCommand('vibeflow.openCli', () => {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      void openCli(root);
+    }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
+      // CLI mode owns session management — short-circuit and route to
+      // the TUI launcher so we don't spawn duplicate per-persona
+      // terminals that would race with the CLI's tmux-managed sessions.
+      const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', false);
+      if (cliEnabled) {
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        void openCli(root);
+        return;
+      }
       launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, connectToProject);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
