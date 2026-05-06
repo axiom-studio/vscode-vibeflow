@@ -1,0 +1,112 @@
+import * as vscode from 'vscode';
+import { execSync } from 'child_process';
+import * as fs from 'fs';
+
+const TERMINAL_NAME = 'VibeFlow CLI';
+const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/latest';
+const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
+
+/**
+ * Resolve the vibeflow binary, honoring the optional config override.
+ *
+ * Resolution order:
+ *   1. `vibeflow.cli.binaryPath` config (absolute path) — if set and exists.
+ *   2. `which vibeflow` / `where vibeflow` on PATH.
+ *   3. undefined — caller surfaces the install toast.
+ *
+ * We resolve eagerly (not lazy via shell) so the spawn command can use a
+ * stable path; the workspace's PATH inside a VS Code terminal can drift
+ * from the launching shell's PATH.
+ */
+function resolveBinary(): string | undefined {
+  const config = vscode.workspace.getConfiguration('vibeflow');
+  const override = config.get<string>('cli.binaryPath', '').trim();
+  if (override) {
+    try {
+      if (fs.existsSync(override)) { return override; }
+    } catch { /* fall through to PATH */ }
+  }
+
+  try {
+    const cmd = process.platform === 'win32' ? 'where vibeflow' : 'which vibeflow';
+    const out = execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    // `where` on Windows can return multiple lines; take the first.
+    const first = out.split(/\r?\n/)[0]?.trim();
+    return first || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Open the VibeFlow CLI (TUI) in a fullscreen editor-area terminal.
+ *
+ * The CLI manages its own multi-session state via tmux under a custom
+ * socket — see vibeflow-cli/internal/vibeflowcli/tmux.go. This command
+ * is the IDE-side "launcher": find the binary, surface install help if
+ * missing, and spawn it where the user expects (editor area, not the
+ * bottom panel) so it occupies the main area while the left sidebar
+ * keeps showing live agent state via the existing TreeViews.
+ *
+ * Re-running this command focuses the existing terminal if one is still
+ * open (matches OpenCode's openTerminal pattern). Closing the terminal
+ * exits the TUI; the PID lock at ~/.vibeflow-cli/<lock> releases on
+ * exit so the next run starts fresh.
+ */
+export async function openCli(workspaceRoot: string | undefined): Promise<void> {
+  const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
+  if (existing) {
+    existing.show(false); // take focus
+    return;
+  }
+
+  const binary = resolveBinary();
+  if (!binary) {
+    const choice = await vscode.window.showWarningMessage(
+      'VibeFlow CLI is not installed or not on PATH. Install a prebuilt binary from GitHub releases.',
+      'Download Release',
+      'View Install Instructions',
+      'Cancel',
+    );
+    if (choice === 'Download Release') {
+      vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL));
+    } else if (choice === 'View Install Instructions') {
+      vscode.env.openExternal(vscode.Uri.parse(INSTALL_DOCS_URL));
+    }
+    return;
+  }
+
+  // Spawn in the editor area so it occupies the main pane. The left
+  // sidebar (Agent Fleet, Work Items, Documents) stays visible — that's
+  // the deliberate "CLI mode" layout: TUI as the workhorse, panels as
+  // the live status board.
+  const cwd = workspaceRoot && fs.existsSync(workspaceRoot)
+    ? workspaceRoot
+    : undefined;
+
+  const terminal = vscode.window.createTerminal({
+    name: TERMINAL_NAME,
+    location: vscode.TerminalLocation.Editor,
+    cwd,
+    iconPath: new vscode.ThemeIcon('terminal'),
+  });
+  terminal.show(false);
+  // Quote the path in case the user installed under a directory with
+  // spaces (e.g. `/Users/Foo Bar/bin/vibeflow`).
+  terminal.sendText(quoteIfNeeded(binary), true);
+}
+
+function quoteIfNeeded(p: string): string {
+  if (!p) { return p; }
+  if (/\s/.test(p) && !p.startsWith('"') && !p.startsWith("'")) {
+    return process.platform === 'win32' ? `"${p}"` : `'${p.replace(/'/g, "'\\''")}'`;
+  }
+  return p;
+}
+
+// Helper for callers that want to detect-and-warn early (e.g. when the
+// user toggles `vibeflow.cli.enabled` to true). Exported separately so
+// settings UI can pre-validate before the user hits "Open CLI".
+export function isVibeflowInstalled(): boolean {
+  return resolveBinary() !== undefined;
+}

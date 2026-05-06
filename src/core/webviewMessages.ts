@@ -102,7 +102,11 @@ export type SettingsClientMessage =
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
   | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
-  | { type: 'resetStickyModel'; payload: { persona: string } };
+  | { type: 'resetStickyModel'; payload: { persona: string } }
+  // Generic command-passthrough — the Settings panel uses this to fire
+  // extension commands (like vibeflow.openCli) directly from a tab so we
+  // don't need a one-off wire shape per button.
+  | { type: 'runCommand'; payload: string };
 
 // ============================================================
 // Work Item Panel
