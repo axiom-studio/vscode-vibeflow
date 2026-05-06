@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { TerminalRegistry, type TerminalMode } from './TerminalRegistry.js';
 import { personaDisplayName } from './personas.js';
-import { lookupLaunchMode } from './launchModeStore.js';
+import { lookupLaunchMode, recordLaunchMode } from './launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 
 export interface PhantomSession {
@@ -82,14 +82,45 @@ export class SessionReattacher {
   ): Promise<PhantomSession[]> {
     if (phantoms.length === 0) { return []; }
 
-    const names = phantoms.map(p => personaDisplayName(p.persona)).join(', ');
-    const action = await vscode.window.showInformationMessage(
-      `VibeFlow: ${phantoms.length} session(s) from previous window detected (${names}). Reattach?`,
-      'Reattach All',
-      'Dismiss',
-    );
+    // Resolve mode per phantom up front so we can tell the user which ones
+    // are sticky-on-record vs which need a choice.
+    const recordedModeByPersona = new Map<string, string>();
+    let needsChoice = 0;
+    for (const phantom of phantoms) {
+      const recorded = lookupLaunchMode(context, phantom.persona, gitBranch, workDir);
+      if (recorded) {
+        recordedModeByPersona.set(phantom.persona, recorded);
+      } else {
+        needsChoice++;
+      }
+    }
 
-    if (action !== 'Reattach All') { return []; }
+    const names = phantoms.map(p => personaDisplayName(p.persona)).join(', ');
+    // Single inline prompt — three options when at least one phantom has no
+    // recorded mode (so the user picks how to handle the unknown ones), or
+    // a simple confirm-only when every phantom is sticky-on-record.
+    let userChoice: 'vanilla' | 'vibeflow' | undefined;
+    if (needsChoice > 0) {
+      const detail = recordedModeByPersona.size > 0
+        ? ` (${recordedModeByPersona.size} sticky on recorded mode, ${needsChoice} needs a choice)`
+        : '';
+      const action = await vscode.window.showInformationMessage(
+        `VibeFlow: ${phantoms.length} session(s) from previous window detected (${names})${detail}. Reattach?`,
+        'Reattach in vanilla',
+        'Reattach in vibeflow (YOLO)',
+        'Dismiss',
+      );
+      if (action === 'Reattach in vanilla') { userChoice = 'vanilla'; }
+      else if (action === 'Reattach in vibeflow (YOLO)') { userChoice = 'vibeflow'; }
+      else { return []; }
+    } else {
+      const action = await vscode.window.showInformationMessage(
+        `VibeFlow: ${phantoms.length} session(s) from previous window detected (${names}). Reattach in their original modes?`,
+        'Reattach All',
+        'Dismiss',
+      );
+      if (action !== 'Reattach All') { return []; }
+    }
 
     // Reattach always uses 'all' mode — user explicitly asked to reattach,
     // so show all terminals regardless of hybrid setting.
@@ -98,14 +129,13 @@ export class SessionReattacher {
     const reattached: PhantomSession[] = [];
     for (const phantom of phantoms) {
       try {
-        // Per-phantom mode resolution: prefer the mode we recorded when
-        // this persona was originally launched on this branch+workDir.
-        // Falls back to the config-driven `sessionMode` when nothing was
-        // recorded (e.g. session predates tracking, or globalState was
-        // wiped). This is what stops a YOLO-launched agent from getting
-        // silently downgraded to vanilla on window reload.
-        const recordedMode = lookupLaunchMode(context, phantom.persona, gitBranch, workDir);
-        const phantomMode = recordedMode ?? sessionMode;
+        // Recorded mode wins (sticky from original launch). Otherwise the
+        // user's button choice applies. The config-driven `sessionMode`
+        // remains the floor of last resort if for some reason the user's
+        // answer is missing — defensive only, the prompt above guarantees
+        // userChoice is set whenever needsChoice > 0.
+        const recordedMode = recordedModeByPersona.get(phantom.persona);
+        const phantomMode = recordedMode ?? userChoice ?? sessionMode;
 
         const command = buildReattachCommand(provider, phantomMode);
 
@@ -127,6 +157,12 @@ export class SessionReattacher {
           terminalMode,
           initPrompt,
         });
+
+        // Record the resolved mode so the next reattach (or right-click
+        // Restart) on this persona+branch+workDir doesn't have to ask
+        // again. Idempotent for already-recorded phantoms; meaningful for
+        // ones that were unrecorded and just got the user's choice.
+        void recordLaunchMode(context, phantom.persona, gitBranch, workDir, phantomMode);
 
         reattached.push(phantom);
       } catch {
