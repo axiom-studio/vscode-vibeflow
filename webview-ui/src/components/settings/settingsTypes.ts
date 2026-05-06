@@ -51,6 +51,14 @@ export interface SettingsData {
   stickyModels?: Record<string, string>;
   knownModels?: Record<string, string[]>;
 
+  // CLI Interface
+  cliEnabled: boolean;
+  cliBinaryPath: string;
+  /** Whether the `vibeflow` binary was found on PATH (or at cliBinaryPath
+   *  if set). Computed host-side so the tab can render install guidance
+   *  inline without round-tripping a child_process call. */
+  cliInstalled: boolean;
+
   // About
   version: string;
 }

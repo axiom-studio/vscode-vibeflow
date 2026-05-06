@@ -1,0 +1,232 @@
+import * as React from 'react';
+import type { SettingsData, SettingsCommand } from './settingsTypes';
+
+interface Props {
+  data: SettingsData;
+  onUpdate: (key: string, value: unknown) => void;
+  onCommand: (cmd: SettingsCommand) => void;
+}
+
+const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/latest';
+const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
+
+/**
+ * "CLI Interface" — toggle a TUI-driven mode. When enabled, session
+ * management is delegated to the vibeflow CLI in a fullscreen editor
+ * terminal; the left sidebar (Agent Fleet, Work Items, Documents)
+ * keeps polling the same backend so the user still sees live state.
+ *
+ * The toggle just flips the config; the actual gating happens in
+ * extension.ts (launchSession short-circuits to openCli) and via
+ * `when: config.vibeflow.cli.enabled` clauses in package.json menus.
+ */
+export function CliTab({ data, onUpdate, onCommand }: Props) {
+  const installed = data.cliInstalled;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <Card
+        title="Use VibeFlow CLI"
+        description="When enabled, session launches open the VibeFlow CLI (TUI) in a fullscreen editor terminal instead of spawning per-persona terminals from the extension. The left sidebar still shows live agent state — same backend, different lens."
+      >
+        <Toggle
+          checked={data.cliEnabled}
+          onChange={(v) => onUpdate('cli.enabled', v)}
+          label={data.cliEnabled ? 'Enabled' : 'Disabled'}
+        />
+        {data.cliEnabled && !installed && (
+          <Banner kind="warning">
+            <strong>vibeflow binary not found.</strong> The CLI must be on PATH (or set its absolute
+            location below) for this mode to work. Install a prebuilt binary from GitHub releases.
+            <ButtonRow>
+              <LinkBtn href={RELEASES_URL} label="Download Release" />
+              <LinkBtn href={INSTALL_DOCS_URL} label="Install Instructions" secondary />
+            </ButtonRow>
+          </Banner>
+        )}
+      </Card>
+
+      <Card
+        title="Binary Path Override"
+        description="Optional — leave empty to use PATH lookup. Set this if vibeflow is installed in a non-standard location and PATH doesn't include it (common for Homebrew on Apple Silicon under /opt/homebrew/bin)."
+      >
+        <input
+          type="text"
+          placeholder="/usr/local/bin/vibeflow"
+          value={data.cliBinaryPath}
+          onChange={(e) => onUpdate('cli.binaryPath', e.target.value)}
+          style={inputStyle}
+        />
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
+          Status: {installed ? (
+            <span style={{ color: 'var(--feed-success)' }}>● binary detected</span>
+          ) : (
+            <span style={{ color: 'var(--feed-error)' }}>● not found</span>
+          )}
+        </div>
+      </Card>
+
+      <Card
+        title="Open VibeFlow CLI"
+        description="Launches the TUI in a fullscreen editor-area terminal. Re-running focuses the existing terminal (one TUI process at a time — the CLI's own PID lock enforces this)."
+      >
+        <ButtonRow>
+          <Btn
+            label="Open CLI"
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.openCli' })}
+            disabled={!installed}
+          />
+        </ButtonRow>
+      </Card>
+
+      <Card
+        title="What changes when CLI mode is on?"
+        description=""
+      >
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.7, color: 'var(--feed-fg)' }}>
+          <li>The Agent Fleet "Launch Session" button → "Open VibeFlow CLI"</li>
+          <li><code>VibeFlow: Launch Session</code> command opens the CLI instead of the QuickPick wizard</li>
+          <li>Per-persona terminals are no longer spawned — the CLI manages everything via tmux under its own socket</li>
+          <li>Right-click Restart, Kill, Focus, and the rest of the per-session commands still work — they hit the same backend</li>
+          <li><code>@vibeflow</code> chat participant stays available (read-only against the same project)</li>
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+// ===== Local primitives, kept private to this tab to match other tabs' style =====
+
+function Card({ title, description, children }: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      padding: '18px 20px',
+      borderRadius: 8,
+      border: '1px solid var(--feed-border)',
+      background: 'var(--vscode-editor-background)',
+    }}>
+      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{title}</h3>
+      {description && (
+        <p style={{ margin: '4px 0 14px', fontSize: 11, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
+          {description}
+        </p>
+      )}
+      {!description && <div style={{ height: 10 }} />}
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <button
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        style={{
+          position: 'relative', width: 36, height: 20, borderRadius: 10, border: 'none',
+          flexShrink: 0, cursor: 'pointer',
+          background: checked ? 'var(--feed-link)' : 'var(--vscode-input-background)',
+          transition: 'background 0.15s',
+        }}
+      >
+        <span style={{
+          position: 'absolute',
+          top: 2,
+          left: checked ? 18 : 2,
+          width: 16,
+          height: 16,
+          borderRadius: '50%',
+          background: 'white',
+          transition: 'left 0.15s',
+        }} />
+      </button>
+      <span style={{ fontSize: 12, color: checked ? 'var(--feed-fg)' : 'var(--feed-muted)' }}>{label}</span>
+    </div>
+  );
+}
+
+function Banner({ kind, children }: { kind: 'warning' | 'info'; children: React.ReactNode }) {
+  const colors = {
+    warning: { bg: 'rgba(204,167,0,0.08)', border: 'var(--feed-warning)' },
+    info:    { bg: 'rgba(0,127,255,0.08)', border: 'var(--feed-link)' },
+  }[kind];
+  return (
+    <div style={{
+      marginTop: 12,
+      padding: 12,
+      background: colors.bg,
+      border: `1px solid ${colors.border}`,
+      borderRadius: 4,
+      fontSize: 11,
+      lineHeight: 1.6,
+      color: 'var(--feed-fg)',
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function ButtonRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}</div>;
+}
+
+function Btn({ label, onClick, secondary, disabled }: {
+  label: string; onClick: () => void; secondary?: boolean; disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '6px 14px',
+        fontSize: 12,
+        borderRadius: 4,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        border: 'none',
+        background: secondary ? 'var(--vscode-button-secondaryBackground)' : 'var(--feed-button-bg)',
+        color: secondary ? 'var(--vscode-button-secondaryForeground)' : 'var(--feed-button-fg)',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function LinkBtn({ href, label, secondary }: { href: string; label: string; secondary?: boolean }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        textDecoration: 'none',
+        padding: '6px 14px',
+        fontSize: 12,
+        borderRadius: 4,
+        background: secondary ? 'var(--vscode-button-secondaryBackground)' : 'var(--feed-button-bg)',
+        color: secondary ? 'var(--vscode-button-secondaryForeground)' : 'var(--feed-button-fg)',
+      }}
+    >
+      {label}
+    </a>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '6px 10px',
+  fontSize: 12,
+  fontFamily: 'var(--vscode-editor-font-family)',
+  background: 'var(--feed-input-bg)',
+  color: 'var(--feed-fg)',
+  border: '1px solid var(--feed-input-border)',
+  borderRadius: 4,
+  outline: 'none',
+  boxSizing: 'border-box',
+};
