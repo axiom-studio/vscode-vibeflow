@@ -80,6 +80,7 @@ export type ActivityFeedClientMessage =
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
   | { type: 'setProviderToken'; payload: { provider: string } }
+  | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' };
 
@@ -99,6 +100,7 @@ export type SettingsClientMessage =
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
   | { type: 'setProviderToken'; payload: { provider: string } }
+  | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
   | { type: 'updateStickyModel'; payload: { persona: string; model: string } }

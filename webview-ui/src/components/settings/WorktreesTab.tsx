@@ -17,7 +17,7 @@ export function WorktreesTab({ data, onUpdate }: Props) {
         <input
           type="text"
           value={data.worktreeBaseDir}
-          onChange={e => onUpdate('worktreeBaseDir', e.target.value)}
+          onChange={e => onUpdate('worktree.baseDir', e.target.value)}
           placeholder=".claude/worktrees"
           style={{ ...inputStyle, width: '100%' }}
         />
@@ -26,14 +26,14 @@ export function WorktreesTab({ data, onUpdate }: Props) {
             label="Auto Create"
             desc="Automatically create a worktree when launching a session on a branch that doesn't have one"
             checked={data.worktreeAutoCreate}
-            onChange={v => onUpdate('worktreeAutoCreate', v)}
+            onChange={v => onUpdate('worktree.autoCreate', v)}
           />
         </div>
         <div style={{ marginTop: 8 }}>
           <label style={{ fontSize: 11, color: 'var(--feed-muted)', display: 'block', marginBottom: 4 }}>Cleanup on Session Kill</label>
           <select
             value={data.worktreeCleanupOnKill}
-            onChange={e => onUpdate('worktreeCleanupOnKill', e.target.value)}
+            onChange={e => onUpdate('worktree.cleanupOnKill', e.target.value)}
             style={{ ...inputStyle, width: '100%' }}
           >
             <option value="ask">Ask me each time</option>
