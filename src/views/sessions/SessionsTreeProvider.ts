@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
 import { listWorktrees, type Worktree } from '../../commands/worktreeCommands.js';
+import { getLiveTmuxSessions, buildTmuxName } from '../../sessions/tmuxState.js';
 
 type NodeType = 'branch' | 'session' | 'placeholder' | 'worktreeSection' | 'worktreeItem';
 
@@ -20,21 +21,56 @@ interface SessionNode {
   worktree?: Worktree;
 }
 
+type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
+
 /**
- * Derive a display status from the server-side `active` and `stale` flags.
- * The server uses a Redis heartbeat: `active: true, stale: false` → green,
- * `active: true, stale: true` → yellow (heartbeat expired), `active: false` → gray.
+ * Derive a display status from server-side `active`/`stale` flags PLUS
+ * the optional local tmux probe.
+ *
+ * Backend-only states (used always):
+ *   - `active: true, stale: false` → 'active'   (green, full heartbeat)
+ *   - `active: true, stale: true`  → 'stale'    (yellow, heartbeat expired)
+ *   - `active: false`              → 'inactive' (gray, no record on server)
+ *
+ * Cross-check states (used when CLI mode is on and we have a tmux probe):
+ *   - tmux pane alive + backend inactive → 'stalled' — pane is up but the
+ *     agent has stopped polling wait_for_work; this is the polling-contract
+ *     violation case where the user sees "running per CLI but not in fleet"
+ *   - tmux pane dead + backend active   → 'ghost'  — backend snapshot is
+ *     stale; rare race after a kill
  */
-function deriveStatus(s: VibeFlowSession): 'active' | 'stale' | 'inactive' {
-  if (!s.active) { return 'inactive'; }
-  if (s.stale) { return 'stale'; }
-  return 'active';
+function deriveStatus(
+  s: VibeFlowSession,
+  liveTmuxSessions: Set<string> | undefined,
+): SessionStatus {
+  // Decide the backend's view first.
+  const backendActive = !!s.active;
+  const backendStale = !!s.stale;
+
+  // Without a tmux probe (CLI mode off, or tmux not available), fall
+  // back to the legacy 3-state derivation.
+  if (!liveTmuxSessions) {
+    if (!backendActive) { return 'inactive'; }
+    if (backendStale) { return 'stale'; }
+    return 'active';
+  }
+
+  // Cross-check tmux pane liveness against the backend view.
+  const tmuxAlive = liveTmuxSessions.has(buildTmuxName(s.agent_type ?? '', s.session_id));
+
+  if (tmuxAlive && backendActive && !backendStale) { return 'active'; }
+  if (tmuxAlive && backendActive && backendStale)  { return 'stale'; }
+  if (tmuxAlive && !backendActive)                  { return 'stalled'; }
+  if (!tmuxAlive && backendActive)                  { return 'ghost'; }
+  return 'inactive';
 }
 
-const STATUS_ICONS: Record<ReturnType<typeof deriveStatus>, { icon: string; color: string }> = {
-  active: { icon: 'circle-filled', color: 'testing.iconPassed' },
-  stale: { icon: 'circle-filled', color: 'editorWarning.foreground' },
-  inactive: { icon: 'circle-outline', color: 'disabledForeground' },
+const STATUS_ICONS: Record<SessionStatus, { icon: string; color: string; label: string }> = {
+  active:   { icon: 'circle-filled',  color: 'testing.iconPassed',         label: 'running' },
+  stale:    { icon: 'circle-filled',  color: 'editorWarning.foreground',   label: 'stale heartbeat' },
+  inactive: { icon: 'circle-outline', color: 'disabledForeground',         label: 'inactive' },
+  stalled:  { icon: 'warning',        color: 'editorWarning.foreground',   label: 'stalled — pane alive, no heartbeat' },
+  ghost:    { icon: 'error',          color: 'errorForeground',            label: 'ghost — backend record but pane is dead' },
 };
 
 const PERSONA_LABELS: Record<string, string> = {
@@ -60,6 +96,13 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private sessions: VibeFlowSession[] = [];
+  /**
+   * Last tmux probe — `undefined` when CLI mode is off (tells deriveStatus
+   * to fall back to backend-only logic). When CLI mode is on, this is
+   * refreshed every poll cycle and may legitimately be empty (no live
+   * tmux sessions, or tmux unavailable — both render as "all panes dead").
+   */
+  private liveTmuxSessions: Set<string> | undefined;
 
   /**
    * Detected git branch for the current workspace, used by the empty-state
@@ -81,7 +124,12 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
    * "N agents · M ready" without re-fetching the session list.
    */
   getActiveSessionCount(): number {
-    return this.sessions.filter(s => s.active && !s.stale).length;
+    // Match the branch-row count: anything with a live presence
+    // (backend OR local tmux pane in CLI mode).
+    return this.sessions.filter(s => {
+      const status = deriveStatus(s, this.liveTmuxSessions);
+      return status === 'active' || status === 'stale' || status === 'stalled';
+    }).length;
   }
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   // Session lookup by TreeItem id — needed because VSCode strips custom fields
@@ -140,6 +188,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     } catch {
       // API error — keep stale data, don't clear the tree
     }
+
+    // Probe local tmux only when CLI mode is on. The probe is sync but
+    // tmux list-sessions on a non-server returns within milliseconds;
+    // capped at 2s in the helper so a hung tmux server can't block the
+    // poll loop. Outside CLI mode, set undefined so deriveStatus uses
+    // the legacy 3-state path.
+    const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', false);
+    this.liveTmuxSessions = cliEnabled ? getLiveTmuxSessions() : undefined;
+
     this._onDidChangeTreeData.fire();
   }
 
@@ -198,7 +255,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
     const nodes: SessionNode[] = [];
     for (const [branch, branchSessions] of byBranch) {
-      const activeCount = branchSessions.filter(s => s.active && !s.stale).length;
+      // "active" in the branch label = anything with a live presence
+      // somewhere — backend heartbeat OR local tmux pane (in CLI mode).
+      // Without this, a branch with two stalled-but-running agents
+      // would show "0 active" while their nodes underneath are warning
+      // icons, which is confusing.
+      const activeCount = branchSessions.filter(s => {
+        const status = deriveStatus(s, this.liveTmuxSessions);
+        return status === 'active' || status === 'stale' || status === 'stalled';
+      }).length;
       nodes.push({
         id: `branch-${branch}`,
         type: 'branch',
@@ -255,19 +320,24 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildSessionNode(session: VibeFlowSession): SessionNode {
-    const status = deriveStatus(session);
+    const status = deriveStatus(session, this.liveTmuxSessions);
     const statusInfo = STATUS_ICONS[status];
     const personaLabel = PERSONA_LABELS[session.persona_key] ?? session.persona_name ?? session.persona_key;
 
     const description = session.last_message
       ? truncate(session.last_message, 60)
-      : status;
+      : statusInfo.label;
 
     const tooltip = new vscode.MarkdownString();
     tooltip.appendMarkdown(`**${personaLabel}** (${session.agent_model})\n\n`);
     tooltip.appendMarkdown(`- Session: \`${session.session_id}\`\n`);
     tooltip.appendMarkdown(`- Branch: ${session.git_branch}\n`);
-    tooltip.appendMarkdown(`- Status: ${status}\n`);
+    tooltip.appendMarkdown(`- Status: ${statusInfo.label}\n`);
+    if (status === 'stalled') {
+      tooltip.appendMarkdown(`  - Pane alive in tmux but agent hasn't sent a heartbeat — usually means it left \`wait_for_work\` without re-entering it.\n`);
+    } else if (status === 'ghost') {
+      tooltip.appendMarkdown(`  - Backend still has this session marked active but the local tmux pane is gone. Try Refresh or Kill.\n`);
+    }
     if (session.last_message_at) {
       tooltip.appendMarkdown(`- Last activity: ${new Date(session.last_message_at).toLocaleString()}\n`);
     }
@@ -287,7 +357,11 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       iconId: statusInfo.icon,
       iconColor: new vscode.ThemeColor(statusInfo.color),
       collapsibleState: vscode.TreeItemCollapsibleState.None,
-      contextValue: status === 'active' ? 'activeSession' : 'inactiveSession',
+      // Kill / Restart / Focus need to be available for any session that
+      // could still have local resources (a backend record or a tmux
+      // pane). Only the truly-dead `inactive` rows fall back to the
+      // record-only delete menu.
+      contextValue: status === 'inactive' ? 'inactiveSession' : 'activeSession',
       session,
     };
   }
