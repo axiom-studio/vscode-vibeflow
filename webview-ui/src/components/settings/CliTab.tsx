@@ -84,6 +84,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           <li>The Agent Fleet "Launch Session" button → "Open VibeFlow CLI"</li>
           <li><code>VibeFlow: Launch Session</code> command opens the CLI instead of the QuickPick wizard</li>
           <li>Per-persona terminals are no longer spawned — the CLI manages everything via tmux under its own socket</li>
+          <li><code>Ctrl+Q</code> and <code>Ctrl+\</code> in any terminal route through to the shell (so the CLI's tmux toggle works without VS Code stealing the keystroke). Disable CLI mode to revert.</li>
           <li>Right-click Restart, Kill, Focus, and the rest of the per-session commands still work — they hit the same backend</li>
           <li><code>@vibeflow</code> chat participant stays available (read-only against the same project)</li>
         </ul>
