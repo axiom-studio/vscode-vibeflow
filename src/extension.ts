@@ -24,7 +24,7 @@ import { createWorkItem, changeStatus, changePriority } from './commands/workIte
 import { createDocument } from './commands/documentCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
 import { createPR, openDocumentViewer } from './commands/prCommands.js';
-import { manageWorktrees } from './commands/worktreeCommands.js';
+import { manageWorktrees, deleteWorktree } from './commands/worktreeCommands.js';
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
 import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
 import { KanbanPanel } from './views/kanban/KanbanPanel.js';
@@ -698,6 +698,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.manageWorktrees', () => {
       manageWorktrees();
+    }),
+    vscode.commands.registerCommand('vibeflow.openWorktreeInNewWindow', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const wt = id ? sessionsProvider.getWorktreeById(id) : undefined;
+      if (!wt) {
+        vscode.window.showInformationMessage('VibeFlow: Worktree not found — try refreshing.');
+        return;
+      }
+      void vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(wt.path), true);
+    }),
+    vscode.commands.registerCommand('vibeflow.deleteWorktreeFromTree', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const wt = id ? sessionsProvider.getWorktreeById(id) : undefined;
+      if (!wt) {
+        vscode.window.showInformationMessage('VibeFlow: Worktree not found — try refreshing.');
+        return;
+      }
+      const workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!workDir) {
+        vscode.window.showErrorMessage('VibeFlow: No workspace folder open');
+        return;
+      }
+      void deleteWorktree(workDir, wt).then(() => sessionsProvider.refresh());
+    }),
+    vscode.commands.registerCommand('vibeflow.createSessionInWorktree', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const wt = id ? sessionsProvider.getWorktreeById(id) : undefined;
+      if (!wt) {
+        vscode.window.showInformationMessage('VibeFlow: Worktree not found — try refreshing.');
+        return;
+      }
+      void launchSession(
+        client,
+        detector,
+        sessionsProvider,
+        context.extensionUri,
+        terminalRegistry,
+        stickyModels,
+        contextProxy,
+        connectToProject,
+        { branch: wt.branch, workDir: wt.path },
+      );
     }),
     vscode.commands.registerCommand('vibeflow.refresh', () => {
       sessionsProvider.refresh();
