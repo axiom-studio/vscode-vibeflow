@@ -114,7 +114,14 @@ export class SettingsPanel {
             'cli.enabled', 'cli.binaryPath'];
 
           if (settingsKeys.includes(key)) {
-            config.update(key, value, vscode.ConfigurationTarget.Global);
+            await config.update(key, value, vscode.ConfigurationTarget.Global);
+            // Re-push the fresh snapshot so the webview reconciles. The
+            // optimistic update on the React side handles snappiness;
+            // this round-trip is the safety net for any state that's
+            // derived (e.g. cliInstalled flips when cli.binaryPath
+            // changes) and for cross-tab consistency when the same
+            // config key is rendered in multiple tabs.
+            await pushSettings();
           }
           break;
         }
