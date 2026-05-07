@@ -431,6 +431,24 @@
         "command": "vibeflow.refresh",
         "key": "ctrl+shift+v f",
         "mac": "cmd+shift+v f"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u0011"
+        },
+        "key": "ctrl+q",
+        "mac": "ctrl+q",
+        "when": "terminalFocus && config.vibeflow.cli.enabled"
+      },
+      {
+        "command": "workbench.action.terminal.sendSequence",
+        "args": {
+          "text": "\u001c"
+        },
+        "key": "ctrl+\\",
+        "mac": "ctrl+\\",
+        "when": "terminalFocus && config.vibeflow.cli.enabled"
       }
     ],
     "walkthroughs": [
@@ -540,7 +558,10 @@
         },
         "vibeflow.session.reattachMode": {
           "type": "string",
-          "enum": ["vanilla", "vibeflow"],
+          "enum": [
+            "vanilla",
+            "vibeflow"
+          ],
           "default": "vanilla",
           "description": "Mode used when reattaching phantom sessions on window reload. 'vanilla' (default) preserves the safe per-action permission prompts; 'vibeflow' reattaches in skip-permissions mode (only do this if your prior session was launched in vibeflow mode and you trust the agent to keep running unattended)."
         },
