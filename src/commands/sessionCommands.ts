@@ -13,6 +13,29 @@ import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 
+/**
+ * Best-effort delete of `.vibeflow-session-{persona}` from the session's
+ * working directory (or worktree path if set). Stays a no-op when the
+ * file isn't there, so it's safe to call from any teardown path.
+ *
+ * Why this exists: the agent binary (Claude Code, Codex, Gemini) writes
+ * this sidecar after calling session_init via MCP — it's the agent's
+ * way of remembering its session_id across restarts. We never write
+ * these files; we only read them in SessionReattacher. So the agent
+ * leaves them behind on exit, and unless we sweep them when killing
+ * the session, the next window reload finds a "phantom" pointing to
+ * a session_id that the backend has already deleted.
+ */
+function removeSessionFile(persona: string, workDir: string): void {
+  if (!workDir || !persona) { return; }
+  const filePath = path.join(workDir, `.vibeflow-session-${persona}`);
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // Permissions / already gone — nothing actionable from a kill path.
+  }
+}
+
 // Two modes: Vanilla (per-action permission prompts) and VibeFlow (YOLO).
 // Auto mode (--enable-auto-mode) was a third option but Claude Code 2.1+
 // still prompts on every MCP tool's first use even with auto mode on, so
@@ -604,6 +627,13 @@ export async function killSession(
   // machine), so this is safe in all cases.
   terminalRegistry.kill(session.persona_key, session.git_branch);
 
+  // Remove the sidecar file the agent dropped at session_init time.
+  // Without this, the file lingers and SessionReattacher sees a phantom
+  // for a session_id whose backend record has just been deleted.
+  // Honor worktree path so worktree-launched agents get cleaned up too.
+  const workDir = session.git_worktree_path || session.working_directory;
+  removeSessionFile(session.persona_key, workDir);
+
   try {
     await client.killSession(session.session_id);
     vscode.window.showInformationMessage('VibeFlow: Session killed');
@@ -641,6 +671,10 @@ export async function deleteSession(
     // just give it a different prompt so the wording matches the user's
     // intent ("delete the record" vs "kill the running agent").
     await client.killSession(session.session_id);
+    // Sweep the .vibeflow-session-{persona} sidecar so the next window
+    // reload doesn't see a phantom for the now-deleted record.
+    const workDir = session.git_worktree_path || session.working_directory;
+    removeSessionFile(session.persona_key, workDir);
     vscode.window.showInformationMessage(`VibeFlow: ${persona} session removed`);
     sessionsProvider.refresh();
   } catch (err) {
