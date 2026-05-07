@@ -117,20 +117,38 @@ export function ProvidersTab({ data, onUpdate, onCommand }: Props) {
                   {provider.envTokenSet ? '● Set' : '○ Not set'}
                 </span>
               </div>
-              <button
-                onClick={() => onCommand({ type: 'setProviderToken', payload: { provider: provider.key } })}
-                style={{
-                  padding: '4px 10px',
-                  fontSize: 11,
-                  background: 'var(--feed-button-bg)',
-                  color: 'var(--feed-button-fg)',
-                  border: 'none',
-                  borderRadius: 3,
-                  cursor: 'pointer',
-                }}
-              >
-                {provider.envTokenSet ? 'Change' : 'Set'}
-              </button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  onClick={() => onCommand({ type: 'setProviderToken', payload: { provider: provider.key } })}
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    background: 'var(--feed-button-bg)',
+                    color: 'var(--feed-button-fg)',
+                    border: 'none',
+                    borderRadius: 3,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {provider.envTokenSet ? 'Change' : 'Set'}
+                </button>
+                {provider.envTokenSet && (
+                  <button
+                    onClick={() => onCommand({ type: 'clearProviderToken', payload: { provider: provider.key } })}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      background: 'transparent',
+                      color: 'var(--feed-muted)',
+                      border: '1px solid var(--feed-border)',
+                      borderRadius: 3,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

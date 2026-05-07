@@ -34,6 +34,9 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'debug.simulateActivity': 'debugSimulateActivity',
   'cli.enabled': 'cliEnabled',
   'cli.binaryPath': 'cliBinaryPath',
+  'worktree.baseDir': 'worktreeBaseDir',
+  'worktree.autoCreate': 'worktreeAutoCreate',
+  'worktree.cleanupOnKill': 'worktreeCleanupOnKill',
 };
 
 const TABS = [
