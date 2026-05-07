@@ -60,11 +60,11 @@ interface DashboardSnapshot {
 const PERSONA_DISPLAY: Record<string, string> = {
   developer: 'Developer',
   architect: 'Architect',
-  principal_engineer: 'Principal Eng',
-  security_lead: 'Security',
+  principal_engineer: 'Principal Engineer',
+  security_lead: 'Security Lead',
   qa_lead: 'QA Lead',
-  product_manager: 'Product Mgr',
-  project_manager: 'Project Mgr',
+  product_manager: 'Product Manager',
+  project_manager: 'Project Manager',
   ux_designer: 'UX Designer',
   customer: 'Customer',
 };
@@ -119,31 +119,44 @@ const DEFAULT_TARGET_POSITION = Position.Left;
 
 /**
  * Persona handoffs derived from the status-to-persona table in
- * personas.md §"Work Item Routing":
- *   in_review → planning → ready_to_implement → architecture_review_complete
- *     → implementing → done → security_reviewed → qa_verified
+ * personas.md §"Work Item Routing".
  *
- * Edge semantics:
- *   - Solid: status-driven handoff in the main pipeline.
- *   - Dashed: optional/alternative path (ad-hoc inputs, the PE alternative).
+ * Edge semantics — corrected per 2026-05-08 design feedback:
  *
- * Project Manager is a tracker and is not in the status-routing table, so it
- * has no edges — it surfaces in the diagram as a standalone status node.
+ *   - **Solid** edges = mandatory status gates (Code → Security → QA).
+ *     The work item HAS to traverse these to ship.
+ *   - **Dashed** edges = collaborative or alternative handoffs. There's
+ *     no rigid handoff between, say, Customer and PM — they collaborate
+ *     iteratively to produce a PRD. Same for PM → code-agent: PM hands
+ *     work to whichever code agent the user picked. The user picks ONE
+ *     code agent (Architect or Developer or Principal Engineer) per
+ *     branch, so we draw THREE separate dashed paths from PM rather
+ *     than implying a sequential Architect → Developer chain (which
+ *     was the previous wrong edge set).
+ *   - **Architect** has no direct edge to Security because Architect
+ *     doesn't produce code that ships — it produces design docs that
+ *     Developer/PE then implement. Items in
+ *     architecture_review_complete are picked up by Dev or PE who
+ *     transition them through implementing → done → Security review.
+ *
+ * Project Manager is a lifecycle tracker — no status-routing edges.
  */
 const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?: boolean }> = [
-  // Inputs into requirements (ad-hoc, not status-driven).
+  // Planning collaboration (Customer + UX feed PM iteratively for PRDs).
   { id: 'cust-pm',  source: 'customer',           target: 'product_manager',    dashed: true },
   { id: 'ux-pm',    source: 'ux_designer',        target: 'product_manager',    dashed: true },
-  // Forward pipeline.
-  { id: 'pm-arch',  source: 'product_manager',    target: 'architect' },
-  { id: 'arch-dev', source: 'architect',          target: 'developer' },
-  // Principal Engineer alternative — picks up at architecture_review_complete
-  // OR ready_to_implement, replacing Developer+Architect on the branch.
-  { id: 'arch-pe',  source: 'architect',          target: 'principal_engineer', dashed: true },
-  // Both implementer paths feed the post-done review pipeline.
+  // PM hands the PRD/spec to whichever code agent the user picked. Three
+  // separate dashed lines — NOT a sequential chain — because exactly
+  // one code agent owns the branch (per GitModifyingPersonas, see
+  // axiomcloud/database/vibeflow_models.go).
+  { id: 'pm-arch',  source: 'product_manager',    target: 'architect',          dashed: true },
+  { id: 'pm-dev',   source: 'product_manager',    target: 'developer',          dashed: true },
+  { id: 'pm-pe',    source: 'product_manager',    target: 'principal_engineer', dashed: true },
+  // Mandatory gates: Dev/PE → Security → QA. Architect doesn't write
+  // shippable code so it has no security edge — its output (planning
+  // docs) is consumed by Dev/PE for implementation.
   { id: 'dev-sec',  source: 'developer',          target: 'security_lead' },
-  { id: 'pe-sec',   source: 'principal_engineer', target: 'security_lead',      dashed: true },
-  // Security gate runs first — QA only picks up where security_reviewed=true.
+  { id: 'pe-sec',   source: 'principal_engineer', target: 'security_lead' },
   { id: 'sec-qa',   source: 'security_lead',      target: 'qa_lead' },
 ];
 
@@ -296,7 +309,11 @@ export function DashboardView() {
             fitView
             fitViewOptions={{ padding: 0.18 }}
             proOptions={{ hideAttribution: true }}
-            nodesDraggable={false}
+            // User feedback (2026-05-08): "can we let the users move the
+            // blocks around?" — yes. Free-form drag for personal layout
+            // preferences. Connections remain locked (the edge graph is
+            // canonical, not user-editable).
+            nodesDraggable={true}
             nodesConnectable={false}
             edgesFocusable={false}
             zoomOnScroll={false}
@@ -374,12 +391,13 @@ function PersonaNodeLabel({ name, status, isCodeAgent, queue, queueTooltip }: {
             <span
               title={queueTooltip}
               style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
                 fontSize: 10,
                 fontWeight: 600,
-                minWidth: 16,
                 padding: '1px 6px',
                 borderRadius: 9,
-                textAlign: 'center',
                 background: queue && queue > 0
                   ? 'var(--vscode-charts-blue, #569cd6)'
                   : 'transparent',
@@ -393,7 +411,12 @@ function PersonaNodeLabel({ name, status, isCodeAgent, queue, queueTooltip }: {
                 lineHeight: 1.4,
               }}
             >
-              {queue === null ? '—' : queue}
+              {/* Inbox-tray glyph makes "queue" obvious at a glance —
+                  user feedback was that a bare number ("67") looked
+                  alarming without context. The hover tooltip names the
+                  source statuses for the full breakdown. */}
+              <span style={{ fontSize: 9, opacity: 0.85 }}>↓</span>
+              <span>{queue === null ? '—' : queue}</span>
             </span>
           )}
         </div>
@@ -531,15 +554,19 @@ function SummaryGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | unde
         value={`${snapshot.sessions.active}/${snapshot.sessions.total}`}
         sub={snapshot.sessions.stale > 0 ? `${snapshot.sessions.stale} stale` : 'active'}
       />
+      {/* Combined work-item card matches the left panel's grouping
+          (todos + issues collapsed by status). The user's audit
+          flagged the prior split as misleading: left panel showed
+          69 done while this card showed 61 done because issues were
+          pulled into a separate card. Merge so the two views agree.
+          Sub text breaks out the type split for users who want it. */}
       <SummaryCard
-        label="Todos"
-        value={`${snapshot.todos.done} done`}
-        sub={`${snapshot.todos.in_progress} in progress · ${snapshot.todos.ready} ready · ${snapshot.todos.in_review} in review`}
-      />
-      <SummaryCard
-        label="Issues"
-        value={`${snapshot.issues.open} open`}
-        sub={`${snapshot.issues.done} done`}
+        label="Work items"
+        value={`${snapshot.todos.done + snapshot.issues.done} done`}
+        sub={
+          `${snapshot.todos.done} todos · ${snapshot.issues.done} issues · ` +
+          `${snapshot.issues.open} issues open`
+        }
       />
       <SummaryCard
         label="Commits"
