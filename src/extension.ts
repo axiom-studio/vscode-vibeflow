@@ -15,7 +15,7 @@ import { createBranchReviewStatusBar } from './statusBar/branchReview.js';
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
-import { launchSession, killSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
+import { launchSession, killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
 import { openCli } from './commands/cliCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
@@ -516,6 +516,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { killSession(client, session, sessionsProvider, terminalRegistry); }
+    }),
+    vscode.commands.registerCommand('vibeflow.killAndForgetSession', (idOrNode: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const session = id ? sessionsProvider.getSessionById(id) : undefined;
+      if (session) { killAndForgetSession(client, session, sessionsProvider, terminalRegistry); }
     }),
     vscode.commands.registerCommand('vibeflow.restartSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
