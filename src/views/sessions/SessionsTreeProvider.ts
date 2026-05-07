@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
+import { listWorktrees, type Worktree } from '../../commands/worktreeCommands.js';
 
-type NodeType = 'branch' | 'session' | 'placeholder';
+type NodeType = 'branch' | 'session' | 'placeholder' | 'worktreeSection' | 'worktreeItem';
 
 interface SessionNode {
   id: string;
@@ -16,6 +17,7 @@ interface SessionNode {
   children?: SessionNode[];
   contextValue?: string;
   session?: VibeFlowSession;
+  worktree?: Worktree;
 }
 
 /**
@@ -85,6 +87,10 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   // Session lookup by TreeItem id — needed because VSCode strips custom fields
   // from TreeItem arguments when passing to commands
   private sessionById = new Map<string, VibeFlowSession>();
+  // Worktree lookup by TreeItem id, populated alongside the worktree section.
+  // Same rationale as sessionById — context-menu commands receive only the
+  // serialized id.
+  private worktreeById = new Map<string, Worktree>();
 
   /**
    * Look up a session by its TreeItem id (e.g., "session-abc123").
@@ -92,6 +98,14 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
    */
   getSessionById(treeItemId: string): VibeFlowSession | undefined {
     return this.sessionById.get(treeItemId);
+  }
+
+  /**
+   * Look up a worktree by its TreeItem id (`worktree::<path>`). Used by
+   * the Open / Delete / Create-Session-Here context-menu commands.
+   */
+  getWorktreeById(treeItemId: string): Worktree | undefined {
+    return this.worktreeById.get(treeItemId);
   }
 
   refresh(): void {
@@ -160,8 +174,19 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
   private buildTree(): SessionNode[] {
     this.sessionById.clear();
-    if (this.sessions.length === 0) { return this.buildPlaceholderTree(); }
+    this.worktreeById.clear();
 
+    const top: SessionNode[] = this.sessions.length === 0
+      ? this.buildPlaceholderTree()
+      : this.buildSessionTree();
+
+    const wtSection = this.buildWorktreeSection();
+    if (wtSection) { top.push(wtSection); }
+
+    return top;
+  }
+
+  private buildSessionTree(): SessionNode[] {
     // Group sessions by branch
     const byBranch = new Map<string, VibeFlowSession[]>();
     for (const s of this.sessions) {
@@ -186,6 +211,47 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     }
 
     return nodes;
+  }
+
+  /**
+   * Returns the "Worktrees" group node when at least one git worktree
+   * exists in the current workspace, otherwise undefined. Collapsed by
+   * default — the section is informational and the user opts in to
+   * inspect / manage. Children carry `contextValue: 'worktreeItem'` so
+   * package.json `view/item/context` can target right-click commands.
+   */
+  private buildWorktreeSection(): SessionNode | undefined {
+    const workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workDir) { return undefined; }
+    const worktrees = listWorktrees(workDir);
+    if (worktrees.length === 0) { return undefined; }
+
+    const children: SessionNode[] = worktrees.map(wt => {
+      const id = `worktree::${wt.path}`;
+      this.worktreeById.set(id, wt);
+      const dirtyTag = wt.dirty ? ' $(diff-modified)' : '';
+      return {
+        id,
+        type: 'worktreeItem',
+        label: wt.branch,
+        description: `${wt.path}${wt.isCurrent ? ' (current)' : ''}${dirtyTag}`,
+        iconId: wt.isCurrent ? 'check' : 'git-branch',
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        contextValue: 'worktreeItem',
+        worktree: wt,
+      };
+    });
+
+    return {
+      id: 'worktree-section',
+      type: 'worktreeSection',
+      label: 'Worktrees',
+      description: `${worktrees.length}`,
+      iconId: 'source-control',
+      collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+      contextValue: 'worktreeSection',
+      children,
+    };
   }
 
   private buildSessionNode(session: VibeFlowSession): SessionNode {
