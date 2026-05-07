@@ -358,18 +358,25 @@ export async function launchSession(
 
   // Step 7: Worktree choice (skipped when prefill supplies a workDir, or
   // when the chosen branch is the current branch — switch-in-place is the
-  // only meaningful option there).
+  // only meaningful option there). When `vibeflow.worktree.autoCreate` is
+  // on, the prompt is also skipped and we go straight to creating a new
+  // worktree — matches the CLI's WorktreeConfig.AutoCreate semantics.
   let worktreeChoice: 'current' | 'new' = 'current';
   if (!prefill && branch !== project.gitBranch) {
-    const wtPick = await vscode.window.showQuickPick(
-      [
-        { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' as const },
-        { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' as const },
-      ],
-      { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session — Worktree' },
-    );
-    if (!wtPick) { return; }
-    worktreeChoice = wtPick.value;
+    const autoCreate = config.get<boolean>('worktree.autoCreate', false);
+    if (autoCreate) {
+      worktreeChoice = 'new';
+    } else {
+      const wtPick = await vscode.window.showQuickPick(
+        [
+          { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' as const },
+          { label: '$(folder-opened) New worktree', description: 'Create git worktree for this branch', value: 'new' as const },
+        ],
+        { placeHolder: 'Working directory', title: 'VibeFlow: Launch Session — Worktree' },
+      );
+      if (!wtPick) { return; }
+      worktreeChoice = wtPick.value;
+    }
   }
 
   // Launch sessions for each persona. When the caller pre-filled a workDir

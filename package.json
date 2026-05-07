@@ -575,22 +575,6 @@
           "default": "https://cloud.axiomstudio.ai",
           "description": "VibeFlow server URL"
         },
-        "vibeflow.defaultPersona": {
-          "type": "string",
-          "default": "developer",
-          "enum": [
-            "developer",
-            "architect",
-            "principal_engineer",
-            "security_lead",
-            "qa_lead",
-            "product_manager",
-            "project_manager",
-            "ux_designer",
-            "customer"
-          ],
-          "description": "Default persona for new sessions"
-        },
         "vibeflow.defaultProvider": {
           "type": "string",
           "default": "claude",
@@ -614,16 +598,6 @@
           ],
           "default": "vanilla",
           "description": "Mode used when reattaching phantom sessions on window reload. 'vanilla' (default) preserves the safe per-action permission prompts; 'vibeflow' reattaches in skip-permissions mode (only do this if your prior session was launched in vibeflow mode and you trust the agent to keep running unattended)."
-        },
-        "vibeflow.autoDetectProject": {
-          "type": "boolean",
-          "default": true,
-          "description": "Auto-match git remote to VibeFlow project"
-        },
-        "vibeflow.showStatusBar": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show VibeFlow status bar items"
         },
         "vibeflow.polling.interval": {
           "type": "number",

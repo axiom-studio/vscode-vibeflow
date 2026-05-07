@@ -6,7 +6,6 @@ export interface ProviderConfig {
   binary: string;
   available: boolean;
   vibeflowIntegrated: boolean;
-  llmGatewayEnabled: boolean;
   envTokenName?: string; // e.g., "MCP_TOKEN" for codex, "GEMINI_API_KEY" for gemini
   envTokenSet: boolean;
 }
@@ -32,18 +31,14 @@ export interface SettingsData {
 
   // Session
   pollInterval: number;
-  viewMode: 'flat' | 'grouped';
-  skipPermissions: boolean;
   sessionTerminalMode?: string;
 
-  // Advanced
-  errorRecoveryEnabled: boolean;
-  errorRecoveryMaxRetries: number;
-  errorRecoveryDebounce: number;
+  // Notifications
   notifyAgentPrompts: boolean;
   notifyWorkComplete: boolean;
+
+  // Advanced
   debugSimulateActivity: boolean;
-  debugVerboseLogging: boolean;
 
   // Models — per-persona sticky model preferences. `stickyModels`
   // maps persona_key -> model_id; `knownModels` is the full picker

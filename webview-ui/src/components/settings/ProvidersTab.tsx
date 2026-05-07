@@ -80,23 +80,13 @@ export function ProvidersTab({ data, onUpdate, onCommand }: Props) {
             </div>
           </div>
 
-          {/* LLM Gateway */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '8px 0',
-            borderTop: '1px solid var(--feed-border)',
-          }}>
-            <div>
-              <span style={{ fontSize: 12 }}>LLM Gateway</span>
-              <span style={{ fontSize: 10, color: 'var(--feed-muted)', marginLeft: 6 }}>Route through Axiom proxy</span>
-            </div>
-            <ToggleSwitch
-              checked={provider.llmGatewayEnabled}
-              onChange={v => onUpdate(`provider.${provider.key}.llmGateway`, v)}
-            />
-          </div>
+          {/* Per-provider LLM Gateway toggle was removed during the
+              settings audit — never persisted, never consumed. The
+              wizard's global gateway step (gated by
+              vibeflow.llmGateway.show) covers the dominant case;
+              per-provider routing returns when we have a real
+              consumer (multi-provider launches with different gateway
+              preferences). */}
 
           {/* Env Token */}
           {provider.envTokenName && (
@@ -157,36 +147,3 @@ export function ProvidersTab({ data, onUpdate, onCommand }: Props) {
   );
 }
 
-function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      style={{
-        position: 'relative',
-        width: 36,
-        height: 20,
-        borderRadius: 10,
-        border: 'none',
-        background: checked ? 'var(--feed-link)' : 'var(--feed-border)',
-        cursor: 'pointer',
-        transition: 'background 150ms',
-        padding: 0,
-        flexShrink: 0,
-      }}
-    >
-      <span style={{
-        position: 'absolute',
-        top: 2,
-        left: checked ? 18 : 2,
-        width: 16,
-        height: 16,
-        borderRadius: '50%',
-        background: 'white',
-        transition: 'left 150ms',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-      }} />
-    </button>
-  );
-}
