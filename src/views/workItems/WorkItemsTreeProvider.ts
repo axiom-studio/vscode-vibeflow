@@ -65,6 +65,13 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private features: VibeFlowFeature[] = [];
   private todos: VibeFlowTodo[] = [];
   private issues: VibeFlowIssue[] = [];
+  /**
+   * Snapshot of `{type}-{id} → status` from the previous poll. Used by
+   * notifyCompletions() to detect !done → done transitions. `undefined`
+   * before the first successful poll so we don't fire toasts for the
+   * baseline state at activation time.
+   */
+  private prevStatuses: Map<string, { status: string; title: string; type: 'todo' | 'issue'; id: number }> | undefined;
 
   /**
    * Count of todos+issues an agent could pick up right now — anything in
@@ -141,11 +148,77 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
         features.map(f => this.client!.listTodos(f.id).catch(() => [])),
       );
       this.todos = todoLists.flat();
+
+      // Detect transitions to `done` since the previous poll. Only fires
+      // toasts on the !done → done edge, so an item sitting in done
+      // across many polls notifies exactly once. First-ever poll seeds
+      // the baseline silently — items that were already done before the
+      // window opened don't get spurious notifications.
+      this.notifyCompletions();
     } catch {
-      // Keep stale data on error
+      // Keep stale data on error — and skip the diff so a transient
+      // failure doesn't drop transitions on the floor (next successful
+      // poll catches them via the unchanged prevStatuses snapshot).
     }
 
     this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Per-item status diff for the "Work Item Complete" notification toggle
+   * (vibeflow.notifications.workItemComplete). Maintains an internal
+   * Map of `{type}-{id}` → status across polls so we can fire a toast
+   * exactly once on the !done → done edge.
+   *
+   * Long-term this should be driven by the backend's SSE channel
+   * (`work_available` event with `NewStatus: "done"` — see
+   * axiomcloud/handlers/vibeflow_sse.go:156). Polling diff is the
+   * pragmatic version: ≤30s latency, no new connection, but lossy if
+   * an item flips done → archived between two polls. File a follow-up
+   * to migrate to SSE when we want richer real-time updates.
+   */
+  private notifyCompletions(): void {
+    const curr = new Map<string, { status: string; title: string; type: 'todo' | 'issue'; id: number }>();
+    for (const t of this.todos) {
+      curr.set(`todo-${t.id}`, { status: t.status, title: t.title, type: 'todo', id: t.id });
+    }
+    for (const i of this.issues) {
+      curr.set(`issue-${i.id}`, { status: i.status, title: i.title, type: 'issue', id: i.id });
+    }
+
+    const prev = this.prevStatuses;
+    this.prevStatuses = curr;
+
+    // First poll seeds the baseline silently. We don't know which items
+    // were already done before activation, so notifying for every
+    // currently-done row would flood the user.
+    if (prev === undefined) { return; }
+
+    const enabled = vscode.workspace.getConfiguration('vibeflow')
+      .get<boolean>('notifications.workItemComplete', true);
+    if (!enabled) { return; }
+
+    for (const [key, { status, title, type, id }] of curr) {
+      // Only the !done → done edge. Items already done across polls,
+      // or items reappearing in done after being elsewhere, both pass
+      // — only the actual transition fires.
+      const prevStatus = prev.get(key)?.status;
+      if (prevStatus === 'done' || status !== 'done') { continue; }
+      this.showCompletionToast(type, id, title);
+    }
+  }
+
+  private showCompletionToast(type: 'todo' | 'issue', id: number, title: string): void {
+    const truncated = title.length > 60 ? title.slice(0, 57) + '…' : title;
+    const label = type === 'todo' ? 'Todo' : 'Issue';
+    void vscode.window.showInformationMessage(
+      `VibeFlow: ${label} #${id} done — ${truncated}`,
+      'View',
+    ).then((choice) => {
+      if (choice === 'View') {
+        vscode.commands.executeCommand('vibeflow.openWorkItemPanel', `${type}-${id}`);
+      }
+    });
   }
 
   getTreeItem(element: WorkItemNode): vscode.TreeItem {
