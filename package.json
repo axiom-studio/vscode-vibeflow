@@ -241,6 +241,11 @@
         "icon": "$(trash)"
       },
       {
+        "command": "vibeflow.killAndForgetSession",
+        "title": "VibeFlow: Kill Session & Forget",
+        "icon": "$(close-all)"
+      },
+      {
         "command": "vibeflow.copySessionId",
         "title": "VibeFlow: Copy Session ID",
         "icon": "$(copy)"
@@ -306,6 +311,11 @@
           "command": "vibeflow.deleteSession",
           "when": "view == vibeflow.agentFleet && viewItem == inactiveSession",
           "group": "session_destructive@0"
+        },
+        {
+          "command": "vibeflow.killAndForgetSession",
+          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
+          "group": "session_destructive@1"
         },
         {
           "command": "vibeflow.openWorkItemPanel",

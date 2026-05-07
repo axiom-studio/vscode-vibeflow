@@ -63,3 +63,33 @@ export function buildTmuxName(provider: string, sessionId: string): string {
   if (provider) { return `vibeflow_${provider}-${sessionId}`; }
   return `vibeflow_${sessionId}`;
 }
+
+/**
+ * Best-effort kill of a CLI-launched tmux session.
+ *
+ * Why this needs to exist on the extension side: when the user launches
+ * agents via the vibeflow CLI (CLI mode), the actual process lives
+ * under tmux's custody — the extension's TerminalRegistry never gets
+ * a handle to it. So our killSession used to delete the backend record
+ * and assume the agent was gone, but the tmux pane kept running with
+ * an orphaned claude process inside that 404'd against the deleted
+ * record. Calling tmux kill-session here is what closes the loop.
+ *
+ * Returns true if the kill command exited cleanly (session existed
+ * and is now gone). Returns false on missing session, missing tmux,
+ * or any error. Caller treats false as "no orphan to clean up" since
+ * the alternative is to spam the user with errors when CLI mode is on
+ * but no tmux session ever existed (e.g., agent crashed early).
+ */
+export function killTmuxSession(provider: string, sessionId: string): boolean {
+  const name = buildTmuxName(provider, sessionId);
+  try {
+    execSync(`tmux -L ${TMUX_SOCKET} kill-session -t ${name}`, {
+      stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: 2000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

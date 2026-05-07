@@ -11,20 +11,20 @@ import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistr
 import { createOrAttachWorktree, removeWorktreeAt } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
+import { killTmuxSession } from '../sessions/tmuxState.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 
 /**
  * Best-effort delete of `.vibeflow-session-{persona}` from the session's
- * working directory (or worktree path if set). Stays a no-op when the
- * file isn't there, so it's safe to call from any teardown path.
+ * working directory (or worktree path if set). Used by:
+ *   - killAndForgetSession — explicit user request to wipe resume state
+ *   - SessionReattacher's stale-sweep path — when liveSessionIds confirms
+ *     the file points at a session_id the backend no longer knows
  *
- * Why this exists: the agent binary (Claude Code, Codex, Gemini) writes
- * this sidecar after calling session_init via MCP — it's the agent's
- * way of remembering its session_id across restarts. We never write
- * these files; we only read them in SessionReattacher. So the agent
- * leaves them behind on exit, and unless we sweep them when killing
- * the session, the next window reload finds a "phantom" pointing to
- * a session_id that the backend has already deleted.
+ * No-op when the file is missing, so safe to call from any teardown.
+ * Default kill paths intentionally do NOT call this — the file is the
+ * session's resume hint and matches CLI semantics
+ * (vibeflow-cli/internal/vibeflowcli/tui.go:619).
  */
 function removeSessionFile(persona: string, workDir: string): void {
   if (!workDir || !persona) { return; }
@@ -640,6 +640,11 @@ export function focusTerminal(
  * at a "killed" status badge while the agent process is still running
  * locally, which is confusing and can also cause stale write attempts
  * against the backend (the agent's next heartbeat 404s).
+ *
+ * Sidecar file is preserved by default for session-ID resume on next
+ * launch (matches CLI semantics — see vibeflow-cli/internal/vibeflowcli/
+ * tui.go:619). Use killAndForgetSession when the user explicitly wants
+ * to wipe the resume hint.
  */
 export async function killSession(
   client: VibeFlowClient,
@@ -647,32 +652,94 @@ export async function killSession(
   sessionsProvider: SessionsTreeProvider,
   terminalRegistry: TerminalRegistry,
 ): Promise<void> {
+  return killSessionInternal(client, session, sessionsProvider, terminalRegistry, { forget: false });
+}
+
+/**
+ * Kill a session AND wipe its `.vibeflow-session-{persona}` sidecar so
+ * the next launch starts fresh. Matches the CLI's `CleanupStaleSession`
+ * concept but invoked explicitly by the user. The default Kill action
+ * preserves the sidecar to enable session_id resume; this one is the
+ * "forget everything, start over" variant.
+ */
+export async function killAndForgetSession(
+  client: VibeFlowClient,
+  session: VibeFlowSession,
+  sessionsProvider: SessionsTreeProvider,
+  terminalRegistry: TerminalRegistry,
+): Promise<void> {
+  return killSessionInternal(client, session, sessionsProvider, terminalRegistry, { forget: true });
+}
+
+interface KillOptions {
+  /** When true, also delete the .vibeflow-session-{persona} sidecar. */
+  forget: boolean;
+}
+
+async function killSessionInternal(
+  client: VibeFlowClient,
+  session: VibeFlowSession,
+  sessionsProvider: SessionsTreeProvider,
+  terminalRegistry: TerminalRegistry,
+  opts: KillOptions,
+): Promise<void> {
+  const personaLabel = session.persona_name ?? session.persona_key;
+  const prompt = opts.forget
+    ? `Kill ${personaLabel} session on ${session.git_branch} AND forget its resume state? Next launch will start a fresh session.`
+    : `Kill ${personaLabel} session on ${session.git_branch}? The session id stays on disk so the next launch can resume.`;
+  const button = opts.forget ? 'Kill & Forget' : 'Kill Session';
   const confirm = await vscode.window.showWarningMessage(
-    `Kill ${session.persona_name ?? session.persona_key} session on ${session.git_branch}?`,
+    prompt,
     { modal: true },
-    'Kill Session',
+    button,
   );
-  if (confirm !== 'Kill Session') { return; }
+  if (confirm !== button) { return; }
 
-  // Dispose the local terminal first — even if the backend kill fails,
-  // we don't want to leave the agent running locally after the user
-  // explicitly asked to kill it. terminalRegistry.kill is a no-op when
-  // there's no registered terminal (e.g. session running on another
-  // machine), so this is safe in all cases.
+  // Tear down the agent's local resources first — even if the backend
+  // kill fails, we don't want to leave the agent process alive after
+  // the user explicitly asked to kill it.
+  //
+  // Two custody models to handle:
+  //   - Extension-launched terminals live in TerminalRegistry. Disposing
+  //     the registered terminal sends Ctrl-C-then-close to the shell.
+  //   - CLI-launched agents live under tmux on the `-L vibeflow` socket;
+  //     TerminalRegistry has no record of them. Without an explicit
+  //     tmux kill-session, the pane keeps running with an orphan claude
+  //     process inside that 404s against the now-deleted backend record.
+  //     This is exactly the "vibeflow-cli shows a disconnected entry
+  //     after extension-side kill" bug.
+  //
+  // Both calls are no-ops when nothing's there, so it's safe to run
+  // both unconditionally — cheaper than threading a "which mode launched
+  // this session" flag through the call site.
   terminalRegistry.kill(session.persona_key, session.git_branch);
+  killTmuxSession(session.agent_type ?? '', session.session_id);
 
-  // Remove the sidecar file the agent dropped at session_init time.
-  // Without this, the file lingers and SessionReattacher sees a phantom
-  // for a session_id whose backend record has just been deleted.
-  // Honor worktree path so worktree-launched agents get cleaned up too.
-  const workDir = session.git_worktree_path || session.working_directory;
-  removeSessionFile(session.persona_key, workDir);
+  // Sidecar handling depends on whether the user picked "Kill" or
+  // "Kill & Forget". Default Kill preserves the sidecar to enable
+  // session_id resume on next launch — matches CLI semantics
+  // (vibeflow-cli/internal/vibeflowcli/tui.go:619 — "Session file is
+  // intentionally kept so the session ID can be reused on next
+  // launch.") Kill & Forget wipes the sidecar so the next launch
+  // starts a fresh session_id, mirroring the CLI's
+  // CleanupStaleSession path.
+  //
+  // Stale sidecars (kept by Kill, but whose session_id the backend
+  // doesn't know about anymore) are swept on the next window load by
+  // SessionReattacher.detectPhantoms via the liveSessionIds cross-check.
+  if (opts.forget) {
+    const workDir = session.git_worktree_path || session.working_directory;
+    removeSessionFile(session.persona_key, workDir);
+  }
 
   let backendKillSucceeded = false;
   try {
     await client.killSession(session.session_id);
     backendKillSucceeded = true;
-    vscode.window.showInformationMessage('VibeFlow: Session killed');
+    const msg = opts.forget
+      ? 'VibeFlow: Session killed and forgotten'
+      : 'VibeFlow: Session killed';
+    vscode.window.showInformationMessage(msg);
   } catch (err) {
     // Local terminal is already gone; surface the backend error so the
     // user knows the server record may need manual cleanup, but don't
@@ -757,10 +824,13 @@ export async function deleteSession(
     // just give it a different prompt so the wording matches the user's
     // intent ("delete the record" vs "kill the running agent").
     await client.killSession(session.session_id);
-    // Sweep the .vibeflow-session-{persona} sidecar so the next window
-    // reload doesn't see a phantom for the now-deleted record.
-    const workDir = session.git_worktree_path || session.working_directory;
-    removeSessionFile(session.persona_key, workDir);
+    // Defensive tmux kill — this command is gated on inactiveSession in
+    // the menu, so the pane SHOULD already be dead. But "ghost" state
+    // (backend active + tmux dead) and similar edge cases mean we run
+    // it anyway. No-op when nothing matches.
+    killTmuxSession(session.agent_type ?? '', session.session_id);
+    // Sidecar is intentionally preserved — same reasoning as
+    // killSession: it's session-ID memory for resume, not process state.
     vscode.window.showInformationMessage(`VibeFlow: ${persona} session removed`);
     sessionsProvider.refresh();
   } catch (err) {
