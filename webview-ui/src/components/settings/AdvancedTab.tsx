@@ -15,15 +15,9 @@ export function AdvancedTab({ data, onUpdate }: Props) {
       >
         <ToggleRow
           label="Simulate Activity Feed"
-          desc="Fill the Activity Feed with randomly generated demo entries (500 initial + 1 every 3 seconds). Useful for testing the UI without real agent sessions."
+          desc="Fill the Activity Feed with randomly generated demo entries (500 initial + 1 every 3 seconds). Useful for testing the UI without real agent sessions. Takes effect on next window reload."
           checked={data.debugSimulateActivity}
           onChange={v => onUpdate('debug.simulateActivity', v)}
-        />
-        <ToggleRow
-          label="Verbose Logging"
-          desc="Log detailed extension lifecycle events to the Developer Tools console (Help > Toggle Developer Tools)"
-          checked={data.debugVerboseLogging}
-          onChange={v => onUpdate('debugVerboseLogging', v)}
         />
       </Card>
     </div>
