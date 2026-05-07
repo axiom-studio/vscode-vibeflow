@@ -115,13 +115,24 @@ export class SettingsPanel {
 
           if (settingsKeys.includes(key)) {
             await config.update(key, value, vscode.ConfigurationTarget.Global);
-            // Re-push the fresh snapshot so the webview reconciles. The
-            // optimistic update on the React side handles snappiness;
-            // this round-trip is the safety net for any state that's
-            // derived (e.g. cliInstalled flips when cli.binaryPath
-            // changes) and for cross-tab consistency when the same
-            // config key is rendered in multiple tabs.
-            await pushSettings();
+            // Only re-push the snapshot for keys whose webview rendering
+            // depends on DERIVED state — recomputing the snapshot on
+            // every keystroke for a plain text input races the user's
+            // typing (the post-key snapshot lands after they've typed
+            // more, overwriting the in-progress value). The optimistic
+            // update on the React side via CONFIG_KEY_TO_FIELD already
+            // keeps controls in sync for plain config values.
+            //
+            // Keys with derived state today:
+            //   - cli.binaryPath → recomputes `cliInstalled` via which/where
+            //   - serverUrl, defaultProvider currently have no derived
+            //     state in the snapshot, but we leave them in the list
+            //     so the test/validate buttons can still trigger
+            //     fresh data when wired in the future.
+            const derivedStateKeys = new Set(['cli.binaryPath']);
+            if (derivedStateKeys.has(key)) {
+              await pushSettings();
+            }
           }
           break;
         }
