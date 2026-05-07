@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
+  BackgroundVariant,
+  Position,
+  MarkerType,
   type Node,
   type Edge,
 } from '@xyflow/react';
@@ -82,23 +85,37 @@ const PERSONA_DISPLAY: Record<string, string> = {
 const CODE_AGENT_KEYS = new Set(['architect', 'developer', 'principal_engineer']);
 
 /**
- * Topology layout — left-to-right pipeline matching the canonical flow in
- * axiomcloud/docs/VibeFlow/docs/process.md. Top row is the forward path
- * (planning → implement → review) with the code-agent cluster between PM
- * and Security. Bottom row holds ad-hoc inputs (Customer, UX) and the
- * standalone Project Manager observer.
+ * Topology layout — left-to-right pipeline. The code-agent cluster
+ * (architect/developer/principal_engineer) is stacked **vertically**
+ * in column 3 so it reads as a single shared slot rather than three
+ * sequential boxes. Inputs feed PM from the left column. Project
+ * Manager is a standalone observer (no status routing) parked above
+ * the QA Lead column.
+ *
+ * Coordinates are tuned for a ~200px node width with ~120px gaps so
+ * smoothstep edges have room to corner without colliding with nodes.
  */
 const PERSONA_POSITIONS: Record<string, { x: number; y: number }> = {
-  product_manager:    { x: 40,  y: 50  },
-  architect:          { x: 220, y: 50  },
-  developer:          { x: 380, y: 50  },
-  principal_engineer: { x: 540, y: 50  },
-  security_lead:      { x: 720, y: 50  },
-  qa_lead:            { x: 900, y: 50  },
-  customer:           { x: 40,  y: 200 },
-  ux_designer:        { x: 220, y: 200 },
-  project_manager:    { x: 900, y: 200 },
+  customer:           { x: 0,   y: 60  },
+  ux_designer:        { x: 0,   y: 220 },
+  product_manager:    { x: 220, y: 140 },
+  architect:          { x: 460, y: 0   },
+  developer:          { x: 460, y: 140 },
+  principal_engineer: { x: 460, y: 280 },
+  security_lead:      { x: 700, y: 140 },
+  qa_lead:            { x: 920, y: 140 },
+  project_manager:    { x: 920, y: 0   },
 };
+
+/**
+ * Per-node default handle positions. Most of the pipeline flows
+ * left-to-right, so the default is `Right` source / `Left` target.
+ * Customer and UX feed up-and-to-the-right into PM; setting their
+ * source to `Right` keeps edges tidy because PM is to their right
+ * AND below/above (smoothstep handles the dogleg cleanly).
+ */
+const DEFAULT_SOURCE_POSITION = Position.Right;
+const DEFAULT_TARGET_POSITION = Position.Left;
 
 /**
  * Persona handoffs derived from the status-to-persona table in
@@ -201,6 +218,11 @@ export function DashboardView() {
       return {
         id: key,
         position: PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
+        // Explicit handle positions stop edges from picking arbitrary
+        // sides and looping (which is why the previous render had
+        // edges cutting through node interiors).
+        sourcePosition: DEFAULT_SOURCE_POSITION,
+        targetPosition: DEFAULT_TARGET_POSITION,
         data: {
           label: (
             <PersonaNodeLabel
@@ -218,16 +240,33 @@ export function DashboardView() {
     [personaStatus, personaQueues],
   );
 
-  const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    animated: personaStatus[e.source] === 'active' || personaStatus[e.target] === 'active',
-    style: {
-      stroke: 'var(--feed-border)',
-      ...(e.dashed ? { strokeDasharray: '5,5' } : {}),
-    },
-  })), [personaStatus]);
+  const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => {
+    const isActive = personaStatus[e.source] === 'active' || personaStatus[e.target] === 'active';
+    // Solid edges in the muted-foreground color stand off the dark
+    // background; dashed (optional) edges drop opacity further to
+    // visually de-emphasize them. Active edges get a brighter stroke
+    // and the ReactFlow `animated` flow indicator.
+    const stroke = isActive
+      ? 'var(--feed-link)'
+      : (e.dashed ? 'var(--feed-muted)' : 'var(--feed-fg)');
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      // Smoothstep gives clean orthogonal corners that respect the
+      // explicit handle positions, instead of bezier curves that
+      // arc across other nodes.
+      type: 'smoothstep',
+      animated: isActive,
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
+      style: {
+        stroke,
+        strokeWidth: isActive ? 2 : 1.5,
+        opacity: e.dashed && !isActive ? 0.5 : 1,
+        ...(e.dashed ? { strokeDasharray: '4,4' } : {}),
+      },
+    };
+  }), [personaStatus]);
 
   return (
     <div style={{ width: '100%', height: '100vh', background: 'var(--feed-bg)', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
@@ -249,21 +288,25 @@ export function DashboardView() {
         title="Agent Topology"
         subtitle="Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit."
       >
-        <div style={{ height: 380, width: '100%', borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
+        <div style={{ height: 460, width: '100%', borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodeClick={onNodeClick}
             fitView
-            fitViewOptions={{ padding: 0.15 }}
+            fitViewOptions={{ padding: 0.18 }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable={false}
             nodesConnectable={false}
             edgesFocusable={false}
             zoomOnScroll={false}
             panOnDrag={true}
+            // Slightly higher minimum spacing so smoothstep edges have
+            // room to corner around the code-agent cluster without
+            // touching the box edges.
+            defaultEdgeOptions={{ type: 'smoothstep' }}
           >
-            <Background color="var(--feed-border)" gap={20} />
+            <Background variant={BackgroundVariant.Dots} color="var(--feed-border)" gap={18} size={1.2} />
           </ReactFlow>
         </div>
       </Section>
@@ -290,76 +333,98 @@ function PersonaNodeLabel({ name, status, isCodeAgent, queue, queueTooltip }: {
   queue: number | null;
   queueTooltip: string | undefined;
 }) {
+  // Two-row label keeps the title on one line and pushes badges below,
+  // so the box sizes consistently regardless of which badges are
+  // present. Previously badges crowded the title and Principal Engineer
+  // wrapped to two lines.
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-      <span style={{
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: STATUS_COLOR[status],
-        flexShrink: 0,
-      }} />
-      {name}
-      {isCodeAgent && (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span style={{
-          fontSize: 9,
-          fontWeight: 600,
-          letterSpacing: 0.3,
-          padding: '1px 5px',
-          borderRadius: 3,
-          background: 'var(--vscode-charts-orange, #d18616)',
-          color: 'var(--vscode-editor-background)',
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: STATUS_COLOR[status],
           flexShrink: 0,
-        }}
-        title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
-        >
-          1/branch
-        </span>
-      )}
-      {queueTooltip !== undefined && (
-        // Queue badge: solid when there's pending work, dimmed when empty,
-        // dash when this persona has no status-driven intake at all
-        // (project_manager / customer). Tooltip names the source statuses.
-        <span style={{
-          fontSize: 10,
-          fontWeight: 600,
-          minWidth: 18,
-          padding: '1px 5px',
-          borderRadius: 9,
-          textAlign: 'center',
-          background: queue && queue > 0
-            ? 'var(--vscode-badge-background, #4d4d4d)'
-            : 'transparent',
-          color: queue && queue > 0
-            ? 'var(--vscode-badge-foreground, #fff)'
-            : 'var(--feed-muted)',
-          border: queue && queue > 0
-            ? 'none'
-            : '1px solid var(--feed-border)',
-          flexShrink: 0,
-        }}
-        title={queueTooltip}
-        >
-          {queue === null ? '—' : queue}
-        </span>
+          boxShadow: status === 'active' ? `0 0 0 3px ${STATUS_COLOR[status]}33` : 'none',
+        }} />
+        <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{name}</span>
+      </div>
+      {(isCodeAgent || queueTooltip !== undefined) && (
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', paddingLeft: 15 }}>
+          {isCodeAgent && (
+            <span
+              title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
+              style={{
+                fontSize: 9,
+                fontWeight: 600,
+                letterSpacing: 0.3,
+                padding: '1px 6px',
+                borderRadius: 3,
+                background: 'var(--vscode-charts-orange, #d18616)',
+                color: 'var(--vscode-editor-background)',
+                flexShrink: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              1/branch
+            </span>
+          )}
+          {queueTooltip !== undefined && (
+            <span
+              title={queueTooltip}
+              style={{
+                fontSize: 10,
+                fontWeight: 600,
+                minWidth: 16,
+                padding: '1px 6px',
+                borderRadius: 9,
+                textAlign: 'center',
+                background: queue && queue > 0
+                  ? 'var(--vscode-charts-blue, #569cd6)'
+                  : 'transparent',
+                color: queue && queue > 0
+                  ? 'var(--vscode-editor-background)'
+                  : 'var(--feed-muted)',
+                border: queue && queue > 0
+                  ? 'none'
+                  : '1px solid var(--feed-border)',
+                flexShrink: 0,
+                lineHeight: 1.4,
+              }}
+            >
+              {queue === null ? '—' : queue}
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProperties {
-  const color = STATUS_COLOR[status];
+  // Inactive nodes used to inherit `var(--feed-muted)` which made them
+  // disappear into the dark background. Use a stronger neutral so the
+  // box outline is always readable; status colors only kick in for
+  // active/stale to draw the eye to live activity.
+  const inactiveBorder = 'var(--vscode-charts-foreground, var(--feed-fg))';
+  const color = status === 'inactive' ? inactiveBorder : STATUS_COLOR[status];
+  const codeAgentTint = isCodeAgent
+    ? 'rgba(209,134,22,0.06)' // very subtle orange wash so the cluster reads as a group
+    : 'var(--vscode-editor-background)';
   return {
-    background: 'var(--vscode-editor-background)',
-    // Code-agent nodes carry a thicker border to read as a cluster even
-    // when the user can't see the badge color (e.g., colorblind users).
-    border: `${isCodeAgent ? 3 : 2}px solid ${color}`,
+    background: codeAgentTint,
+    // Slightly thicker border for code agents so the cluster reads at
+    // a glance even without the badge color.
+    border: `${isCodeAgent ? 2 : 1.5}px solid ${color}`,
     borderRadius: 8,
-    padding: '8px 14px',
+    padding: '10px 14px',
     fontSize: 12,
     color: 'var(--feed-fg)',
     fontFamily: 'var(--vscode-font-family)',
-    opacity: status === 'inactive' ? 0.65 : 1,
+    opacity: status === 'inactive' ? 0.85 : 1,
+    minWidth: 180,
+    boxShadow: status === 'active' ? `0 0 0 4px ${color}22` : 'none',
   };
 }
 
