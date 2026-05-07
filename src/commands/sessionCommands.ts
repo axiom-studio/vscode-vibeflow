@@ -8,7 +8,7 @@ import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvide
 import type { VibeFlowProject, VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
-import { createOrAttachWorktree } from './worktreeCommands.js';
+import { createOrAttachWorktree, removeWorktreeAt } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
@@ -90,6 +90,17 @@ const PROVIDERS = [
  * the count varies with conditional branches and stale numbers are
  * worse than no numbers.
  */
+/**
+ * Optional pre-fill for branch and worktree path. When provided (e.g.
+ * from the Agent Fleet right-click "Create Session Here" command), the
+ * branch picker is skipped, the worktree-choice step is skipped, and
+ * the spawned terminals run inside `prefill.workDir`.
+ */
+export interface LaunchSessionPrefill {
+  branch: string;
+  workDir: string;
+}
+
 export async function launchSession(
   client: VibeFlowClient,
   detector: ProjectDetector,
@@ -99,6 +110,7 @@ export async function launchSession(
   stickyModels: StickyModels,
   context: ContextProxy,
   onProjectSwitched?: (project: DetectedProject) => void,
+  prefill?: LaunchSessionPrefill,
 ): Promise<void> {
   if (!client.isAuthenticated()) {
     vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
@@ -298,50 +310,57 @@ export async function launchSession(
     llmGateway = gatewayChoice.value;
   }
 
-  // Step 8: Branch
-  let branches: string[];
-  try {
-    const result = execSync('git branch --list --no-color', {
-      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
-      encoding: 'utf-8',
+  // Step 8: Branch (skipped when caller pre-filled it via `prefill`)
+  let branch: string;
+  if (prefill) {
+    branch = prefill.branch;
+  } else {
+    let branches: string[];
+    try {
+      const result = execSync('git branch --list --no-color', {
+        cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+        encoding: 'utf-8',
+      });
+      branches = result
+        .split('\n')
+        .map(b => b.replace(/^\*?\s+/, '').trim())
+        .filter(Boolean);
+    } catch {
+      branches = [project.gitBranch];
+    }
+
+    const branchItems = [
+      { label: '$(add) Create new branch', value: '_new' },
+      ...branches.map(b => ({
+        label: b === project.gitBranch ? `$(check) ${b}` : b,
+        description: b === project.gitBranch ? 'current' : '',
+        value: b,
+      })),
+    ];
+
+    const branchPick = await vscode.window.showQuickPick(branchItems, {
+      placeHolder: 'Select branch',
+      title: 'VibeFlow: Launch Session — Branch',
     });
-    branches = result
-      .split('\n')
-      .map(b => b.replace(/^\*?\s+/, '').trim())
-      .filter(Boolean);
-  } catch {
-    branches = [project.gitBranch];
+    if (!branchPick) { return; }
+
+    branch = branchPick.value;
+    if (branch === '_new') {
+      const newBranch = await vscode.window.showInputBox({
+        prompt: 'New branch name',
+        placeHolder: 'feature/my-feature',
+        title: 'VibeFlow: New Branch',
+      });
+      if (!newBranch) { return; }
+      branch = newBranch;
+    }
   }
 
-  const branchItems = [
-    { label: '$(add) Create new branch', value: '_new' },
-    ...branches.map(b => ({
-      label: b === project.gitBranch ? `$(check) ${b}` : b,
-      description: b === project.gitBranch ? 'current' : '',
-      value: b,
-    })),
-  ];
-
-  const branchPick = await vscode.window.showQuickPick(branchItems, {
-    placeHolder: 'Select branch',
-    title: 'VibeFlow: Launch Session — Branch',
-  });
-  if (!branchPick) { return; }
-
-  let branch = branchPick.value;
-  if (branch === '_new') {
-    const newBranch = await vscode.window.showInputBox({
-      prompt: 'New branch name',
-      placeHolder: 'feature/my-feature',
-      title: 'VibeFlow: New Branch',
-    });
-    if (!newBranch) { return; }
-    branch = newBranch;
-  }
-
-  // Step 7: Worktree (conditional — only if branch ≠ current)
+  // Step 7: Worktree choice (skipped when prefill supplies a workDir, or
+  // when the chosen branch is the current branch — switch-in-place is the
+  // only meaningful option there).
   let worktreeChoice: 'current' | 'new' = 'current';
-  if (branch !== project.gitBranch) {
+  if (!prefill && branch !== project.gitBranch) {
     const wtPick = await vscode.window.showQuickPick(
       [
         { label: '$(folder) Current directory', description: 'Switch branch in place', value: 'current' as const },
@@ -353,13 +372,14 @@ export async function launchSession(
     worktreeChoice = wtPick.value;
   }
 
-  // Launch sessions for each persona
-  let workDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  // Launch sessions for each persona. When the caller pre-filled a workDir
+  // (e.g. "Create Session Here" from a Worktrees TreeView item), we skip
+  // the on-the-fly worktree creation entirely and spawn directly inside it.
+  let workDir = prefill
+    ? prefill.workDir
+    : (vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '');
 
-  // If the user picked "New worktree", create it now and use the new path
-  // as workDir so all spawned terminals run inside the worktree. Pre-fix
-  // this answer was thrown away — the wizard step did nothing.
-  if (worktreeChoice === 'new' && workDir) {
+  if (!prefill && worktreeChoice === 'new' && workDir) {
     const wtPath = createOrAttachWorktree(workDir, branch);
     if (!wtPath) {
       vscode.window.showErrorMessage(
@@ -648,8 +668,10 @@ export async function killSession(
   const workDir = session.git_worktree_path || session.working_directory;
   removeSessionFile(session.persona_key, workDir);
 
+  let backendKillSucceeded = false;
   try {
     await client.killSession(session.session_id);
+    backendKillSucceeded = true;
     vscode.window.showInformationMessage('VibeFlow: Session killed');
   } catch (err) {
     // Local terminal is already gone; surface the backend error so the
@@ -658,7 +680,57 @@ export async function killSession(
     const msg = err instanceof Error ? err.message : String(err);
     vscode.window.showErrorMessage(`VibeFlow: Local terminal killed but backend record cleanup failed — ${msg}`);
   }
+
+  // Cleanup-on-kill: remove the session's worktree iff backend kill
+  // succeeded, the session was running in a worktree, and the user opted
+  // in via `vibeflow.worktree.cleanupOnKill`. Skipped on backend failure
+  // because we'd be removing the worktree of a still-active session
+  // record, which is worse than leaving the worktree in place.
+  if (backendKillSucceeded && session.git_worktree_path) {
+    await maybeCleanupWorktree(session);
+  }
+
   sessionsProvider.refresh();
+}
+
+/**
+ * Honor `vibeflow.worktree.cleanupOnKill` after a successful kill:
+ *   - `always` → unconditional `git worktree remove --force`
+ *   - `ask`    → modal prompt, only removes on confirm
+ *   - `never`  → noop
+ *
+ * Run from the session's launch workspace folder, not the worktree
+ * itself — `git worktree remove` cannot remove the cwd it's running in.
+ */
+async function maybeCleanupWorktree(session: VibeFlowSession): Promise<void> {
+  const cleanup = vscode.workspace.getConfiguration('vibeflow')
+    .get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask');
+  if (cleanup === 'never') { return; }
+
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!workspaceRoot) { return; }
+  // If the user happens to have opened the worktree itself as their
+  // workspace, fall back to the working_directory the session recorded.
+  const cwd = workspaceRoot === session.git_worktree_path
+    ? (session.working_directory || workspaceRoot)
+    : workspaceRoot;
+
+  if (cleanup === 'ask') {
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete the worktree this session ran in?\n\n${session.git_worktree_path}`,
+      { modal: true },
+      'Delete Worktree',
+    );
+    if (confirm !== 'Delete Worktree') { return; }
+  }
+
+  try {
+    removeWorktreeAt(cwd, session.git_worktree_path!);
+    vscode.window.showInformationMessage(`VibeFlow: Worktree ${session.git_worktree_path} removed`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: Failed to remove worktree — ${msg}`);
+  }
 }
 
 /**

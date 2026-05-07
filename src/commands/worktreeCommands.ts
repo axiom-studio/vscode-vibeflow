@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 
-interface Worktree {
+export interface Worktree {
   path: string;
   branch: string;
   isCurrent: boolean;
+  /** True iff `git status --porcelain` returned any output for the worktree. */
+  dirty: boolean;
 }
 
 /**
@@ -108,13 +110,19 @@ export async function manageWorktrees(): Promise<void> {
   const items: (vscode.QuickPickItem & { action: string; wt?: Worktree })[] = [
     { label: '$(add) Create New Worktree', action: 'create' },
     { label: '', kind: vscode.QuickPickItemKind.Separator, action: '' },
-    ...worktrees.map(wt => ({
-      label: `${wt.isCurrent ? '$(check) ' : ''}${wt.branch}`,
-      description: wt.path,
-      detail: wt.isCurrent ? 'Current worktree' : undefined,
-      action: 'select' as const,
-      wt,
-    })),
+    ...worktrees.map(wt => {
+      const dirtyTag = wt.dirty ? '$(diff-modified) ' : '';
+      const detailParts: string[] = [];
+      if (wt.isCurrent) { detailParts.push('Current worktree'); }
+      detailParts.push(wt.dirty ? 'Modified' : 'Clean');
+      return {
+        label: `${wt.isCurrent ? '$(check) ' : ''}${dirtyTag}${wt.branch}`,
+        description: wt.path,
+        detail: detailParts.join(' · '),
+        action: 'select' as const,
+        wt,
+      };
+    }),
   ];
 
   const picked = await vscode.window.showQuickPick(items, {
@@ -193,7 +201,7 @@ async function createWorktree(workDir: string): Promise<void> {
   }
 }
 
-async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
+export async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
   if (wt.isCurrent) {
     vscode.window.showWarningMessage('VibeFlow: Cannot delete the current worktree');
     return;
@@ -207,23 +215,30 @@ async function deleteWorktree(workDir: string, wt: Worktree): Promise<void> {
     return;
   }
 
+  // Recompute dirty at decision time so a stale flag from listWorktrees
+  // can't lie about uncommitted work that landed since the menu opened.
+  const dirty = hasDirtyChanges(wt.path);
+  const promptMessage = dirty
+    ? `Worktree "${wt.branch}" has uncommitted changes — delete anyway?\n\nPath: ${wt.path}`
+    : `Delete worktree "${wt.branch}" at ${wt.path}?`;
+  const actionLabel = dirty ? 'Delete (force)' : 'Delete';
+
   const confirm = await vscode.window.showWarningMessage(
-    `Delete worktree "${wt.branch}" at ${wt.path}?`,
+    promptMessage,
     { modal: true },
-    'Delete',
+    actionLabel,
   );
-  if (confirm !== 'Delete') { return; }
+  if (confirm !== actionLabel) { return; }
 
   try {
-    // `--` terminates option parsing; even a `-` prefix in path can't be parsed as a flag.
-    runGit(['worktree', 'remove', '--force', '--', wt.path], workDir);
+    removeWorktreeAt(workDir, wt.path);
     vscode.window.showInformationMessage(`VibeFlow: Worktree "${wt.branch}" deleted`);
   } catch (err) {
     vscode.window.showErrorMessage(`VibeFlow: Failed to delete worktree — ${err}`);
   }
 }
 
-function listWorktrees(workDir: string): Worktree[] {
+export function listWorktrees(workDir: string): Worktree[] {
   try {
     const output = runGit(['worktree', 'list', '--porcelain'], workDir);
 
@@ -242,6 +257,7 @@ function listWorktrees(workDir: string): Worktree[] {
             path: currentPath,
             branch: currentBranch,
             isCurrent: currentPath === workDir,
+            dirty: hasDirtyChanges(currentPath),
           });
         }
         currentPath = '';
@@ -253,4 +269,34 @@ function listWorktrees(workDir: string): Worktree[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * Cheap dirty check — `git status --porcelain` returns any output iff the
+ * worktree has untracked, modified, or staged changes. Returns false on
+ * any error so a transient git failure doesn't paint every worktree dirty.
+ */
+function hasDirtyChanges(worktreePath: string): boolean {
+  try {
+    return runGit(['status', '--porcelain'], worktreePath).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Remove a worktree by absolute path, run from any checkout of the same
+ * repo. Used by the Agent Fleet TreeView's right-click delete and by the
+ * cleanup-on-kill hook in `killSession`. Path is passed positionally after
+ * `--` so a hostile-looking path can't be parsed as a flag.
+ *
+ * Throws on git failure — callers surface the error to the user.
+ */
+export function removeWorktreeAt(workDir: string, worktreePath: string, force = true): void {
+  if (!worktreePath) { throw new Error('worktree path required'); }
+  if (worktreePath.startsWith('-')) { throw new Error('Refusing to remove worktree — path starts with "-"'); }
+  const args = ['worktree', 'remove'];
+  if (force) { args.push('--force'); }
+  args.push('--', worktreePath);
+  runGit(args, workDir);
 }

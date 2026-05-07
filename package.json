@@ -258,6 +258,21 @@
         "command": "vibeflow.openCli",
         "title": "VibeFlow: Open CLI",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "vibeflow.openWorktreeInNewWindow",
+        "title": "VibeFlow: Open Worktree in New Window",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "vibeflow.deleteWorktreeFromTree",
+        "title": "VibeFlow: Delete Worktree",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vibeflow.createSessionInWorktree",
+        "title": "VibeFlow: Create Session Here",
+        "icon": "$(rocket)"
       }
     ],
     "menus": {
@@ -326,6 +341,21 @@
           "command": "vibeflow.securityReject",
           "when": "view == vibeflow.workItems && viewItem =~ /^(todo|issue)-/",
           "group": "review@3"
+        },
+        {
+          "command": "vibeflow.createSessionInWorktree",
+          "when": "view == vibeflow.agentFleet && viewItem == worktreeItem",
+          "group": "worktree@0"
+        },
+        {
+          "command": "vibeflow.openWorktreeInNewWindow",
+          "when": "view == vibeflow.agentFleet && viewItem == worktreeItem",
+          "group": "worktree@1"
+        },
+        {
+          "command": "vibeflow.deleteWorktreeFromTree",
+          "when": "view == vibeflow.agentFleet && viewItem == worktreeItem",
+          "group": "worktree@2"
         }
       ],
       "view/title": [
