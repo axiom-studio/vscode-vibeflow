@@ -13,6 +13,29 @@ import { getVsCodeApi } from '../../vscodeApi';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
 
+/**
+ * Maps the dotted VS Code config keys we send via updateSetting to the
+ * camelCase SettingsData fields the React tabs read from. Keys not
+ * listed here use the same name on both sides (e.g. `serverUrl`,
+ * `defaultProvider`) and pass through unchanged via the `?? key` fallback.
+ *
+ * If you add a new config key with a dot in it, add a row here too —
+ * otherwise the optimistic update in SettingsView.updateSetting will
+ * write a literal dotted property that no component reads, and the
+ * control won't visibly respond to clicks until the host's pushSettings
+ * round-trip completes.
+ */
+const CONFIG_KEY_TO_FIELD: Record<string, string> = {
+  'polling.interval': 'pollInterval',
+  'session.terminalMode': 'sessionTerminalMode',
+  'session.reattachMode': 'sessionReattachMode',
+  'notifications.agentPrompts': 'notifyAgentPrompts',
+  'notifications.workItemComplete': 'notifyWorkComplete',
+  'debug.simulateActivity': 'debugSimulateActivity',
+  'cli.enabled': 'cliEnabled',
+  'cli.binaryPath': 'cliBinaryPath',
+};
+
 const TABS = [
   { id: 'connection', label: 'Connection', icon: '🔗' },
   { id: 'providers', label: 'Providers', icon: '🤖' },
@@ -46,7 +69,17 @@ export function SettingsView() {
   function updateSetting(key: string, value: unknown) {
     vscode.postMessage({ type: 'updateSetting', payload: { key, value } });
     if (data) {
-      setData({ ...data, [key]: value });
+      // Optimistic local update — the host also re-pushes a fresh
+      // SettingsData snapshot after persisting, but doing the local
+      // patch keeps the UI snappy on click.
+      //
+      // Config keys are dotted (`session.terminalMode`); SettingsData
+      // fields are camelCase (`sessionTerminalMode`) for ergonomics.
+      // Without this mapping, setData would write a literal
+      // `'session.terminalMode'` property that no component reads, so
+      // the radio buttons never visibly moved on click.
+      const field = CONFIG_KEY_TO_FIELD[key] ?? key;
+      setData({ ...data, [field]: value });
     }
   }
 
