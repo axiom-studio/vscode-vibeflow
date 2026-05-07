@@ -21,12 +21,34 @@ export interface SettingsPanelDeps {
   /** Per-persona sticky model store; the Models tab reads/writes through this. */
   stickyModels?: StickyModels;
   /**
+   * Per-machine encrypted store (`vscode.ExtensionContext.secrets`). The
+   * Providers tab uses this to persist per-provider env tokens
+   * (`MCP_TOKEN`, `GEMINI_API_KEY`) so the launch wizard can pre-fill them
+   * instead of re-prompting on every spawn.
+   */
+  secrets?: vscode.SecretStorage;
+  /**
    * Callback invoked after the user picks a different project from the
    * Settings dropdown. extension.ts wires this to its connectToProject
    * helper so trees, pollers, panels all rebind to the new id without a
    * window reload.
    */
   onProjectSwitched?: (project: DetectedProject) => void;
+}
+
+/**
+ * Provider key → env-var name. Codex uses `MCP_TOKEN` (per the agent
+ * binary's CLI contract); Gemini uses `GEMINI_API_KEY`. Kept as a single
+ * source of truth so the message handlers and the snapshot reader can't
+ * drift on the literal string. Returning undefined means the provider
+ * has no env-token surface (claude, cursor) and the UI hides the row.
+ */
+function providerEnvName(provKey: string): string | undefined {
+  switch (provKey) {
+    case 'codex': return 'MCP_TOKEN';
+    case 'gemini': return 'GEMINI_API_KEY';
+    default: return undefined;
+  }
 }
 
 /**
@@ -111,7 +133,8 @@ export class SettingsPanel {
             'autoDetectProject', 'showStatusBar', 'notifications.agentPrompts',
             'notifications.workItemComplete', 'session.terminalMode',
             'debug.simulateActivity',
-            'cli.enabled', 'cli.binaryPath'];
+            'cli.enabled', 'cli.binaryPath',
+            'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill'];
 
           if (settingsKeys.includes(key)) {
             await config.update(key, value, vscode.ConfigurationTarget.Global);
@@ -152,16 +175,46 @@ export class SettingsPanel {
         }
         case 'setProviderToken': {
           const provKey = msg.payload.provider;
-          const envName = provKey === 'codex' ? 'MCP_TOKEN' : provKey === 'gemini' ? 'GEMINI_API_KEY' : `${provKey.toUpperCase()}_TOKEN`;
+          const envName = providerEnvName(provKey);
+          if (!envName) {
+            vscode.window.showWarningMessage(`VibeFlow: provider ${provKey} has no env-token surface`);
+            break;
+          }
+          if (!deps.secrets) {
+            vscode.window.showWarningMessage('VibeFlow: secret storage unavailable — token not saved');
+            break;
+          }
           const token = await vscode.window.showInputBox({
             prompt: `Enter ${envName}`,
             placeHolder: envName,
             password: true,
             ignoreFocusOut: true,
           });
-          if (token) {
+          if (token === undefined) {
+            // User cancelled — don't touch storage.
+            break;
+          }
+          if (token === '') {
+            // Treat empty input as a clear to keep keyboard-only flows
+            // viable (Enter on empty == clear).
+            await deps.secrets.delete(envName);
+            vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
+          } else {
+            await deps.secrets.store(envName, token);
             vscode.window.showInformationMessage(`VibeFlow: ${envName} saved`);
           }
+          await pushSettings();
+          break;
+        }
+        case 'clearProviderToken': {
+          const provKey = msg.payload.provider;
+          const envName = providerEnvName(provKey);
+          if (!envName || !deps.secrets) {
+            break;
+          }
+          await deps.secrets.delete(envName);
+          vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
+          await pushSettings();
           break;
         }
         case 'validateServerUrl': {
@@ -314,6 +367,12 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     }
   }
 
+  // Per-provider env-token presence — read from Secrets API. Empty (or
+  // missing) means "Not set"; any non-empty stored value flips to "Set".
+  // Only providers with an env-token surface are queried.
+  const codexTokenSet = !!(deps.secrets && (await deps.secrets.get('MCP_TOKEN')));
+  const geminiTokenSet = !!(deps.secrets && (await deps.secrets.get('GEMINI_API_KEY')));
+
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
     serverReachable: null,
@@ -325,13 +384,13 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     defaultProvider: config.get('defaultProvider', 'claude'),
     providers: [
       { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
-      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'MCP_TOKEN', envTokenSet: false },
-      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: false },
+      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
+      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
       { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: false, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
     ],
     worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
-    worktreeAutoCreate: true,
-    worktreeCleanupOnKill: 'ask',
+    worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
+    worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
     pollInterval: config.get('polling.interval', 30),
     viewMode: 'flat',
     skipPermissions: false,

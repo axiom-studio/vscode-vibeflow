@@ -375,6 +375,11 @@
           "group": "navigation@3"
         },
         {
+          "command": "vibeflow.openSettings",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation@99"
+        },
+        {
           "command": "vibeflow.createDocument",
           "when": "view == vibeflow.documents",
           "group": "navigation@1"
@@ -383,6 +388,11 @@
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.documents",
           "group": "navigation@2"
+        },
+        {
+          "command": "vibeflow.openSettings",
+          "when": "view == vibeflow.documents",
+          "group": "navigation@99"
         },
         {
           "command": "vibeflow.clearActivityFeed",
@@ -616,6 +626,26 @@
           "type": "string",
           "default": "",
           "description": "DEV ONLY: Absolute path to a folder to auto-open when the extension activates with no workspace. Use for F5 debugging."
+        },
+        "vibeflow.worktree.baseDir": {
+          "type": "string",
+          "default": ".claude/worktrees",
+          "description": "Subdirectory (relative to the workspace root) where the extension creates git worktrees for cross-branch agent sessions."
+        },
+        "vibeflow.worktree.autoCreate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically create a git worktree when launching a session against a branch that doesn't already have one."
+        },
+        "vibeflow.worktree.cleanupOnKill": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "always",
+            "never"
+          ],
+          "default": "ask",
+          "description": "Cleanup policy when an agent session ends. 'ask' prompts every time; 'always' deletes the worktree; 'never' keeps it for follow-up work."
         }
       }
     }

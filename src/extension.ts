@@ -647,6 +647,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         client,
         detector,
         stickyModels,
+        secrets: context.secrets,
         onProjectSwitched: connectToProject,
       });
     }),

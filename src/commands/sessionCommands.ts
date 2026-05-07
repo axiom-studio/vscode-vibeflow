@@ -241,28 +241,42 @@ export async function launchSession(
     }
   }
 
-  // Step 6: Environment Token (conditional — codex/gemini need API keys)
+  // Step 6: Environment Token (conditional — codex/gemini need API keys).
+  // If the user has already stored a token via Settings → Providers, we
+  // pre-fill from `context.secrets` and skip the wizard step entirely.
+  // This matches Roo-Code's "set once, reuse" pattern and keeps the
+  // launch wizard short for repeat launches.
   const envVars: Record<string, string> = {};
   if (provider.value === 'codex') {
-    const token = await vscode.window.showInputBox({
-      prompt: 'Codex MCP Token (or press Enter to skip if already configured)',
-      placeHolder: 'MCP_TOKEN value',
-      password: true,
-      title: 'VibeFlow: Launch Session — Codex Token',
-      ignoreFocusOut: true,
-    });
-    if (token === undefined) { return; }
-    if (token) { envVars['MCP_TOKEN'] = token; }
+    const stored = await context.getProviderEnvToken('MCP_TOKEN');
+    if (stored) {
+      envVars['MCP_TOKEN'] = stored;
+    } else {
+      const token = await vscode.window.showInputBox({
+        prompt: 'Codex MCP Token (or press Enter to skip if already configured)',
+        placeHolder: 'MCP_TOKEN value',
+        password: true,
+        title: 'VibeFlow: Launch Session — Codex Token',
+        ignoreFocusOut: true,
+      });
+      if (token === undefined) { return; }
+      if (token) { envVars['MCP_TOKEN'] = token; }
+    }
   } else if (provider.value === 'gemini') {
-    const token = await vscode.window.showInputBox({
-      prompt: 'Gemini API Key (or press Enter to skip if already configured)',
-      placeHolder: 'GEMINI_API_KEY value',
-      password: true,
-      title: 'VibeFlow: Launch Session — Gemini Key',
-      ignoreFocusOut: true,
-    });
-    if (token === undefined) { return; }
-    if (token) { envVars['GEMINI_API_KEY'] = token; }
+    const stored = await context.getProviderEnvToken('GEMINI_API_KEY');
+    if (stored) {
+      envVars['GEMINI_API_KEY'] = stored;
+    } else {
+      const token = await vscode.window.showInputBox({
+        prompt: 'Gemini API Key (or press Enter to skip if already configured)',
+        placeHolder: 'GEMINI_API_KEY value',
+        password: true,
+        title: 'VibeFlow: Launch Session — Gemini Key',
+        ignoreFocusOut: true,
+      });
+      if (token === undefined) { return; }
+      if (token) { envVars['GEMINI_API_KEY'] = token; }
+    }
   }
 
   // Step 7: LLM Gateway (conditional — gated by `vibeflow.llmGateway.show`,

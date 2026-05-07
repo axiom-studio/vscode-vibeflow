@@ -93,6 +93,18 @@ export class ContextProxy {
     await this.context.secrets.delete(key);
   }
 
+  // --- Provider env-tokens (dynamic name; not in SecretsSchema) ---
+  //
+  // Provider tokens (`MCP_TOKEN`, `GEMINI_API_KEY`, ...) are stored under
+  // their literal env-var name so the launch-wizard pre-fill in
+  // sessionCommands.ts can read them with the same string the spawned
+  // terminal will inject. Kept off SecretsSchema because the set is
+  // open-ended and the keys ARE the env vars — a static registry would
+  // duplicate that contract.
+  async getProviderEnvToken(envName: string): Promise<string | undefined> {
+    return this.context.secrets.get(envName);
+  }
+
   /**
    * Wipe every value the extension has persisted — both globalState
    * and secrets. Used by the "Sign Out & Reset" command and the
