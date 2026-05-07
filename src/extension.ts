@@ -851,7 +851,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const cachedProject = detector.getCachedProject();
   if (cachedProject) {
     const gitBranch = await detector.getGitBranch();
-    const phantoms = await SessionReattacher.detectPhantoms(terminalRegistry, gitBranch);
+    // Pull the live session list from the backend so detectPhantoms can
+    // sweep sidecars whose session_id was already deleted server-side
+    // (older builds left them behind; this path catches the cleanup
+    // even if the user upgrades after killing). Wrap in allSettled so
+    // a network failure here doesn't block reattach for fresh phantoms.
+    let liveSessionIds: Set<string> | undefined;
+    try {
+      const live = await client.listSessions(cachedProject.projectId);
+      liveSessionIds = new Set(live.map(s => s.session_id));
+    } catch {
+      // Network down or auth missing — skip the cross-check, fall back
+      // to the legacy "trust the file" behavior.
+    }
+    const phantoms = await SessionReattacher.detectPhantoms(terminalRegistry, gitBranch, liveSessionIds);
     if (phantoms.length > 0) {
       const serverUrl = vscode.workspace.getConfiguration('vibeflow')
         .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');

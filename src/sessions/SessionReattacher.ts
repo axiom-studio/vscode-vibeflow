@@ -28,6 +28,7 @@ export class SessionReattacher {
   static async detectPhantoms(
     terminalRegistry: TerminalRegistry,
     gitBranch: string,
+    liveSessionIds?: Set<string>,
   ): Promise<PhantomSession[]> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) { return []; }
@@ -51,9 +52,20 @@ export class SessionReattacher {
         try {
           const content = await fs.promises.readFile(filePath, 'utf-8');
           const sessionId = content.trim();
-          if (sessionId && sessionId.startsWith('session-')) {
-            phantoms.push({ persona, sessionId, filePath });
+          if (!sessionId || !sessionId.startsWith('session-')) { continue; }
+
+          // Defensive: if we know the live session list and this id
+          // isn't in it, the agent was killed/deleted but the sidecar
+          // wasn't swept (older builds, manual `rm` of the terminal,
+          // or a backend-side cleanup that bypassed our killSession
+          // path). Quietly delete the file rather than offering a
+          // reattach the backend will reject.
+          if (liveSessionIds && !liveSessionIds.has(sessionId)) {
+            try { await fs.promises.rm(filePath, { force: true }); } catch { /* ignore */ }
+            continue;
           }
+
+          phantoms.push({ persona, sessionId, filePath });
         } catch {
           // Unreadable file — skip
         }
