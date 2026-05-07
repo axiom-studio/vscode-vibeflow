@@ -128,13 +128,18 @@ export class SettingsPanel {
           const { key, value } = msg.payload;
           const config = vscode.workspace.getConfiguration('vibeflow');
 
-          // Route to the right storage based on key
-          const settingsKeys = ['serverUrl', 'defaultPersona', 'defaultProvider', 'polling.interval',
-            'autoDetectProject', 'showStatusBar', 'notifications.agentPrompts',
-            'notifications.workItemComplete', 'session.terminalMode',
+          // Route to the right storage based on key. Keep this list in
+          // sync with the schema entries in package.json — keys not listed
+          // here silently no-op, which is what bit us on worktree.* and
+          // notifications.workItemComplete during the settings audit.
+          const settingsKeys = [
+            'serverUrl', 'defaultProvider', 'polling.interval',
+            'notifications.agentPrompts', 'notifications.workItemComplete',
+            'session.terminalMode',
+            'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
             'debug.simulateActivity',
             'cli.enabled', 'cli.binaryPath',
-            'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill'];
+          ];
 
           if (settingsKeys.includes(key)) {
             await config.update(key, value, vscode.ConfigurationTarget.Global);
@@ -383,24 +388,18 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     projects,
     defaultProvider: config.get('defaultProvider', 'claude'),
     providers: [
-      { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
-      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
-      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, llmGatewayEnabled: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
-      { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: false, vibeflowIntegrated: true, llmGatewayEnabled: false, envTokenSet: false },
+      { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, envTokenSet: false },
+      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
+      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
+      { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: false, vibeflowIntegrated: true, envTokenSet: false },
     ],
     worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
     worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
     worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
     pollInterval: config.get('polling.interval', 30),
-    viewMode: 'flat',
-    skipPermissions: false,
-    errorRecoveryEnabled: true,
-    errorRecoveryMaxRetries: 10,
-    errorRecoveryDebounce: 5,
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
     debugSimulateActivity: config.get('debug.simulateActivity', false),
-    debugVerboseLogging: false,
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
     // Models tab data — empty objects when stickyModels isn't wired
     // so the tab can still render its empty-state UI.
