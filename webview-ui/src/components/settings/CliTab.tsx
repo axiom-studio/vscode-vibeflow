@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useEffect, useState } from 'react';
 import type { SettingsData, SettingsCommand } from './settingsTypes';
 
 interface Props {
@@ -49,12 +50,9 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         title="Binary Path Override"
         description="Optional — leave empty to use PATH lookup. Set this if vibeflow is installed in a non-standard location and PATH doesn't include it (common for Homebrew on Apple Silicon under /opt/homebrew/bin)."
       >
-        <input
-          type="text"
-          placeholder="/usr/local/bin/vibeflow"
-          value={data.cliBinaryPath}
-          onChange={(e) => onUpdate('cli.binaryPath', e.target.value)}
-          style={inputStyle}
+        <BinaryPathInput
+          initial={data.cliBinaryPath}
+          onCommit={(v) => onUpdate('cli.binaryPath', v)}
         />
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
           Status: {installed ? (
@@ -91,6 +89,51 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         </ul>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Text input that buffers locally and only commits to the host on blur
+ * (or Enter). Without this, every keystroke fires onUpdate → host saves
+ * config → host re-pushes settings snapshot → webview re-renders → the
+ * snapshot can land mid-typing and overwrite the in-progress value
+ * with a stale prefix (e.g. typing "~/Projects" left the user stuck on
+ * "~"). Buffering decouples the two clocks.
+ *
+ * The `initial` prop syncs back to local state when the host pushes a
+ * different value AND the user isn't currently editing — covers the
+ * "another window changed the config" case without disturbing typing.
+ */
+function BinaryPathInput({ initial, onCommit }: {
+  initial: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused && initial !== value) { setValue(initial); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
+
+  const commit = () => {
+    if (value !== initial) { onCommit(value); }
+  };
+
+  return (
+    <input
+      type="text"
+      placeholder="/usr/local/bin/vibeflow"
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); commit(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); }
+        if (e.key === 'Escape') { setValue(initial); (e.target as HTMLInputElement).blur(); }
+      }}
+      style={inputStyle}
+    />
   );
 }
 
