@@ -578,12 +578,17 @@ export function focusTerminal(
 }
 
 /**
- * Kill a session with confirmation.
+ * Kill a session with confirmation. Disposes the local terminal AND
+ * deletes the backend record — anything less leaves the user looking
+ * at a "killed" status badge while the agent process is still running
+ * locally, which is confusing and can also cause stale write attempts
+ * against the backend (the agent's next heartbeat 404s).
  */
 export async function killSession(
   client: VibeFlowClient,
   session: VibeFlowSession,
   sessionsProvider: SessionsTreeProvider,
+  terminalRegistry: TerminalRegistry,
 ): Promise<void> {
   const confirm = await vscode.window.showWarningMessage(
     `Kill ${session.persona_name ?? session.persona_key} session on ${session.git_branch}?`,
@@ -592,13 +597,24 @@ export async function killSession(
   );
   if (confirm !== 'Kill Session') { return; }
 
+  // Dispose the local terminal first — even if the backend kill fails,
+  // we don't want to leave the agent running locally after the user
+  // explicitly asked to kill it. terminalRegistry.kill is a no-op when
+  // there's no registered terminal (e.g. session running on another
+  // machine), so this is safe in all cases.
+  terminalRegistry.kill(session.persona_key, session.git_branch);
+
   try {
     await client.killSession(session.session_id);
     vscode.window.showInformationMessage('VibeFlow: Session killed');
-    sessionsProvider.refresh();
   } catch (err) {
-    vscode.window.showErrorMessage(`VibeFlow: Failed to kill session — ${err}`);
+    // Local terminal is already gone; surface the backend error so the
+    // user knows the server record may need manual cleanup, but don't
+    // pretend the kill failed entirely.
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: Local terminal killed but backend record cleanup failed — ${msg}`);
   }
+  sessionsProvider.refresh();
 }
 
 /**
