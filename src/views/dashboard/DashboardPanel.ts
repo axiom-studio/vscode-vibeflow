@@ -11,6 +11,7 @@ import type {
 } from '../../api/types.js';
 import type { DetectedProject } from '../../project/ProjectDetector.js';
 import type { TerminalRegistry } from '../../sessions/TerminalRegistry.js';
+import type { ContextProxy } from '../../core/ContextProxy.js';
 import { assertNever, type DashboardClientMessage, type DashboardHostMessage } from '../../core/webviewMessages.js';
 
 /** Persona keys that drive the topology nodes. */
@@ -34,6 +35,19 @@ interface DashboardSnapshot {
   projectName: string;
   branch: string;
   generatedAt: string;
+  /**
+   * Server origin (no trailing slash) so the webview can build absolute
+   * URLs for assets it loads itself — currently the persona avatar JPGs
+   * served from `{serverUrl}/persona/professional/{Char}_{Role}.jpg`.
+   */
+  serverUrl: string;
+  /**
+   * User-customized topology node positions for this project, if any.
+   * `undefined` (or a missing key) means "use PERSONA_POSITIONS default."
+   * Persisted via ContextProxy under `vibeflow.dashboard.nodePositions`
+   * keyed by projectId; written on drag-stop, cleared on "Reset layout."
+   */
+  nodePositions: Record<string, { x: number; y: number }> | undefined;
   personaStatus: Record<string, PersonaStatus>;
   /**
    * How many work items are currently waiting for each persona to act.
@@ -78,6 +92,7 @@ export class DashboardPanel {
     private readonly client: VibeFlowClient,
     private readonly project: DetectedProject,
     private readonly terminalRegistry: TerminalRegistry,
+    private readonly contextProxy: ContextProxy,
   ) {
     this.panel = panel;
   }
@@ -87,6 +102,7 @@ export class DashboardPanel {
     client: VibeFlowClient,
     project: DetectedProject,
     terminalRegistry: TerminalRegistry,
+    contextProxy: ContextProxy,
   ): void {
     if (DashboardPanel.instance) {
       DashboardPanel.instance.panel.reveal();
@@ -107,7 +123,7 @@ export class DashboardPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new DashboardPanel(panel, client, project, terminalRegistry);
+    const instance = new DashboardPanel(panel, client, project, terminalRegistry, contextProxy);
     DashboardPanel.instance = instance;
     instance.attach();
   }
@@ -143,14 +159,48 @@ export class DashboardPanel {
       case 'dashboardOpenSidebar':
         vscode.commands.executeCommand('vibeflow.agentFleet.focus');
         return;
+      case 'dashboardSaveNodePositions':
+        await this.saveNodePositions(msg.payload.positions);
+        return;
+      case 'dashboardResetNodePositions':
+        await this.resetNodePositions();
+        // Re-push so the webview re-mounts with default coordinates.
+        await this.sendSnapshot();
+        return;
       default:
         assertNever(msg);
     }
   }
 
+  /**
+   * Merge the just-dragged positions into the per-project map and write back.
+   * Webview sends the FULL position map on each drag-stop so we can simply
+   * overwrite this project's slot — no need to diff.
+   */
+  private async saveNodePositions(
+    positions: Record<string, { x: number; y: number }>,
+  ): Promise<void> {
+    const all = this.contextProxy.get('vibeflow.dashboard.nodePositions') ?? {};
+    all[String(this.project.projectId)] = positions;
+    await this.contextProxy.set('vibeflow.dashboard.nodePositions', all);
+  }
+
+  private async resetNodePositions(): Promise<void> {
+    const all = this.contextProxy.get('vibeflow.dashboard.nodePositions');
+    if (!all) { return; }
+    delete all[String(this.project.projectId)];
+    await this.contextProxy.set('vibeflow.dashboard.nodePositions', all);
+  }
+
   private async sendSnapshot(): Promise<void> {
     try {
-      const snapshot = await composeSnapshot(this.client, this.project);
+      const stored = this.contextProxy.get('vibeflow.dashboard.nodePositions');
+      const nodePositions = stored?.[String(this.project.projectId)];
+      const snapshot = await composeSnapshot(
+        this.client,
+        this.project,
+        nodePositions,
+      );
       this.postToWebview({ type: 'dashboardData', payload: snapshot });
     } catch (err) {
       this.postToWebview({
@@ -188,22 +238,31 @@ function isPersonaKey(s: string): s is PersonaKey {
 }
 
 /**
- * Fetch the 5 data sources in parallel and fold them into a flat snapshot.
+ * Fetch the data sources in parallel and fold them into a flat snapshot.
  * Each source is wrapped in `Promise.allSettled` so a single failing endpoint
  * doesn't blank the whole dashboard.
+ *
+ * The `done*ForQA` calls fetch full work-item rows so we can compute
+ * "pending QA" client-side — the swimlane wire shape carries
+ * `security_reviewed` but NOT `qa_verified`, so it can't tell us which
+ * already-reviewed items are still waiting for QA. Backend follow-up to
+ * extend `VibeflowSwimlaneItem` would let us drop these two extra calls.
  */
 async function composeSnapshot(
   client: VibeFlowClient,
   project: DetectedProject,
+  nodePositions: Record<string, { x: number; y: number }> | undefined,
 ): Promise<DashboardSnapshot> {
   const errors: string[] = [];
 
-  const [sessionsR, swimR, summaryR, branchR, findingsR] = await Promise.allSettled([
+  const [sessionsR, swimR, summaryR, branchR, findingsR, doneTodosR, doneIssuesR] = await Promise.allSettled([
     client.listSessions(project.projectId),
     client.getSwimlane(),
     client.getWorkSummary(project.projectId),
     client.checkBranchReviewStatus(project.projectId, project.gitBranch),
     client.listComplianceFindings(project.projectId, { status: 'open' }),
+    client.listTodosByProject(project.projectId, { status: 'done' }),
+    client.listIssues(project.projectId, { status: 'done' }),
   ]);
 
   const sessions: VibeFlowSession[] = sessionsR.status === 'fulfilled'
@@ -226,13 +285,27 @@ async function composeSnapshot(
     ? findingsR.value
     : (errors.push(`compliance: ${describeRejection(findingsR.reason)}`), []);
 
+  // Pending-QA computation source — full rows carry `qa_verified`,
+  // unlike the swimlane items. Failure here only collapses the QA
+  // queue badge, not the rest of the dashboard.
+  const doneTodos = doneTodosR.status === 'fulfilled' ? doneTodosR.value : [];
+  const doneIssues = doneIssuesR.status === 'fulfilled' ? doneIssuesR.value : [];
+  if (doneTodosR.status === 'rejected') { errors.push(`done_todos: ${describeRejection(doneTodosR.reason)}`); }
+  if (doneIssuesR.status === 'rejected') { errors.push(`done_issues: ${describeRejection(doneIssuesR.reason)}`); }
+  const qaQueueResolved = (doneTodosR.status === 'fulfilled' && doneIssuesR.status === 'fulfilled');
+  const qaPending = qaQueueResolved
+    ? countPendingQA(doneTodos) + countPendingQA(doneIssues)
+    : null;
+
   return {
     projectId: project.projectId,
     projectName: project.projectName,
     branch: project.gitBranch,
     generatedAt: new Date().toISOString(),
+    serverUrl: client.getBaseUrl(),
+    nodePositions,
     personaStatus: derivePersonaStatus(sessions),
-    personaQueues: tallyPersonaQueues(swimlane, project.projectId),
+    personaQueues: tallyPersonaQueues(swimlane, project.projectId, qaPending),
     sessions: tallySessions(sessions),
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
@@ -248,6 +321,19 @@ async function composeSnapshot(
     findings: tallyFindings(findings),
     errors,
   };
+}
+
+/**
+ * "Pending QA" = items already through Security but not yet QA-verified.
+ * Both flags must be present and definite — undefined defaults to
+ * "not the pending bucket" rather than guessing.
+ */
+function countPendingQA(items: Array<{ qa_verified?: boolean; security_reviewed?: boolean }>): number {
+  let n = 0;
+  for (const item of items) {
+    if (item.security_reviewed === true && item.qa_verified === false) { n++; }
+  }
+  return n;
 }
 
 function describeRejection(reason: unknown): string {
@@ -293,11 +379,12 @@ function tallySessions(sessions: VibeFlowSession[]): { active: number; stale: nu
 function tallyPersonaQueues(
   swimlane: VibeFlowSwimlaneResult | undefined,
   projectId: number,
+  qaPending: number | null,
 ): DashboardSnapshot['personaQueues'] {
   if (!swimlane) {
     return {
       product_manager: 0, architect: 0, developer: 0, principal_engineer: 0,
-      security_lead: 0, qa_lead: 0, ux_designer: 0,
+      security_lead: 0, qa_lead: qaPending ?? 0, ux_designer: 0,
       project_manager: null, customer: null,
     };
   }
@@ -310,8 +397,10 @@ function tallyPersonaQueues(
   const needsUx = inProject(swimlane.needs_ux_input).length;
   const doneItems = inProject(swimlane.done);
   const securityQueue = doneItems.filter(i => !i.security_reviewed).length;
-  // QA upper bound — see DashboardSnapshot.personaQueues comment.
-  const qaQueue = doneItems.filter(i => i.security_reviewed === true).length;
+  // qa_lead is computed in composeSnapshot from the project's full
+  // done todos+issues (see countPendingQA) because the swimlane wire
+  // shape doesn't expose qa_verified. `null` falls through when those
+  // calls failed so the badge hides instead of showing 0.
 
   return {
     product_manager: inReview,
@@ -319,7 +408,7 @@ function tallyPersonaQueues(
     developer: codeQueue,
     principal_engineer: codeQueue,
     security_lead: securityQueue,
-    qa_lead: qaQueue,
+    qa_lead: qaPending,
     ux_designer: needsUx,
     project_manager: null,
     customer: null,
@@ -392,7 +481,8 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     content="default-src 'none';
       style-src ${webview.cspSource} 'unsafe-inline';
       script-src 'nonce-${nonce}';
-      font-src ${webview.cspSource};">
+      font-src ${webview.cspSource};
+      img-src ${webview.cspSource} https: http: data:;">
   <link rel="stylesheet" href="${styleUri}">
   <title>Dashboard</title>
 </head>

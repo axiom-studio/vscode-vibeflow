@@ -3,7 +3,7 @@
 This document tracks features the vscode-vibeflow extension intentionally
 does NOT mirror from axiomcloud, with the underlying backend constraint.
 Updated as of 2026-05-03 against axiomcloud `main` (the
-`/Users/vishnu/Projects/axiom/axiomcloud` working tree).
+`/Users/dev/Projects/axiom/axiomcloud` working tree).
 
 ## Work-item detail panel
 
