@@ -222,7 +222,13 @@ export type DashboardClientMessage =
   | { type: 'dashboardLoad' }
   | { type: 'dashboardRefresh' }
   | { type: 'dashboardFocusPersona'; payload: { personaKey: string } }
-  | { type: 'dashboardOpenSidebar' };
+  | { type: 'dashboardOpenSidebar' }
+  // Persist the user's custom node layout. Sent on drag-stop with the
+  // full position map so the host can write it atomically.
+  | { type: 'dashboardSaveNodePositions'; payload: { positions: Record<string, { x: number; y: number }> } }
+  // Wipe the stored layout for this project so next mount uses
+  // PERSONA_POSITIONS defaults. Wired to the "Reset layout" button.
+  | { type: 'dashboardResetNodePositions' };
 
 // ============================================================
 // Comments (used by document/context viewers)

@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import type { AuthService } from '../auth/AuthService.js';
 import { VibeFlowMcpClient } from './mcpClient.js';
-import { validateServerUrl } from '../auth/serverUrl.js';
 import type {
   VibeFlowProject,
   VibeFlowSession,
@@ -9,6 +8,8 @@ import type {
   VibeFlowTodo,
   VibeFlowIssue,
   VibeFlowDocument,
+  VibeFlowContext,
+  VibeFlowReference,
   VibeFlowComment,
   CreateCommentInput,
   BranchReviewStatus,
@@ -46,27 +47,21 @@ export class VibeFlowClient {
     return this.auth.getState() === 'authenticated';
   }
 
+  /**
+   * Server origin without trailing slash. Used by webviews that need to
+   * load asset URLs (avatars, icons) hosted alongside the API.
+   */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
     const token = this.auth.getToken();
     if (!token) {
       throw new Error('Not authenticated');
     }
 
-    // Defense in depth (#1947): re-read serverUrl from config on every
-    // request and validate the scheme before attaching the bearer. The
-    // constructor caches `baseUrl` once at activation, so a user who
-    // updates serverUrl via Settings would otherwise still hit the stale
-    // (possibly HTTP) value here. Live-read + validate also catches the
-    // case where a pre-#1745 user has an HTTP serverUrl in cached config
-    // and never re-opened Setup or Settings to revalidate it.
-    const liveUrl = vscode.workspace.getConfiguration('vibeflow')
-      .get<string>('serverUrl', this.baseUrl);
-    const check = validateServerUrl(liveUrl);
-    if (!check.ok) {
-      throw new Error(`Refusing to send request — ${check.message ?? 'invalid serverUrl'}`);
-    }
-
-    const response = await fetch(`${liveUrl}${path}`, {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -189,10 +184,56 @@ export class VibeFlowClient {
 
   // --- Issues ---
 
-  async listIssues(projectId: number): Promise<VibeFlowIssue[]> {
+  async listIssues(projectId: number, opts?: { status?: string }): Promise<VibeFlowIssue[]> {
+    // The handler returns the array directly when no `page` param is
+    // sent (backward-compat path) and the paginated envelope when one is.
+    // We stay on the array path and pass `status` through so the dashboard
+    // can request only the slice it needs (e.g. status=done) without
+    // pulling the full set.
+    const qs = opts?.status ? `?status=${encodeURIComponent(opts.status)}` : '';
     return this.request<VibeFlowIssue[]>(
-      `/rest/v1/vibeflow/projects/${projectId}/issues`,
+      `/rest/v1/vibeflow/projects/${projectId}/issues${qs}`,
     );
+  }
+
+  /**
+   * Project-scoped todo listing with status filter. Wraps
+   * `/rest/v1/vibeflow/projects/{id}/todos` which is always paginated
+   * (envelope: `{ Items, TotalCount, Page, PageSize, TotalPages, ... }`),
+   * so we walk pages until we've pulled everything matching the filter.
+   * Used by the dashboard to compute "pending QA" client-side because
+   * the swimlane wire shape doesn't carry `qa_verified`.
+   */
+  async listTodosByProject(
+    projectId: number,
+    opts?: { status?: string },
+  ): Promise<VibeFlowTodo[]> {
+    const all: VibeFlowTodo[] = [];
+    const limit = 100; // Server caps at 100; smaller pages just add round-trips.
+    let page = 1;
+    // Bound the loop defensively — a project with >5_000 done items is
+    // pathological and would dominate dashboard latency anyway.
+    for (let safety = 0; safety < 50; safety++) {
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(limit),
+      });
+      if (opts?.status) { params.set('status', opts.status); }
+      try {
+        const data = await this.request<{
+          Items?: VibeFlowTodo[];
+          TotalPages?: number;
+        }>(`/rest/v1/vibeflow/projects/${projectId}/todos?${params}`);
+        const items = data.Items ?? [];
+        all.push(...items);
+        if (items.length < limit) { break; }
+        if (data.TotalPages !== undefined && page >= data.TotalPages) { break; }
+        page++;
+      } catch {
+        break;
+      }
+    }
+    return all;
   }
 
   async getIssue(id: number): Promise<VibeFlowIssue> {
@@ -512,6 +553,62 @@ export class VibeFlowClient {
       content: args.content,
       type: args.type,
     });
+  }
+
+  // --- Contexts (Memory) ---
+
+  /**
+   * List contexts for a project. Returns the array directly (no envelope)
+   * per the axiomcloud REST contract (handlers/vibeflow_contexts.go:84).
+   * The list endpoint omits body content for storage-backed rows; call
+   * getContext(id) to materialize content lazily on click.
+   */
+  async listContexts(projectId: number): Promise<VibeFlowContext[]> {
+    try {
+      return await this.request<VibeFlowContext[]>(
+        `/rest/v1/vibeflow/contexts?project_id=${projectId}`,
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async getContext(contextId: number): Promise<VibeFlowContext> {
+    return this.request<VibeFlowContext>(`/rest/v1/vibeflow/contexts/${contextId}`);
+  }
+
+  // --- References (Confluence) ---
+
+  /**
+   * List Confluence references attached to a project. Wire shape per
+   * `axiomcloud/handlers/vibeflow_atlassian.go` ListReferences endpoint
+   * — returned as `{ references: [...] }`, unwrapped here. Failing
+   * gracefully to `[]` matches listDocuments / listContexts behavior so
+   * the tree doesn't blank when the project has no Confluence integration.
+   */
+  async listReferences(projectId: number): Promise<VibeFlowReference[]> {
+    try {
+      const data = await this.request<{ references?: VibeFlowReference[] }>(
+        `/rest/v1/vibeflow/projects/${projectId}/references`,
+      );
+      return data.references ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Fetch the cached page content for a single reference. Server pulls
+   * from Confluence on first call and caches; later calls are warm.
+   * Returns the raw markdown body so the viewer can render it directly.
+   */
+  async getReferenceContent(
+    projectId: number,
+    refId: number,
+  ): Promise<{ content: string; title?: string; version?: number }> {
+    return this.request<{ content: string; title?: string; version?: number }>(
+      `/rest/v1/vibeflow/projects/${projectId}/references/${refId}/content`,
+    );
   }
 
   // --- Comments ---

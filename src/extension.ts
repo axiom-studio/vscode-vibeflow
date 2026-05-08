@@ -23,7 +23,7 @@ import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus, changePriority } from './commands/workItemCommands.js';
 import { createDocument } from './commands/documentCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
-import { createPR, openDocumentViewer } from './commands/prCommands.js';
+import { createPR, openDocumentViewer, openContextViewer, openReferenceViewer } from './commands/prCommands.js';
 import { manageWorktrees, deleteWorktree } from './commands/worktreeCommands.js';
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
 import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
@@ -644,6 +644,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.openDocumentViewer', (docId: number, docTitle: string) => {
       openDocumentViewer(client, detector, context.extensionUri, docId, docTitle);
     }),
+    vscode.commands.registerCommand('vibeflow.openContextViewer', (contextId: number, contextTitle: string) => {
+      openContextViewer(client, detector, context.extensionUri, contextId, contextTitle);
+    }),
+    vscode.commands.registerCommand('vibeflow.openReferenceViewer', (refId: number, refTitle: string, pageUrl: string | undefined) => {
+      openReferenceViewer(client, detector, context.extensionUri, refId, refTitle, pageUrl);
+    }),
     vscode.commands.registerCommand('vibeflow.openSettings', () => {
       SettingsPanel.open(context.extensionUri, {
         authService,
@@ -680,6 +686,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           client,
           { ...project, gitBranch: branch || project.gitBranch },
           terminalRegistry,
+          contextProxy,
         );
       });
     }),
@@ -873,25 +880,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
-  // Activation-time serverUrl preflight (#1947). The 3 WRITE paths (Setup
-  // wizard / CLI-config import / Settings panel) validate the scheme on
-  // input, but a user who set an HTTP serverUrl before #1745 landed has a
-  // cached value that never re-validates — every auto-connect would leak
-  // the bearer on plaintext until they re-open Setup or Settings. Refuse
-  // to auto-connect in that state and surface a warning so the path is
-  // visible, not silent.
-  const cachedServerUrl = vscode.workspace.getConfiguration('vibeflow')
-    .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
-  const serverUrlCheck = validateServerUrl(cachedServerUrl);
-  if (!serverUrlCheck.ok) {
-    console.warn('[VibeFlow] Refusing auto-connect — invalid cached serverUrl:', cachedServerUrl, serverUrlCheck.message);
-    vscode.window.showWarningMessage(
-      `VibeFlow: Auto-connect skipped — ${serverUrlCheck.message ?? 'invalid serverUrl'} ` +
-      'Open "VibeFlow: Setup" or Settings → Connection to update the server URL.',
-    );
-  } else {
-    await tryAutoConnect();
-  }
+  await tryAutoConnect();
 
   // --- Session Reattachment ---
   // Detect .vibeflow-session-* files from a previous VSCode window

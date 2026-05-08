@@ -9,10 +9,21 @@ import { WorkItemView } from './components/WorkItemView';
 
 type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem';
 
+/**
+ * `entityType` covers the three things this shell can render as a markdown
+ * panel:
+ *   - `document` and `context` go through `CommentableDocumentViewer`.
+ *     Both are first-party content with comments enabled — the host's
+ *     comment endpoints accept either entity_type per
+ *     `axiomcloud/handlers/vibeflow_comments.go`.
+ *   - `reference` is a Confluence-imported page. The page lives upstream
+ *     and is read-only here, so we bypass the comment subsystem and
+ *     render with a plain `MarkdownRenderer`.
+ */
 interface DocumentContext {
   content: string;
   title: string;
-  entityType: 'document' | 'context';
+  entityType: 'document' | 'context' | 'reference';
   entityId: number;
   projectId: number;
   currentUserId?: number;
@@ -37,7 +48,7 @@ export function App() {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
       const title = document.body.dataset.vfTitle ?? 'Document';
-      const entityType = (document.body.dataset.vfEntityType ?? 'document') as 'document' | 'context';
+      const entityType = (document.body.dataset.vfEntityType ?? 'document') as DocumentContext['entityType'];
       const entityId = parseInt(document.body.dataset.vfEntityId ?? '0', 10);
       const projectId = parseInt(document.body.dataset.vfProjectId ?? '0', 10);
       const currentUserId = document.body.dataset.vfUserId
@@ -74,6 +85,12 @@ export function App() {
   if (view === 'kanban') { return <KanbanView />; }
   if (view === 'workitem') { return <WorkItemView />; }
   if (view === 'document' && doc) {
+    // References render read-only — the canonical page lives in Confluence
+    // and the host doesn't wire comment routes for them, so route through
+    // the plain MarkdownRenderer instead of CommentableDocumentViewer.
+    if (doc.entityType === 'reference') {
+      return <MarkdownRenderer content={doc.content} />;
+    }
     // Use CommentableDocumentViewer when we have project/entity context
     if (doc.entityId && doc.projectId) {
       return (

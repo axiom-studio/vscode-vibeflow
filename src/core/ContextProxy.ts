@@ -43,6 +43,14 @@ export interface GlobalStateSchema {
    * config is the fallback when no entry is recorded for a phantom.
    */
   'vibeflow.launchModes': Record<string, string>;
+  /**
+   * User-customized Agent Topology node positions, keyed by projectId.
+   * Each value is a partial map of `{persona key → {x, y}}`. Persisted on
+   * drag-stop in DashboardView and re-applied on next mount so the user's
+   * preferred layout survives reloads. Cleared via the "Reset layout"
+   * button in the section header — falls back to PERSONA_POSITIONS.
+   */
+  'vibeflow.dashboard.nodePositions': Record<string, Record<string, { x: number; y: number }>>;
 }
 
 /**
@@ -120,6 +128,8 @@ export class ContextProxy {
       'vibeflow.projectName',
       'vibeflow.gitRemoteUrl',
       'vibeflow.stickyModels',
+      'vibeflow.launchModes',
+      'vibeflow.dashboard.nodePositions',
     ] satisfies GlobalStateKey[];
     for (const key of globalKeys) {
       await this.context.globalState.update(key, undefined);
