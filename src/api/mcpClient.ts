@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { AuthService } from '../auth/AuthService.js';
 import * as vscode from 'vscode';
+import { validateServerUrl } from '../auth/serverUrl.js';
 
 /**
  * Persistent MCP client connection to the VibeFlow MCP server.
@@ -40,6 +41,16 @@ export class VibeFlowMcpClient {
 
       const serverUrl = vscode.workspace.getConfiguration('vibeflow')
         .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+
+      // Defense in depth (#1947): validate the scheme before binding the
+      // bearer token to the transport. Catches the case where a user has a
+      // cached HTTP serverUrl from before #1745's WRITE-path validation
+      // landed — without this check, the transport would attach the
+      // Authorization header to plaintext requests.
+      const check = validateServerUrl(serverUrl);
+      if (!check.ok) {
+        throw new Error(`Refusing to connect — ${check.message ?? 'invalid serverUrl'}`);
+      }
 
       const transport = new StreamableHTTPClientTransport(
         new URL(`${serverUrl}/rest/v1/vibeflow/mcp`),
