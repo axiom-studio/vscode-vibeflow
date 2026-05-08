@@ -2,17 +2,18 @@
   "name": "vscode-vibeflow",
   "displayName": "VibeFlow",
   "description": "AI agent orchestration, project management, and governance for VSCode",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "axiom-studio",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git@bitbucket.org:axiom-studio/vscode-vibeflow.git"
+    "url": "https://bitbucket.org/axiom-studio/vscode-vibeflow.git"
   },
   "engines": {
     "vscode": "^1.93.0"
   },
   "categories": [
+    "AI",
     "Other"
   ],
   "main": "./dist/extension.js",
