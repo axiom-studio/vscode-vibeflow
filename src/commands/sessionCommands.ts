@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
@@ -548,11 +548,23 @@ function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowCl
  *
  * Returns true if either:
  *   - the workspace is not a git repo (no .git, no .gitignore — write is fine),
- *   - .gitignore already contains a rule matching `.mcp.json`, or
- *   - we successfully appended `.mcp.json` to .gitignore.
+ *   - git itself reports `.mcp.json` is ignored (handles all the wrinkles
+ *     including anchored paths, double-star globs, parent-dir gitignore,
+ *     `.git/info/exclude`, and global `core.excludesFile`), or
+ *   - we successfully appended `.mcp.json` to .gitignore AND git confirms
+ *     the post-append state still ignores it (defense against a parent
+ *     `!.mcp.json` re-include line that beats our local rule).
  *
- * Returns false if the workspace looks like a git repo but we couldn't update
- * .gitignore (permissions, etc.). Caller should refuse to write the token.
+ * Returns false if the workspace looks like a git repo but we couldn't
+ * confirm the file will be ignored. Caller refuses to write the token.
+ *
+ * History: a prior hand-rolled matcher stripped leading `!` from gitignore
+ * lines before pattern-matching, so a `!.mcp.json` re-include line was
+ * mis-read as a positive ignore — and the function returned true ("safe to
+ * write") for monorepos using the common `*` + `!.mcp.json` idiom, leaking
+ * the bearer token on the next `git add .`. Issue #1948 / AXIOMCLOUD-…
+ * filed by Sophie 2026-05-07. Fix: delegate to `git check-ignore`, which
+ * is the canonical implementation of gitignore semantics.
  */
 function ensureMcpJsonIsGitIgnored(workDir: string): boolean {
   const gitignorePath = path.join(workDir, '.gitignore');
@@ -561,31 +573,41 @@ function ensureMcpJsonIsGitIgnored(workDir: string): boolean {
   const isGitRepo = fs.existsSync(gitDirPath) || fs.existsSync(gitignorePath);
   if (!isGitRepo) { return true; }
 
-  let existing = '';
+  if (isPathIgnoredByGit(workDir, '.mcp.json')) { return true; }
+
+  // Not currently ignored — append the rule and re-verify with git.
   try {
-    existing = fs.readFileSync(gitignorePath, 'utf-8');
-  } catch {
-    // .gitignore doesn't exist yet — we'll create it below
-  }
-
-  // Match any line that would ignore .mcp.json (exact, leading-slash, or wildcard
-  // patterns). Comments and blank lines are skipped.
-  const matches = existing.split('\n').some(rawLine => {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) { return false; }
-    const stripped = line.replace(/^\/+/, '').replace(/^!/, '');
-    return stripped === '.mcp.json' || stripped === '*.mcp.json' || stripped === '*';
-  });
-
-  if (matches) { return true; }
-
-  try {
+    let existing = '';
+    try { existing = fs.readFileSync(gitignorePath, 'utf-8'); } catch { /* will create */ }
     const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
     fs.appendFileSync(
       gitignorePath,
       `${prefix}\n# Added by VibeFlow — contains a Bearer token, do not commit.\n.mcp.json\n`,
       'utf-8',
     );
+  } catch {
+    return false;
+  }
+
+  // Re-check: a parent `.gitignore` with `!.mcp.json` would beat our local
+  // append, and git's last-matching-rule semantics mean we wouldn't know
+  // without re-asking git itself. Without this re-verify, the post-append
+  // path could still be a token leak.
+  return isPathIgnoredByGit(workDir, '.mcp.json');
+}
+
+/**
+ * Authoritative "is this path ignored?" check via `git check-ignore`. Exit 0
+ * means ignored; exit 1 means not ignored; anything else (git missing, not
+ * a repo, etc.) we conservatively treat as "cannot confirm" → not ignored,
+ * so the caller refuses to write the token.
+ */
+function isPathIgnoredByGit(workDir: string, relPath: string): boolean {
+  try {
+    execFileSync('git', ['check-ignore', '-q', '--', relPath], {
+      cwd: workDir,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
     return true;
   } catch {
     return false;
