@@ -33,8 +33,6 @@ import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { FeedStateController } from './views/activity/feedStateController.js';
-// simulateActivity is dev-only — imported dynamically so esbuild
-// tree-shakes it out of production bundles when the debug flag is off.
 import { ContextProxy } from './core/ContextProxy.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -817,22 +815,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ACTIVATION: try auto-connect with stored credentials
   // =============================================
 
-  // --- Dev mode: add workspace folder in-place (doesn't reload window) ---
-  // Uses updateWorkspaceFolders to add a folder to the current workspace without
-  // closing/reopening. The extension stays active. Only runs in dev mode.
-  if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
-    const devFolder = vscode.workspace.getConfiguration('vibeflow').get<string>('devMode.workspaceFolder');
-    if (devFolder) {
-      try {
-        const uri = vscode.Uri.file(devFolder);
-        vscode.workspace.updateWorkspaceFolders(0, 0, { uri, name: 'vscode-vibeflow' });
-        console.log('[VibeFlow] Added dev workspace folder:', devFolder);
-      } catch (err) {
-        console.log('[VibeFlow] Failed to add workspace folder:', err);
-      }
-    }
-  }
-
   await authService.initialize();
 
   // Import credentials/project from vibeflow-cli config
@@ -941,24 +923,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
-  // --- Activity Feed simulation (debug mode) ---
-  // Fills the Activity Feed with dummy data so the UI is testable without real sessions.
-  // Default OFF (matches package.json contributes.configuration default and Phase 4 PRD
-  // exit criterion that real builds ship without simulated data). Opt in via setting:
-  // vibeflow.debug.simulateActivity = true
-  const debugConfig = vscode.workspace.getConfiguration('vibeflow');
-  if (debugConfig.get<boolean>('debug.simulateActivity', false)) {
-    // Dynamic import: keeps the dev-only simulator out of the
-    // production bundle entirely when the flag is off (esbuild emits
-    // a separate chunk and only fetches it on activation if the
-    // setting is enabled).
-    const { generateBatch, generateOne } = await import('./views/activity/simulateActivity.js');
-    activityFeedProvider.pushEntries(generateBatch(500));
-    const simTimer = setInterval(() => {
-      activityFeedProvider.pushEntry(generateOne());
-    }, 3000);
-    context.subscriptions.push({ dispose: () => clearInterval(simTimer) });
-  }
 }
 
 export function deactivate(): void {

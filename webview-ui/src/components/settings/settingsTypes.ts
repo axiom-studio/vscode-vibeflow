@@ -37,9 +37,6 @@ export interface SettingsData {
   notifyAgentPrompts: boolean;
   notifyWorkComplete: boolean;
 
-  // Advanced
-  debugSimulateActivity: boolean;
-
   // Models — per-persona sticky model preferences. `stickyModels`
   // maps persona_key -> model_id; `knownModels` is the full picker
   // catalog grouped by provider key (claude/codex/gemini/cursor).
