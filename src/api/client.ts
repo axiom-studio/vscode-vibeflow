@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { AuthService } from '../auth/AuthService.js';
 import { VibeFlowMcpClient } from './mcpClient.js';
+import { validateServerUrl } from '../auth/serverUrl.js';
 import type {
   VibeFlowProject,
   VibeFlowSession,
@@ -51,7 +52,21 @@ export class VibeFlowClient {
       throw new Error('Not authenticated');
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    // Defense in depth (#1947): re-read serverUrl from config on every
+    // request and validate the scheme before attaching the bearer. The
+    // constructor caches `baseUrl` once at activation, so a user who
+    // updates serverUrl via Settings would otherwise still hit the stale
+    // (possibly HTTP) value here. Live-read + validate also catches the
+    // case where a pre-#1745 user has an HTTP serverUrl in cached config
+    // and never re-opened Setup or Settings to revalidate it.
+    const liveUrl = vscode.workspace.getConfiguration('vibeflow')
+      .get<string>('serverUrl', this.baseUrl);
+    const check = validateServerUrl(liveUrl);
+    if (!check.ok) {
+      throw new Error(`Refusing to send request — ${check.message ?? 'invalid serverUrl'}`);
+    }
+
+    const response = await fetch(`${liveUrl}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
