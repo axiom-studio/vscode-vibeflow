@@ -631,16 +631,6 @@
           ],
           "description": "Controls terminal visibility when launching agent sessions"
         },
-        "vibeflow.debug.simulateActivity": {
-          "type": "boolean",
-          "default": false,
-          "description": "Fill the Activity Feed with simulated dummy data (for development/testing)"
-        },
-        "vibeflow.devMode.workspaceFolder": {
-          "type": "string",
-          "default": "",
-          "description": "DEV ONLY: Absolute path to a folder to auto-open when the extension activates with no workspace. Use for F5 debugging."
-        },
         "vibeflow.worktree.baseDir": {
           "type": "string",
           "default": ".claude/worktrees",

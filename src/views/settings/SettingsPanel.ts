@@ -137,7 +137,6 @@ export class SettingsPanel {
             'notifications.agentPrompts', 'notifications.workItemComplete',
             'session.terminalMode',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
-            'debug.simulateActivity',
             'cli.enabled', 'cli.binaryPath',
           ];
 
@@ -399,7 +398,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     pollInterval: config.get('polling.interval', 30),
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
-    debugSimulateActivity: config.get('debug.simulateActivity', false),
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
     // Models tab data — empty objects when stickyModels isn't wired
     // so the tab can still render its empty-state UI.
