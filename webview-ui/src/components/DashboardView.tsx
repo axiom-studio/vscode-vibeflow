@@ -44,6 +44,11 @@ interface DashboardSnapshot {
   projectName: string;
   branch: string;
   generatedAt: string;
+  // Server origin so the webview can build avatar URLs.
+  serverUrl: string;
+  // User-customized node positions for this project (drag-and-drop layout).
+  // undefined means "use PERSONA_POSITIONS defaults."
+  nodePositions: Record<string, { x: number; y: number }> | undefined;
   personaStatus: Record<string, PersonaStatus>;
   // null = no status-driven intake (project_manager tracker, customer input);
   // numbers are item counts pending action by that persona.
@@ -67,6 +72,43 @@ const PERSONA_DISPLAY: Record<string, string> = {
   project_manager: 'Project Manager',
   ux_designer: 'UX Designer',
   customer: 'Customer',
+};
+
+/**
+ * Persona avatar paths served by axiomcloud at
+ * `{serverUrl}/persona/professional/{Char}_{Role}.jpg`. The mapping mirrors
+ * the seed migration in
+ * `axiomcloud/migrations/{postgres,sqlite}/*_add_*_persona.up.sql` —
+ * persona_key → professional avatar path. Keep in sync if a persona is
+ * added on the backend.
+ */
+const AVATAR_BY_PERSONA: Record<string, string> = {
+  developer: '/persona/professional/Alex_Developer.jpg',
+  architect: '/persona/professional/Morgan_Architect.jpg',
+  principal_engineer: '/persona/professional/Kai_PrincipalEngineer.jpg',
+  security_lead: '/persona/professional/Sophie_Security.jpg',
+  qa_lead: '/persona/professional/Quinn_QA.jpg',
+  product_manager: '/persona/professional/Aria_Product.jpg',
+  project_manager: '/persona/professional/Parker_Project.jpg',
+  ux_designer: '/persona/professional/Dana_UXDesigner.jpg',
+  customer: '/persona/professional/Casey_Customer.jpg',
+};
+
+/**
+ * Character name shown as a subtitle under the role label, matching the
+ * axiomcloud seed migrations (e.g. "Alex" for `developer`). Pure flavor —
+ * makes the personas more memorable and matches the rest of the product.
+ */
+const CHARACTER_BY_PERSONA: Record<string, string> = {
+  developer: 'Alex',
+  architect: 'Morgan',
+  principal_engineer: 'Kai',
+  security_lead: 'Sophie',
+  qa_lead: 'Quinn',
+  product_manager: 'Aria',
+  project_manager: 'Parker',
+  ux_designer: 'Dana',
+  customer: 'Casey',
 };
 
 /**
@@ -121,23 +163,23 @@ const DEFAULT_TARGET_POSITION = Position.Left;
  * Persona handoffs derived from the status-to-persona table in
  * personas.md §"Work Item Routing".
  *
- * Edge semantics — corrected per 2026-05-08 design feedback:
+ * Edge semantics:
  *
  *   - **Solid** edges = mandatory status gates (Code → Security → QA).
  *     The work item HAS to traverse these to ship.
  *   - **Dashed** edges = collaborative or alternative handoffs. There's
  *     no rigid handoff between, say, Customer and PM — they collaborate
  *     iteratively to produce a PRD. Same for PM → code-agent: PM hands
- *     work to whichever code agent the user picked. The user picks ONE
- *     code agent (Architect or Developer or Principal Engineer) per
- *     branch, so we draw THREE separate dashed paths from PM rather
- *     than implying a sequential Architect → Developer chain (which
- *     was the previous wrong edge set).
- *   - **Architect** has no direct edge to Security because Architect
- *     doesn't produce code that ships — it produces design docs that
- *     Developer/PE then implement. Items in
- *     architecture_review_complete are picked up by Dev or PE who
- *     transition them through implementing → done → Security review.
+ *     work to whichever code agent the user picked. Exactly ONE of
+ *     Architect / Developer / Principal Engineer owns the branch (per
+ *     GitModifyingPersonas in axiomcloud/database/vibeflow_models.go),
+ *     so we draw THREE separate dashed paths from PM rather than a
+ *     sequential chain.
+ *
+ * All three code agents — Architect included — feed Security as a
+ * mandatory gate because they're the GitModifyingPersonas. Architect
+ * still produces commits (design docs / scaffolding) that go through
+ * security and QA review; it doesn't get a special pass.
  *
  * Project Manager is a lifecycle tracker — no status-routing edges.
  */
@@ -146,15 +188,12 @@ const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?
   { id: 'cust-pm',  source: 'customer',           target: 'product_manager',    dashed: true },
   { id: 'ux-pm',    source: 'ux_designer',        target: 'product_manager',    dashed: true },
   // PM hands the PRD/spec to whichever code agent the user picked. Three
-  // separate dashed lines — NOT a sequential chain — because exactly
-  // one code agent owns the branch (per GitModifyingPersonas, see
-  // axiomcloud/database/vibeflow_models.go).
+  // separate dashed lines — NOT a sequential chain.
   { id: 'pm-arch',  source: 'product_manager',    target: 'architect',          dashed: true },
   { id: 'pm-dev',   source: 'product_manager',    target: 'developer',          dashed: true },
   { id: 'pm-pe',    source: 'product_manager',    target: 'principal_engineer', dashed: true },
-  // Mandatory gates: Dev/PE → Security → QA. Architect doesn't write
-  // shippable code so it has no security edge — its output (planning
-  // docs) is consumed by Dev/PE for implementation.
+  // Mandatory gates: every code agent → Security → QA.
+  { id: 'arch-sec', source: 'architect',          target: 'security_lead' },
   { id: 'dev-sec',  source: 'developer',          target: 'security_lead' },
   { id: 'pe-sec',   source: 'principal_engineer', target: 'security_lead' },
   { id: 'sec-qa',   source: 'security_lead',      target: 'qa_lead' },
@@ -221,16 +260,52 @@ export function DashboardView() {
     focusPersona(node.id);
   }, [focusPersona]);
 
+  // Locally-tracked position overrides for drag persistence. Initialised
+  // from `snapshot.nodePositions` (host-stored layout) and mutated on
+  // drag-stop. We keep the override in component state so React re-renders
+  // place the node where the user dropped it; we also forward the change
+  // to the host so it survives reload. Resetting the layout clears this
+  // map and re-falls-back to PERSONA_POSITIONS.
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+
+  // Hydrate / reset positions from the snapshot. Re-runs only when the host
+  // pushes a new layout (initial load or after Reset layout fires).
+  useEffect(() => {
+    setPositions(state.snapshot?.nodePositions ?? {});
+  }, [state.snapshot?.nodePositions]);
+
+  const onNodeDragStop = useCallback((_evt: unknown, node: Node) => {
+    setPositions(prev => {
+      const next = { ...prev, [node.id]: { x: node.position.x, y: node.position.y } };
+      // Send the FULL position map (override OR default) so the host can
+      // write it atomically without having to merge against its prior copy.
+      const full: Record<string, { x: number; y: number }> = {};
+      for (const key of Object.keys(PERSONA_DISPLAY)) {
+        full[key] = next[key] ?? PERSONA_POSITIONS[key];
+      }
+      vscode.postMessage({ type: 'dashboardSaveNodePositions', payload: { positions: full } });
+      return next;
+    });
+  }, []);
+
+  const onResetLayout = useCallback(() => {
+    setPositions({});
+    vscode.postMessage({ type: 'dashboardResetNodePositions' });
+  }, []);
+
   const personaStatus = state.snapshot?.personaStatus ?? {};
   const personaQueues = state.snapshot?.personaQueues ?? {};
+  const serverUrl = state.snapshot?.serverUrl ?? '';
   const nodes: Node[] = useMemo(
     () => Object.keys(PERSONA_DISPLAY).map(key => {
       const status = personaStatus[key] ?? 'inactive';
       const isCodeAgent = CODE_AGENT_KEYS.has(key);
       const queue = personaQueues[key];
+      const avatarPath = AVATAR_BY_PERSONA[key];
+      const avatarUrl = avatarPath && serverUrl ? `${serverUrl}${avatarPath}` : undefined;
       return {
         id: key,
-        position: PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
+        position: positions[key] ?? PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
         // Explicit handle positions stop edges from picking arbitrary
         // sides and looping (which is why the previous render had
         // edges cutting through node interiors).
@@ -240,28 +315,43 @@ export function DashboardView() {
           label: (
             <PersonaNodeLabel
               name={PERSONA_DISPLAY[key]}
+              character={CHARACTER_BY_PERSONA[key]}
               status={status}
               isCodeAgent={isCodeAgent}
               queue={queue === undefined ? null : queue}
               queueTooltip={QUEUE_TOOLTIPS[key]}
+              avatarUrl={avatarUrl}
             />
           ),
         },
         style: nodeStyle(status, isCodeAgent),
       };
     }),
-    [personaStatus, personaQueues],
+    [personaStatus, personaQueues, positions, serverUrl],
   );
 
   const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => {
-    const isActive = personaStatus[e.source] === 'active' || personaStatus[e.target] === 'active';
-    // Solid edges in the muted-foreground color stand off the dark
-    // background; dashed (optional) edges drop opacity further to
-    // visually de-emphasize them. Active edges get a brighter stroke
-    // and the ReactFlow `animated` flow indicator.
+    // An edge is "active" only when BOTH endpoints have a live session.
+    // Earlier we used OR (either side active) which painted nearly the
+    // whole graph blue once even one mid-pipeline persona was running —
+    // e.g. with PM + Dev + Security live, every edge connecting any of
+    // them lit up, including customer→PM and security→QA where the
+    // counterparty was idle. Requiring both ends matches the visual
+    // intent: highlight the segment of the pipeline where work can
+    // actually flow right now.
+    const sourceActive = personaStatus[e.source] === 'active';
+    const targetActive = personaStatus[e.target] === 'active';
+    const isActive = sourceActive && targetActive;
+
+    // Inactive edges fade into the chrome so the topology reads as
+    // structure first; the active path is what jumps out. Dashed edges
+    // (collaborative handoffs) sit a step below solid (mandatory gates)
+    // even when both are inactive, preserving the semantic distinction.
+    const inactiveSolid = 'rgba(127,127,127,0.42)';
+    const inactiveDashed = 'rgba(127,127,127,0.22)';
     const stroke = isActive
       ? 'var(--feed-link)'
-      : (e.dashed ? 'var(--feed-muted)' : 'var(--feed-fg)');
+      : (e.dashed ? inactiveDashed : inactiveSolid);
     return {
       id: e.id,
       source: e.source,
@@ -271,11 +361,10 @@ export function DashboardView() {
       // arc across other nodes.
       type: 'smoothstep',
       animated: isActive,
-      markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 14, height: 14 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 12, height: 12 },
       style: {
         stroke,
-        strokeWidth: isActive ? 2 : 1.5,
-        opacity: e.dashed && !isActive ? 0.5 : 1,
+        strokeWidth: isActive ? 2.25 : 1.25,
         ...(e.dashed ? { strokeDasharray: '4,4' } : {}),
       },
     };
@@ -300,12 +389,30 @@ export function DashboardView() {
       <Section
         title="Agent Topology"
         subtitle="Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit."
+        actions={
+          <button
+            onClick={onResetLayout}
+            title="Discard your dragged layout and restore the default positions."
+            style={{
+              fontSize: 10,
+              padding: '2px 8px',
+              borderRadius: 4,
+              border: '1px solid var(--feed-border)',
+              background: 'transparent',
+              color: 'var(--feed-muted)',
+              cursor: 'pointer',
+            }}
+          >
+            Reset layout
+          </button>
+        }
       >
         <div style={{ height: 460, width: '100%', borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodeClick={onNodeClick}
+            onNodeDragStop={onNodeDragStop}
             fitView
             fitViewOptions={{ padding: 0.18 }}
             proOptions={{ hideAttribution: true }}
@@ -343,84 +450,145 @@ export function DashboardView() {
   );
 }
 
-function PersonaNodeLabel({ name, status, isCodeAgent, queue, queueTooltip }: {
+/**
+ * Persona node body. Designed as an avatar-led card with the role name on
+ * the top line and the character name (Alex / Morgan / …) below, plus an
+ * optional `1/branch` chip for the code-agent cluster.
+ *
+ * Queue count is shown as a notification dot on the avatar's top-right
+ * corner instead of a separate pill — this matches how every chat / mail
+ * UI does "unread count," reads as "items waiting for you," and removes
+ * the previous blue `↓ N` pill that nobody knew how to interpret.
+ */
+function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTooltip, avatarUrl }: {
   name: string;
+  character: string | undefined;
   status: PersonaStatus;
   isCodeAgent: boolean;
   queue: number | null;
   queueTooltip: string | undefined;
+  avatarUrl: string | undefined;
 }) {
-  // Two-row label keeps the title on one line and pushes badges below,
-  // so the box sizes consistently regardless of which badges are
-  // present. Previously badges crowded the title and Principal Engineer
-  // wrapped to two lines.
+  const showQueueBadge = queueTooltip !== undefined && queue !== null && queue > 0;
+  const ringColor = STATUS_COLOR[status];
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, alignItems: 'flex-start' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <span style={{
-          width: 8,
-          height: 8,
-          borderRadius: '50%',
-          background: STATUS_COLOR[status],
-          flexShrink: 0,
-          boxShadow: status === 'active' ? `0 0 0 3px ${STATUS_COLOR[status]}33` : 'none',
-        }} />
-        <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{name}</span>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 11,
+      fontSize: 12,
+      minWidth: 0,
+    }}>
+      {/* Avatar block ----------------------------------------------------- */}
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        {avatarUrl ? (
+          <span style={{
+            display: 'inline-flex',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            padding: 2,
+            background: `linear-gradient(135deg, ${ringColor}, ${ringColor}99)`,
+            boxShadow: status === 'active'
+              ? `0 0 0 3px ${ringColor}22, 0 1px 4px rgba(0,0,0,0.25)`
+              : '0 1px 3px rgba(0,0,0,0.25)',
+          }}>
+            <img
+              src={avatarUrl}
+              alt=""
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                display: 'block',
+                background: 'var(--vscode-editor-background)',
+              }}
+            />
+          </span>
+        ) : (
+          // No avatar: fall back to a status dot inside a 36px slot so
+          // the layout doesn't shift between rendered/unrendered states.
+          <span style={{
+            display: 'inline-flex',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
+            background: ringColor,
+            opacity: 0.85,
+          }} />
+        )}
+        {/* Notification badge — top-right corner of the avatar, scoped
+            in size so a 3-digit count still fits without ballooning the
+            node. Hidden when queue is 0 so the badge is a real signal. */}
+        {showQueueBadge && (
+          <span
+            title={queueTooltip}
+            style={{
+              position: 'absolute',
+              top: -4,
+              right: -6,
+              minWidth: 18,
+              height: 18,
+              padding: '0 5px',
+              borderRadius: 9,
+              background: 'var(--vscode-charts-red, #f14c4c)',
+              color: 'white',
+              fontSize: 10,
+              fontWeight: 700,
+              lineHeight: '18px',
+              textAlign: 'center',
+              boxShadow: '0 0 0 2px var(--vscode-editor-background)',
+              boxSizing: 'border-box',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {queue! > 99 ? '99+' : queue}
+          </span>
+        )}
       </div>
-      {(isCodeAgent || queueTooltip !== undefined) && (
-        <div style={{ display: 'flex', gap: 5, alignItems: 'center', paddingLeft: 15 }}>
+
+      {/* Text block ------------------------------------------------------- */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--feed-fg)',
+          whiteSpace: 'nowrap',
+          letterSpacing: 0.1,
+        }}>
+          {name}
+        </div>
+        <div style={{
+          fontSize: 10.5,
+          color: 'var(--feed-muted)',
+          opacity: 0.85,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          whiteSpace: 'nowrap',
+        }}>
+          {character && <span>{character}</span>}
           {isCodeAgent && (
             <span
               title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
               style={{
                 fontSize: 9,
-                fontWeight: 600,
-                letterSpacing: 0.3,
-                padding: '1px 6px',
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                padding: '1px 5px',
                 borderRadius: 3,
-                background: 'var(--vscode-charts-orange, #d18616)',
-                color: 'var(--vscode-editor-background)',
-                flexShrink: 0,
+                background: 'rgba(209,134,22,0.16)',
+                color: 'var(--vscode-charts-orange, #d18616)',
                 lineHeight: 1.5,
+                textTransform: 'uppercase',
               }}
             >
               1/branch
             </span>
           )}
-          {queueTooltip !== undefined && (
-            <span
-              title={queueTooltip}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 3,
-                fontSize: 10,
-                fontWeight: 600,
-                padding: '1px 6px',
-                borderRadius: 9,
-                background: queue && queue > 0
-                  ? 'var(--vscode-charts-blue, #569cd6)'
-                  : 'transparent',
-                color: queue && queue > 0
-                  ? 'var(--vscode-editor-background)'
-                  : 'var(--feed-muted)',
-                border: queue && queue > 0
-                  ? 'none'
-                  : '1px solid var(--feed-border)',
-                flexShrink: 0,
-                lineHeight: 1.4,
-              }}
-            >
-              {/* Inbox-tray glyph makes "queue" obvious at a glance —
-                  user feedback was that a bare number ("67") looked
-                  alarming without context. The hover tooltip names the
-                  source statuses for the full breakdown. */}
-              <span style={{ fontSize: 9, opacity: 0.85 }}>↓</span>
-              <span>{queue === null ? '—' : queue}</span>
-            </span>
-          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -430,24 +598,30 @@ function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProper
   // disappear into the dark background. Use a stronger neutral so the
   // box outline is always readable; status colors only kick in for
   // active/stale to draw the eye to live activity.
-  const inactiveBorder = 'var(--vscode-charts-foreground, var(--feed-fg))';
+  const inactiveBorder = 'rgba(127,127,127,0.45)';
   const color = status === 'inactive' ? inactiveBorder : STATUS_COLOR[status];
-  const codeAgentTint = isCodeAgent
-    ? 'rgba(209,134,22,0.06)' // very subtle orange wash so the cluster reads as a group
-    : 'var(--vscode-editor-background)';
+  // Soft gradient + per-status accent makes the active state pop without
+  // the previous flat orange tint that washed over every code-agent
+  // node regardless of activity. Code agents get a subtle warm wash on
+  // the right edge so the cluster still reads as a group.
+  const baseBg = 'var(--vscode-editor-background)';
+  const background = isCodeAgent
+    ? `linear-gradient(135deg, ${baseBg} 0%, ${baseBg} 70%, rgba(209,134,22,0.08) 100%)`
+    : baseBg;
   return {
-    background: codeAgentTint,
-    // Slightly thicker border for code agents so the cluster reads at
-    // a glance even without the badge color.
-    border: `${isCodeAgent ? 2 : 1.5}px solid ${color}`,
-    borderRadius: 8,
-    padding: '10px 14px',
+    background,
+    border: `1px solid ${color}`,
+    borderRadius: 12,
+    padding: '12px 14px 12px 12px',
     fontSize: 12,
     color: 'var(--feed-fg)',
     fontFamily: 'var(--vscode-font-family)',
-    opacity: status === 'inactive' ? 0.85 : 1,
+    opacity: status === 'inactive' ? 0.92 : 1,
     minWidth: 180,
-    boxShadow: status === 'active' ? `0 0 0 4px ${color}22` : 'none',
+    boxShadow: status === 'active'
+      ? `0 0 0 1px ${color}55, 0 4px 12px rgba(0,0,0,0.18)`
+      : '0 1px 3px rgba(0,0,0,0.15)',
+    transition: 'box-shadow 120ms ease, transform 120ms ease',
   };
 }
 
@@ -520,14 +694,22 @@ function Banner({ kind, message }: { kind: 'error' | 'warning'; message: string 
   );
 }
 
-function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function Section({ title, subtitle, actions, children }: {
+  title: string;
+  subtitle?: string;
+  // Right-aligned slot for section-level controls (e.g. "Reset layout"
+  // for the topology). Optional so other sections render unchanged.
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--feed-border)' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--feed-muted)' }}>
           {title}
         </span>
-        {subtitle && <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.7 }}>{subtitle}</span>}
+        {subtitle && <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.7, flex: 1 }}>{subtitle}</span>}
+        {actions && <span style={{ marginLeft: 'auto' }}>{actions}</span>}
       </div>
       {children}
     </div>
@@ -594,13 +776,30 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
   const f = snapshot.findings;
   const br = snapshot.branchReview;
 
+  // The two governance cards report DIFFERENT things and the labels need
+  // to make that obvious — the user audit (2026-05-08) flagged that
+  // "Compliance findings: 2 open" sat next to "Branch — main: 10 open
+  // findings" with no indication of why the numbers disagreed:
+  //
+  //   - LEFT card: PROJECT-WIDE findings, filtered by `effective_status`
+  //     which honours SLA grace windows (a finding that's overdue in raw
+  //     status but inside its grace period drops out). Source:
+  //     `client.listComplianceFindings(projectId, {status:'open'})` →
+  //     `tallyFindings` (DashboardPanel.ts).
+  //   - RIGHT card: BRANCH-SCOPED metrics from
+  //     `check_branch_review_status` (MCP) — security/QA pass counts and
+  //     a raw `open_findings` count limited to items on this branch.
+  //     Doesn't apply effective_status filtering.
+  //
+  // Labels now lead with scope ("Project" vs "Branch") and the
+  // sub-copy spells out the filter.
   return (
     <div style={{
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
       gap: 8,
     }}>
-      <Card title={`Compliance findings (${f.total_open} open)`}>
+      <Card title={`Project compliance · ${f.total_open} active`}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <Pill label="critical" count={f.critical} color="var(--feed-error)" />
           <Pill label="high" count={f.high} color="var(--feed-error)" dim={f.high === 0} />
@@ -608,9 +807,12 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
           <Pill label="low" count={f.low} color="var(--feed-muted)" dim={f.low === 0} />
           <Pill label="info" count={f.informational} color="var(--feed-muted)" dim={f.informational === 0} />
         </div>
+        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginTop: 6, opacity: 0.85 }}>
+          All projects' open findings, after SLA grace windows
+        </div>
       </Card>
 
-      <Card title={`Branch — ${br?.branch ?? snapshot.branch}`}>
+      <Card title={`Branch readiness · ${br?.branch ?? snapshot.branch}`}>
         {!br || br.total_items === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--feed-muted)' }}>
             {br?.message ?? 'No tracked work items on this branch.'}
@@ -625,9 +827,12 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
               {br.total_items} item(s) · {br.total_commits ?? 0} commits · {br.total_lines ?? '+0 -0'}
               {(br.open_findings ?? 0) > 0 && (
                 <span style={{ color: 'var(--feed-error)', marginLeft: 6 }}>
-                  · {br.open_findings} open finding{br.open_findings === 1 ? '' : 's'}
+                  · {br.open_findings} open finding{br.open_findings === 1 ? '' : 's'} on branch
                 </span>
               )}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginTop: 2, opacity: 0.85 }}>
+              Items on this branch only; raw open count
             </div>
           </div>
         )}

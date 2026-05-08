@@ -187,6 +187,58 @@ export interface VibeFlowDocument {
   projectId: number;
 }
 
+/**
+ * VibeFlow context (a.k.a. "Memory" in the axiomcloud UI). Flat list of
+ * markdown notes attached to a project (or feature). The `parent_context_id`
+ * field links rotation archives back to their live root — the tree filters
+ * those out so only top-level (live) contexts are surfaced.
+ *
+ * Wire shape mirrors `axiomcloud/database/vibeflow_models.go:370`
+ * (VibeflowContext) and the REST list endpoint
+ * `GET /rest/v1/vibeflow/contexts?project_id=X`.
+ */
+export interface VibeFlowContext {
+  id: number;
+  title: string;
+  content?: string;
+  project_id?: number;
+  feature_id?: number;
+  parent_context_id?: number | null;
+  storage_key?: string;
+  organization_id: string;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Confluence reference — a read-only pointer to an external Atlassian page,
+ * scoped to a project (and optionally a feature). Wire shape mirrors
+ * `axiomcloud/database/vibeflow_models.go:1005` (ConfluenceReference).
+ *
+ * Listed via `GET /rest/v1/vibeflow/projects/{id}/references` which wraps
+ * the array as `{ references: [...] }`. Content is fetched on-demand from
+ * `/rest/v1/vibeflow/projects/{id}/references/{ref_id}/content` because
+ * the page body is fetched from Confluence and cached on the server.
+ */
+export interface VibeFlowReference {
+  id: number;
+  project_id: number;
+  feature_id?: number;
+  confluence_space_key: string;
+  confluence_space_name: string;
+  confluence_page_id: string;
+  confluence_page_title: string;
+  confluence_page_url: string;
+  reference_type: 'context' | 'document';
+  label?: string;
+  last_fetched_at?: string;
+  last_page_version?: number;
+  fetch_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VibeFlowComment {
   id: number;
   entity_type: 'document' | 'context';
