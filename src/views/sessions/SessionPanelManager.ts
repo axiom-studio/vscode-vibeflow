@@ -279,14 +279,19 @@ export class SessionPanelManager implements vscode.Disposable {
   </div>
 
   <div class="actions">
-    <button class="btn-primary" onclick="sendMessage('sendPrompt')">Send Prompt</button>
-    <button class="btn-danger" onclick="sendMessage('stop')">Stop Session</button>
-    <button class="btn-secondary" onclick="sendMessage('refresh')">Refresh</button>
+    <button class="btn-primary" data-action="sendPrompt">Send Prompt</button>
+    <button class="btn-danger" data-action="stop">Stop Session</button>
+    <button class="btn-secondary" data-action="refresh">Refresh</button>
   </div>
 
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    function sendMessage(type) { vscode.postMessage({ type }); }
+    // Inline onclick="" handlers are blocked by the panel's strict CSP
+    // (script-src 'nonce-...' without 'unsafe-inline'). Bind via
+    // addEventListener so the buttons actually fire under the nonce.
+    document.querySelectorAll('button[data-action]').forEach(b => {
+      b.addEventListener('click', () => vscode.postMessage({ type: b.dataset.action }));
+    });
 
     window.addEventListener('message', e => {
       const msg = e.data;
