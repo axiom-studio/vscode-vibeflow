@@ -17,6 +17,7 @@ import type {
   VibeFlowWorkSummary,
   VibeFlowComplianceFinding,
   VibeFlowPrompt,
+  ListSessionPromptsResponse,
   VibeFlowAttachment,
   VibeFlowSecurityReview,
   VibeFlowQAReview,
@@ -697,6 +698,54 @@ export class VibeFlowClient {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Fetch a session's chat history with cursor pagination. Returns
+   * oldest-first within the page. `before_id` scrolls older,
+   * `after_id` backfills newer (mutually exclusive). Default page
+   * size is 50 server-side, max 200.
+   *
+   * Endpoint contract mirrors axiomcloud's `api.listPrompts(projectId, sessionId, opts)`
+   * in `frontend/src/services/vibeflow.js:798-806`.
+   */
+  async listSessionPrompts(
+    projectId: number,
+    sessionId: string,
+    opts: { limit?: number; before_id?: number; after_id?: number } = {},
+  ): Promise<ListSessionPromptsResponse> {
+    const qs = new URLSearchParams();
+    qs.set('session_id', sessionId);
+    if (opts.limit != null) { qs.set('limit', String(opts.limit)); }
+    if (opts.before_id != null) { qs.set('before_id', String(opts.before_id)); }
+    if (opts.after_id != null) { qs.set('after_id', String(opts.after_id)); }
+    return this.request<ListSessionPromptsResponse>(
+      `/rest/v1/vibeflow/projects/${projectId}/prompts?${qs.toString()}`,
+    );
+  }
+
+  /**
+   * Create a user→agent prompt via REST. The agent receives this in
+   * its `wait_for_work` poll as a `pending_prompts` entry. Mirrors
+   * axiomcloud's `api.createPrompt` in `frontend/src/services/vibeflow.js:779-784`.
+   *
+   * Distinct from `promptUser` (MCP `prompt_user`), which creates an
+   * agent→user prompt — appropriate for cross-persona handoffs (e.g.,
+   * comment-flow notifications) but the wrong direction for chat-input
+   * from a human user.
+   */
+  async createPrompt(
+    projectId: number,
+    sessionId: string,
+    text: string,
+  ): Promise<VibeFlowPrompt> {
+    return this.request<VibeFlowPrompt>(
+      `/rest/v1/vibeflow/projects/${projectId}/prompts`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId, text }),
+      },
+    );
   }
 
   /**
