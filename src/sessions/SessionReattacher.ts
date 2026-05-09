@@ -134,10 +134,13 @@ export class SessionReattacher {
       if (action !== 'Reattach All') { return []; }
     }
 
-    // Reattach always uses 'all' mode — user explicitly asked to reattach,
-    // so show all terminals regardless of hybrid setting.
-    const terminalMode: TerminalMode = 'all';
-
+    // Per-phantom terminalMode resolution. Visible-mode reattach is the
+    // historical default — user explicitly asked to reattach, so show all
+    // terminals regardless of hybrid setting. Chat-First (todo #1611)
+    // breaks the rule: a recorded `chat_first` mode means the user opted
+    // into a hidden agent + chat-only surface, and that consent persists
+    // across IDE restart. Only an explicit vanilla/vibeflow override at
+    // the reattach prompt downgrades the headless behavior.
     const reattached: PhantomSession[] = [];
     for (const phantom of phantoms) {
       try {
@@ -148,6 +151,7 @@ export class SessionReattacher {
         // userChoice is set whenever needsChoice > 0.
         const recordedMode = recordedModeByPersona.get(phantom.persona);
         const phantomMode = recordedMode ?? userChoice ?? sessionMode;
+        const phantomTerminalMode: TerminalMode = phantomMode === 'chat_first' ? 'none' : 'all';
 
         const command = buildReattachCommand(provider, phantomMode);
 
@@ -166,7 +170,7 @@ export class SessionReattacher {
             VIBEFLOW_PERSONA: phantom.persona,
             VIBEFLOW_BRANCH: gitBranch,
           },
-          terminalMode,
+          terminalMode: phantomTerminalMode,
           initPrompt,
         });
 
@@ -207,10 +211,13 @@ function buildReattachCommand(provider: string, sessionMode: string): string {
   };
   const binary = binaries[provider] ?? 'claude';
 
-  // Two modes only: vanilla (per-action prompts) and vibeflow (YOLO).
-  // Anything else (e.g. legacy 'auto' written by older builds) falls
-  // through to vanilla so we never reattach with an unexpected flag.
-  if (sessionMode !== 'vibeflow') { return binary; }
+  // YOLO modes: vibeflow (visible terminal) and chat_first (hidden
+  // terminal + chat-only — see todo #1611). Both apply
+  // --dangerously-skip-permissions / --yolo flags. Anything else (e.g.
+  // legacy 'auto' written by older builds, or 'vanilla') falls through
+  // to a flag-free binary so we never reattach with an unexpected flag.
+  const isYolo = sessionMode === 'vibeflow' || sessionMode === 'chat_first';
+  if (!isYolo) { return binary; }
   if (provider === 'claude') { return `${binary} --dangerously-skip-permissions`; }
   if (provider === 'codex' || provider === 'gemini') { return `${binary} --yolo`; }
   if (provider === 'cursor') { return `${binary} --yolo --approve-mcps`; }

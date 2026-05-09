@@ -55,6 +55,12 @@ const SESSION_MODES = [
     detail: 'Dangerous. Use only in isolated environments. (--dangerously-skip-permissions)',
     value: 'vibeflow',
   },
+  {
+    label: '$(comment-discussion) Chat-First (headless)',
+    description: 'YOLO + hidden terminal — interact via embedded Chat panel only',
+    detail: 'Agent runs hidden; chat is the only surface. Bundles --dangerously-skip-permissions because there is no terminal to display permission prompts.',
+    value: 'chat_first',
+  },
 ] as const;
 
 // Code agents: only 1 per branch (they modify git)
@@ -171,6 +177,19 @@ export async function launchSession(
   });
   if (!modePick) { return; }
   const sessionMode = modePick.value;
+
+  // Chat-First (headless) bundles YOLO + hidden terminal because there is no
+  // terminal to display permission prompts. Mirror the explicit-opt-in
+  // precedent set by `vibeflow.session.reattachMode` (default `vanilla`,
+  // opt-in YOLO) from `8f42c97`. NO silent default to YOLO.
+  if (sessionMode === 'chat_first') {
+    const consent = await vscode.window.showWarningMessage(
+      'VibeFlow: Chat-First mode runs the agent with --dangerously-skip-permissions in a hidden terminal. The agent will not block on confirmation prompts; every tool action runs immediately. Continue?',
+      { modal: true },
+      'Continue in Chat-First',
+    );
+    if (consent !== 'Continue in Chat-First') { return; }
+  }
 
   const personas: string[] = [];
 
@@ -407,9 +426,12 @@ export async function launchSession(
     ensureMcpConfig(workDir, serverUrl, client);
   }
 
-  // Read terminal mode setting
-  const terminalMode = vscode.workspace.getConfiguration('vibeflow')
+  // Read terminal mode setting. Chat-First mode forces `'none'` (hidden)
+  // regardless of workspace setting — chat is the only surface, the
+  // terminal is plumbing.
+  const workspaceTerminalMode = vscode.workspace.getConfiguration('vibeflow')
     .get<TerminalMode>('session.terminalMode', 'hybrid');
+  const terminalMode: TerminalMode = sessionMode === 'chat_first' ? 'none' : workspaceTerminalMode;
 
   // Build env: provider env vars + VibeFlow context
   const env: Record<string, string> = {
@@ -465,10 +487,65 @@ export async function launchSession(
     }
   }
 
-  vscode.window.showInformationMessage(
-    `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${personas.join(', ')}`,
-  );
+  if (sessionMode === 'chat_first') {
+    vscode.window.showInformationMessage(
+      `VibeFlow: Launched ${personas.length} chat-first session(s) on ${branch}: ${personas.join(', ')}. Opening Chat panel…`,
+    );
+    // Fire-and-forget: poll for each persona's session record and auto-open
+    // its Chat panel. The agent binary calls session_init shortly after the
+    // terminal spawns; in chat-first mode the panel is the only surface, so
+    // we want it visible the moment the agent registers.
+    for (const persona of personas) {
+      void waitForAgentSessionThenOpenPanel(client, project.projectId, persona, branch);
+    }
+  } else {
+    vscode.window.showInformationMessage(
+      `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${personas.join(', ')}`,
+    );
+  }
   sessionsProvider.refresh();
+}
+
+/**
+ * Poll the active-sessions endpoint for up to ~30s waiting for the agent
+ * binary to call `session_init` and register itself, then open the
+ * matching Session Panel via the `vibeflow.openSessionPanel` command.
+ *
+ * Used only by Chat-First launches (todo #1611), where the terminal is
+ * hidden and the chat panel is the user's only interaction surface — so
+ * we want it visible the moment the agent appears in `listSessions`.
+ *
+ * Failures (timeout / network) surface a soft hint pointing the user at
+ * the Agent Fleet view; we deliberately don't error-toast because the
+ * launch itself succeeded — only the auto-open convenience timed out.
+ */
+async function waitForAgentSessionThenOpenPanel(
+  client: VibeFlowClient,
+  projectId: number,
+  persona: string,
+  branch: string,
+): Promise<void> {
+  const timeoutMs = 30000;
+  const pollMs = 2000;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const sessions = await client.listSessions(projectId);
+      const found = sessions.find(s =>
+        s.persona_key === persona && s.git_branch === branch && s.active,
+      );
+      if (found) {
+        await vscode.commands.executeCommand('vibeflow.openSessionPanel', found.session_id);
+        return;
+      }
+    } catch {
+      // Continue polling — transient errors should not abort.
+    }
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  vscode.window.showWarningMessage(
+    `VibeFlow: ${persona} session is taking longer than 30s to register. Open the Chat panel manually from the Agent Fleet view once it appears.`,
+  );
 }
 
 /**
@@ -624,18 +701,22 @@ const binaries: Record<string, string> = {
 
 /**
  * Build the agent binary launch command with session mode flags.
- * vanilla  → no flags (per-action permission prompts)
- * vibeflow → --dangerously-skip-permissions (claude) / --yolo (codex/gemini)
+ *   vanilla     → no flags (per-action permission prompts)
+ *   vibeflow    → --dangerously-skip-permissions (claude) / --yolo (codex/gemini)
+ *   chat_first  → same flags as vibeflow (YOLO is bundled because the hidden
+ *                 terminal cannot display permission prompts; user opt-in
+ *                 was captured at launch time and persisted in launchModeStore)
  *
  * Any other sessionMode string falls through to vanilla so a stale
  * config value (e.g. 'auto' from an older install) doesn't crash launch.
  */
 function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
-  if (sessionMode !== 'vibeflow') {
+  const isYolo = sessionMode === 'vibeflow' || sessionMode === 'chat_first';
+  if (!isYolo) {
     return binary;
   }
 
-  // vibeflow mode = YOLO / skip permissions
+  // YOLO / skip permissions
   if (provider === 'claude') {
     return `${binary} --dangerously-skip-permissions`;
   }
@@ -949,7 +1030,10 @@ export async function restartSession(
   const recordedMode = lookupLaunchMode(context, persona, branch, workDir);
   const sessionMode = recordedMode
     ?? config.get<string>('session.reattachMode', 'vanilla');
-  const terminalMode = config.get<TerminalMode>('session.terminalMode', 'hybrid');
+  // Chat-First sessions force `'none'` (hidden terminal) regardless of the
+  // workspace `session.terminalMode` setting — chat is the only surface.
+  const workspaceTerminalMode = config.get<TerminalMode>('session.terminalMode', 'hybrid');
+  const terminalMode: TerminalMode = sessionMode === 'chat_first' ? 'none' : workspaceTerminalMode;
   const serverUrl = config.get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
   const binary = binaries[provider] ?? 'claude';
