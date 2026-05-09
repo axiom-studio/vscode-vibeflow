@@ -188,11 +188,30 @@ export type WorkItemPanelClientMessage =
 // Session Panel
 // ============================================================
 
+import type { VibeFlowPrompt } from '../api/types.js';
+
 export type SessionPanelHostMessage =
-  | { type: 'update'; payload: { session: unknown; logs: unknown[] } };
+  | { type: 'update'; payload: { session: unknown; logs: unknown[] } }
+  // Initial chat load OR full replace after a session switch.
+  // `messages` is oldest-first within the page (server-side ordering).
+  | { type: 'chatTranscript'; payload: { messages: VibeFlowPrompt[]; hasMore: boolean } }
+  // New messages discovered by the next poll cycle (after_id cursor) or
+  // optimistically appended right after a successful chatSend.
+  | { type: 'chatAppend'; payload: { messages: VibeFlowPrompt[] } }
+  // Older messages loaded via the "Load older" button (before_id cursor).
+  | { type: 'chatPrepend'; payload: { messages: VibeFlowPrompt[]; hasMore: boolean } }
+  // Surfaces a chat-related error (network / auth / validation) inline in
+  // the chat UI without disrupting the rest of the panel.
+  | { type: 'chatError'; payload: { message: string } };
 
 export type SessionPanelClientMessage =
-  | { type: 'sendPrompt' }
+  // User submitted the inline chat input. `text` is non-empty (host trims
+  // and rejects empty before calling createPrompt).
+  | { type: 'chatSend'; payload: { text: string } }
+  // User replied to a pending agent → user prompt via the inline reply form.
+  | { type: 'chatRespond'; payload: { promptId: string; text: string } }
+  // User clicked "Load older" — host pages backward via before_id cursor.
+  | { type: 'chatLoadOlder'; payload: { beforeId: number } }
   | { type: 'stop' }
   | { type: 'refresh' };
 

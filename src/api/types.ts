@@ -467,6 +467,28 @@ export interface BranchReviewStatus {
 export type VibeFlowPromptStatus = 'pending' | 'responded' | 'acknowledged' | 'expired';
 export type VibeFlowPromptSource = 'agent' | 'user';
 
+/**
+ * Cursor-paginated response from
+ * `GET /rest/v1/vibeflow/projects/{id}/prompts?session_id=...`.
+ *
+ * The same endpoint returns a bare array when called WITHOUT `session_id`
+ * (project-wide legacy shape — see `listPendingPrompts`). When `session_id`
+ * is provided, the server wraps the page in this envelope. Prompts are
+ * returned oldest-first within the page; cursor params (`limit`,
+ * `before_id`, `after_id`) drive the window.
+ *
+ * Endpoint contract reference: `axiomcloud/axiomcloud/frontend/src/services/vibeflow.js:786-806`.
+ */
+export interface ListSessionPromptsResponse {
+  prompts: VibeFlowPrompt[];
+  page: {
+    has_more: boolean;
+    oldest_id: number | null;
+    newest_id: number | null;
+    next_before_id: number | null;
+  };
+}
+
 export interface VibeFlowPrompt {
   id: number;
   created_at: string;
