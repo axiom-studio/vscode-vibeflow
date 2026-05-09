@@ -150,9 +150,16 @@ export class DashboardPanel {
         }
         const found = this.terminalRegistry.focus(key, this.project.gitBranch);
         if (!found) {
-          vscode.window.showInformationMessage(
+          const choice = await vscode.window.showInformationMessage(
             `VibeFlow: No local terminal for ${key} on ${this.project.gitBranch}. Launch a session first.`,
+            'Launch Session',
+            'Refresh',
           );
+          if (choice === 'Launch Session') {
+            await vscode.commands.executeCommand('vibeflow.launchSession');
+          } else if (choice === 'Refresh') {
+            await this.sendSnapshot();
+          }
         }
         return;
       }
