@@ -83,6 +83,19 @@
   font-weight: 700;
   font-size: 11px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+/* Persona portrait fills the avatar container — same image source as
+   the dashboard's agent topology nodes (see personaAvatars.ts). */
+.chat-header-avatar img,
+.msg-avatar img,
+.rail-avatar img,
+.chat-empty-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .chat-header-name {
@@ -185,6 +198,7 @@
   letter-spacing: -0.5px;
   user-select: none;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .msg-user .msg-avatar {
@@ -403,6 +417,7 @@
   font-size: 32px;
   font-weight: 700;
   margin-bottom: 16px;
+  overflow: hidden;
 }
 
 .chat-empty-title {
@@ -624,6 +639,7 @@
   font-weight: 700;
   font-size: 18px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .rail-header-text {

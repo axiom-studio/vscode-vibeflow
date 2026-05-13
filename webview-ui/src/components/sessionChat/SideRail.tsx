@@ -4,6 +4,8 @@ import type { SessionMeta, LogEntry } from './sessionChatTypes';
 interface Props {
   meta: SessionMeta;
   logs: LogEntry[];
+  /** Optional persona portrait — same source as the dashboard's agent topology. */
+  personaAvatarUrl?: string;
   onStop: () => void;
   onRefresh: () => void;
 }
@@ -22,7 +24,7 @@ interface Props {
  */
 const MAX_LOG_ENTRIES = 30;
 
-export function SideRail({ meta, logs, onStop, onRefresh }: Props) {
+export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Props) {
   const recentLogs = logs.slice(-MAX_LOG_ENTRIES).reverse();
   const statusColor =
     meta.status === 'active' ? 'var(--vscode-testing-iconPassed, #4caf50)' :
@@ -34,7 +36,11 @@ export function SideRail({ meta, logs, onStop, onRefresh }: Props) {
       {/* Persona header */}
       <div className="rail-section rail-header">
         <div className="rail-avatar">
-          {meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+          {personaAvatarUrl ? (
+            <img src={personaAvatarUrl} alt="" />
+          ) : (
+            meta.personaName.trim().charAt(0).toUpperCase() || 'A'
+          )}
         </div>
         <div className="rail-header-text">
           <div className="rail-persona">{meta.personaName}</div>

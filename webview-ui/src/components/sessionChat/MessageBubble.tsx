@@ -11,6 +11,14 @@ import { DiffBlock } from './DiffBlock';
 interface Props {
   msg: ChatPrompt;
   personaName: string;
+  /**
+   * Optional persona portrait — `{serverUrl}/persona/professional/...jpg`.
+   * Shared mapping lives in `personaAvatars.ts` so the chat and the
+   * dashboard's agent topology render the same images for each persona.
+   * Falls back to a single-letter glyph when undefined (offline, unknown
+   * persona, etc.).
+   */
+  personaAvatarUrl?: string;
   /** User's preferred inline diff layout, threaded down from SessionChatView. */
   diffView: 'unified' | 'split';
   onRespond?: (promptId: string, text: string) => void;
@@ -26,7 +34,7 @@ interface Props {
  * panel with full bubbles — see Roo-Code / Continue / Cursor: agent
  * content reads better as a "post" than a "bubble".
  */
-export function MessageBubble({ msg, personaName, diffView, onRespond }: Props) {
+export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -36,7 +44,11 @@ export function MessageBubble({ msg, personaName, diffView, onRespond }: Props) 
   return (
     <div className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}>
       <div className="msg-avatar" aria-hidden="true">
-        {avatarGlyph(isUser, personaName)}
+        {!isUser && personaAvatarUrl ? (
+          <img src={personaAvatarUrl} alt="" />
+        ) : (
+          avatarGlyph(isUser, personaName)
+        )}
       </div>
       <div className="msg-body">
         <div className="msg-header">

@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
+import { AVATAR_BY_PERSONA } from '../personaAvatars';
 import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: DashboardClientMessage) => void };
@@ -72,26 +73,6 @@ const PERSONA_DISPLAY: Record<string, string> = {
   project_manager: 'Project Manager',
   ux_designer: 'UX Designer',
   customer: 'Customer',
-};
-
-/**
- * Persona avatar paths served by axiomcloud at
- * `{serverUrl}/persona/professional/{Char}_{Role}.jpg`. The mapping mirrors
- * the seed migration in
- * `axiomcloud/migrations/{postgres,sqlite}/*_add_*_persona.up.sql` —
- * persona_key → professional avatar path. Keep in sync if a persona is
- * added on the backend.
- */
-const AVATAR_BY_PERSONA: Record<string, string> = {
-  developer: '/persona/professional/Alex_Developer.jpg',
-  architect: '/persona/professional/Morgan_Architect.jpg',
-  principal_engineer: '/persona/professional/Kai_PrincipalEngineer.jpg',
-  security_lead: '/persona/professional/Sophie_Security.jpg',
-  qa_lead: '/persona/professional/Quinn_QA.jpg',
-  product_manager: '/persona/professional/Aria_Product.jpg',
-  project_manager: '/persona/professional/Parker_Project.jpg',
-  ux_designer: '/persona/professional/Dana_UXDesigner.jpg',
-  customer: '/persona/professional/Casey_Customer.jpg',
 };
 
 /**
