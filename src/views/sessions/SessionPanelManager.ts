@@ -45,6 +45,17 @@ interface ChatCursor {
 const CHAT_PAGE_SIZE = 50;
 
 /**
+ * How recent a `done` work item's `updated_at` must be to still surface
+ * in the chat panel's Activity rail. Keeps the panel showing the agent's
+ * most recent commit / verification log lines for a few minutes after
+ * the work item transitions to done — without this, the rail went blank
+ * the moment the agent closed out its current task. 10 minutes is long
+ * enough to cover "agent finished, user is still reading" and short
+ * enough to keep the rail bounded by the existing 100-line cap.
+ */
+const RECENT_DONE_WINDOW_MS = 10 * 60 * 1000;
+
+/**
  * Manages Focus View Webview Panels for individual agent sessions.
  * One panel per persona — clicking the same persona reuses the panel.
  *
@@ -881,29 +892,58 @@ export class SessionPanelManager implements vscode.Disposable {
 
   /**
    * Build the Progress Ledger for one session by correlating
-   * `claimedBy === sessionId` across all in-flight work items in the
-   * project. We mirror the same pattern ActivityPoller uses but scoped to
-   * a single session and bounded to the most recent ~100 lines.
+   * `claimedBy === sessionId` across in-flight AND recently-completed
+   * work items in the project. We mirror the same pattern ActivityPoller
+   * uses but scoped to a single session and bounded to the most recent
+   * ~100 lines.
+   *
+   * Includes `done` items updated within RECENT_DONE_WINDOW_MS so the
+   * rail keeps showing the agent's most recent commit / verification log
+   * lines after a work item transitions to done — without this, the
+   * Activity panel went blank the moment the agent closed out its
+   * current task, which read like a bug.
    *
    * Failures are absorbed (return what we have) — a panel that can't reach
    * the API should still render the static metadata header and try again
    * on the next 5s tick.
    */
+  /**
+   * Filter predicate for the Activity rail: an item belongs to this
+   * session's ledger if it was claimed by this session AND it's either
+   * still in flight (`implementing`) OR recently completed
+   * (`done`/`qa_verified` within RECENT_DONE_WINDOW_MS). Pre-claim
+   * states like `planning` are excluded — those have no log lines yet.
+   */
+  private shouldIncludeForSession(
+    item: { claimed_by?: string | null; status?: string; updated_at?: string },
+    sessionId: string,
+  ): boolean {
+    if (item.claimed_by !== sessionId) { return false; }
+    const status = item.status ?? '';
+    if (status === 'implementing') { return true; }
+    if (status === 'done' || status === 'qa_verified' || status === 'security_reviewed') {
+      const updatedAt = item.updated_at ? Date.parse(item.updated_at) : NaN;
+      if (Number.isNaN(updatedAt)) { return false; }
+      return Date.now() - updatedAt <= RECENT_DONE_WINDOW_MS;
+    }
+    return false;
+  }
+
   private async collectSessionLogs(projectId: number, sessionId: string): Promise<PanelLog[]> {
     const claimedTodos: VibeFlowTodo[] = [];
     const claimedIssues: VibeFlowIssue[] = [];
 
     try {
       const features = await this.client.listFeatures(projectId);
-      const activeFeatures = features.filter(f =>
-        f.status === 'implementing' || f.status === 'ready_to_implement',
-      );
+      // Broadened: include done features too, since a feature can complete
+      // while its session's chat panel is still open and we want the logs
+      // to keep rendering until the panel closes.
       const todoLists = await Promise.all(
-        activeFeatures.map(f => this.client.listTodos(f.id).catch(() => [])),
+        features.map(f => this.client.listTodos(f.id).catch(() => [])),
       );
       for (const todos of todoLists) {
         for (const todo of todos) {
-          if (todo.claimed_by === sessionId && todo.status === 'implementing') {
+          if (this.shouldIncludeForSession(todo, sessionId)) {
             claimedTodos.push(todo);
           }
         }
@@ -915,7 +955,7 @@ export class SessionPanelManager implements vscode.Disposable {
     try {
       const issues = await this.client.listIssues(projectId);
       for (const issue of issues) {
-        if (issue.claimed_by === sessionId && issue.status === 'implementing') {
+        if (this.shouldIncludeForSession(issue, sessionId)) {
           claimedIssues.push(issue);
         }
       }
