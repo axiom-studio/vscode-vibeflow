@@ -534,7 +534,7 @@ export async function launchSession(
             'vibeflow.serverUrl + API key, then relaunch.',
           );
         }
-        streamRegistry.start({
+        const handle = streamRegistry.start({
           providerKey: personaProviderKey as ProviderKey,
           persona,
           branch,
@@ -544,6 +544,15 @@ export async function launchSession(
           env: fullEnv,
           initPrompt,
           mcpConfigPath: mcpConfigExists ? mcpConfigPath : undefined,
+        });
+        // Optimistic "Starting…" row in Agent Fleet so the launch has
+        // immediate visual confirmation. Cleared automatically when
+        // `session_init` lands (or upgraded to "Failed" if the child
+        // exits before registering). See SessionsTreeProvider.addPending.
+        sessionsProvider.addPending({
+          handleId: handle.handleId,
+          personaKey: persona,
+          branch,
         });
       } else {
         if (sessionMode === 'chat_first' && !adapter) {
