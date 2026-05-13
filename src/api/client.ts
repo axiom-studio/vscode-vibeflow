@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { AuthService } from '../auth/AuthService.js';
+import { validateServerUrl } from '../auth/serverUrl.js';
 import { VibeFlowMcpClient } from './mcpClient.js';
 import type {
   VibeFlowProject,
@@ -62,7 +63,21 @@ export class VibeFlowClient {
       throw new Error('Not authenticated');
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    // #1947 Layer 2 — live-read + validate before every authenticated request.
+    // Constructor-cached `this.baseUrl` could be a stale pre-#1745 HTTP value,
+    // and a Settings-panel update of `vibeflow.serverUrl` should take effect on
+    // the next request without a window reload. Validate the LIVE value, refuse
+    // to attach the bearer if the scheme is insecure, and fetch against the
+    // live URL too. Original fix commit: 00c6041; restored after regression in
+    // commit e0ef3ad. scripts/check-security-guards.mjs prevents silent removal.
+    const liveUrl = vscode.workspace.getConfiguration('vibeflow')
+      .get<string>('serverUrl', this.baseUrl);
+    const check = validateServerUrl(liveUrl);
+    if (!check.ok) {
+      throw new Error(`Refusing to send bearer over insecure transport — ${check.message ?? 'invalid serverUrl'}`);
+    }
+
+    const response = await fetch(`${liveUrl}${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
