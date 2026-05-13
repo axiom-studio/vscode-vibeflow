@@ -1121,7 +1121,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
-  await tryAutoConnect();
+  // #1947 Layer 1 — activation preflight. The cached `vibeflow.serverUrl`
+  // may have been set to plaintext HTTP before #1745's WRITE-path
+  // validation landed. Re-validate the persisted value before auto-connect
+  // so the bearer token never rides a plain-HTTP transport silently.
+  // Original fix commit: 00c6041 (security-cleared by Sophie). Restored
+  // here after silent regression via commit e0ef3ad. Build-time guard at
+  // scripts/check-security-guards.mjs prevents another silent revert.
+  const cachedServerUrl = vscode.workspace.getConfiguration('vibeflow')
+    .get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+  const cachedCheck = validateServerUrl(cachedServerUrl);
+  if (!cachedCheck.ok) {
+    const message = cachedCheck.message ?? 'Insecure serverUrl.';
+    sessionStatusBar.setError(`Insecure serverUrl — open Setup to fix (${message})`);
+    void vscode.window.showWarningMessage(
+      `VibeFlow: ${message} Auto-connect skipped. Run "VibeFlow: Setup" to update.`,
+      'Open Setup',
+    ).then(choice => {
+      if (choice === 'Open Setup') {
+        void vscode.commands.executeCommand('vibeflow.setup');
+      }
+    });
+    console.warn('[VibeFlow] activation preflight skipped tryAutoConnect:', message);
+  } else {
+    await tryAutoConnect();
+  }
 
   // --- Session Reattachment ---
   // Detect .vibeflow-session-* files from a previous VSCode window
