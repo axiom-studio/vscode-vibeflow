@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import { MessageBubble } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
+import { personaAvatarUrl } from '../personaAvatars';
 import type {
   ChatPrompt,
   LogEntry,
@@ -41,6 +42,11 @@ export function SessionChatView() {
   // live-updated when the host pushes an `update` carrying chatDiffView
   // (Settings → Session Defaults → Chat — Diff View).
   const [diffView, setDiffView] = useState<'unified' | 'split'>(readInitialDiffView());
+  // axiomcloud base URL — used to resolve persona avatar portraits
+  // (`{serverUrl}/persona/professional/{Char}_{Role}.jpg`). Stamped on
+  // the body by the host on mount; never changes during a panel's life.
+  const serverUrl = document.body.dataset.vfServerUrl ?? '';
+  const personaAvatar = personaAvatarUrl(meta.personaKey, serverUrl);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   // Track whether the user is currently pinned to the bottom. Drives
@@ -145,7 +151,11 @@ export function SessionChatView() {
         <div className="chat-header">
           <div className="chat-header-title">
             <div className="chat-header-avatar">
-              {meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+              {personaAvatar ? (
+                <img src={personaAvatar} alt="" />
+              ) : (
+                meta.personaName.trim().charAt(0).toUpperCase() || 'A'
+              )}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="chat-header-name">{meta.personaName}</div>
@@ -187,13 +197,14 @@ export function SessionChatView() {
               <div className="chat-skeleton" />
             </div>
           ) : messages.length === 0 ? (
-            <EmptyState personaName={meta.personaName} />
+            <EmptyState personaName={meta.personaName} personaAvatarUrl={personaAvatar} />
           ) : (
             messages.map(msg => (
               <MessageBubble
                 key={msg.id}
                 msg={msg}
                 personaName={meta.personaName}
+                personaAvatarUrl={personaAvatar}
                 diffView={diffView}
                 onRespond={respond}
               />
@@ -244,6 +255,7 @@ export function SessionChatView() {
       <SideRail
         meta={meta}
         logs={logs}
+        personaAvatarUrl={personaAvatar}
         onStop={() => vscode.postMessage({ type: 'stop' })}
         onRefresh={() => vscode.postMessage({ type: 'refresh' })}
       />
@@ -251,11 +263,13 @@ export function SessionChatView() {
   );
 }
 
-function EmptyState({ personaName }: { personaName: string }) {
+function EmptyState({ personaName, personaAvatarUrl }: { personaName: string; personaAvatarUrl?: string }) {
   const glyph = personaName.trim().charAt(0).toUpperCase() || 'A';
   return (
     <div className="chat-empty">
-      <div className="chat-empty-avatar">{glyph}</div>
+      <div className="chat-empty-avatar">
+        {personaAvatarUrl ? <img src={personaAvatarUrl} alt="" /> : glyph}
+      </div>
       <div className="chat-empty-title">{personaName}</div>
       <div className="chat-empty-sub">
         Say hello or ask {personaName} to start on a work item.
