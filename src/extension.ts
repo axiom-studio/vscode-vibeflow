@@ -192,6 +192,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       code: payload.code,
       signal: payload.signal,
     })),
+    // Spawn-line + watchdog log so a stuck chat-first launch can be
+    // diagnosed without reading the registry source. Both render into
+    // the same Agent Activity output channel.
+    streamRegistry.onSpawn(payload => agentActivityChannel.appendSpawn({
+      providerKey: payload.providerKey,
+      persona: payload.persona,
+      branch: payload.branch,
+      binary: payload.binary,
+      argv: payload.argv,
+      cwd: payload.cwd,
+    })),
+    streamRegistry.onSilent(payload => agentActivityChannel.appendSilent({
+      providerKey: payload.providerKey,
+      persona: payload.persona,
+      branch: payload.branch,
+      elapsedMs: payload.elapsedMs,
+    })),
     // Track stderr per-handle so a chat-first launch that exits before
     // calling session_init can surface its last-line error in the
     // Agent Fleet "Failed" row tooltip — without this, the user has to

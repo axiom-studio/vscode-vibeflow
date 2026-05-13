@@ -148,6 +148,23 @@ export interface ProviderAdapter {
   buildArgs(opts: { initPrompt: string; mcpConfigPath?: string }): string[];
 
   /**
+   * Optional: payload to write to the child's stdin immediately after
+   * spawn. When defined, StreamJsonProcess writes the returned bytes
+   * and then calls `stdin.end()` to signal EOF.
+   *
+   * Required for providers whose stream-json INPUT format is mandatory
+   * (Claude Code: `--input-format stream-json` makes the binary read
+   * user messages from stdin as JSON-per-line; the positional prompt
+   * is ignored). Without writing + ending stdin, those binaries hang
+   * forever waiting for input.
+   *
+   * Adapters that pass the prompt via positional argv can omit this —
+   * StreamJsonProcess will close stdin after spawn either way so the
+   * binary can't block on `read(stdin)`.
+   */
+  buildStdinPayload?(opts: { initPrompt: string }): string;
+
+  /**
    * Translate a single raw JSON event from the provider's stdout into
    * the normalized event shape. Must NEVER throw — unknown shapes
    * return `{ kind: 'unknown', raw }` so the listener never crashes

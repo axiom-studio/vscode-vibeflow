@@ -117,6 +117,41 @@ export class AgentActivityOutputChannel implements vscode.Disposable {
     this.channel.info(`${prefix} exited (${suffix})`);
   }
 
+  /**
+   * Render the exact spawn command for a stream. Logged once per
+   * launch so the user can copy-paste the binary + argv into a shell
+   * if they need to repro outside the extension.
+   */
+  appendSpawn(opts: {
+    providerKey: ProviderKey;
+    persona: string;
+    branch: string;
+    binary: string;
+    argv: readonly string[];
+    cwd: string;
+  }): void {
+    const prefix = this.formatPrefix({ ...opts, event: { kind: 'unknown', raw: null } as NormalizedAgentEvent });
+    const quoted = opts.argv.map(a => /[\s'"]/.test(a) ? JSON.stringify(a) : a).join(' ');
+    this.channel.info(`${prefix} spawn (cwd=${opts.cwd}): ${opts.binary} ${quoted}`);
+  }
+
+  /**
+   * Render a "no events yet" warning fired by the registry's watchdog.
+   * Surfaces silent hangs (binary waiting on stdin, auth stuck) before
+   * the 30s session_init timeout kicks in.
+   */
+  appendSilent(opts: {
+    providerKey: ProviderKey;
+    persona: string;
+    branch: string;
+    elapsedMs: number;
+  }): void {
+    const prefix = this.formatPrefix({ ...opts, event: { kind: 'unknown', raw: null } as NormalizedAgentEvent });
+    this.channel.warn(
+      `${prefix} no events in ${Math.round(opts.elapsedMs / 1000)}s — binary may be hung. Check the spawn line above to repro.`,
+    );
+  }
+
   /** Reveal the Output channel in the VS Code panel. */
   show(): void {
     this.channel.show();
