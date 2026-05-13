@@ -649,6 +649,21 @@
           ],
           "description": "Controls terminal visibility when launching agent sessions"
         },
+        "vibeflow.session.headlessBacking": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "tmux",
+            "vscode"
+          ],
+          "enumDescriptions": [
+            "Use tmux when available (Unix only); fall back to hidden VS Code terminal otherwise",
+            "Always use tmux (Unix only; ignored on Windows)",
+            "Always use a hidden VS Code terminal — chat-first agents are tied to this IDE window's lifetime"
+          ],
+          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' is the recommended default. 'tmux' lets agents survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal."
+        },
         "vibeflow.worktree.baseDir": {
           "type": "string",
           "default": ".claude/worktrees",
