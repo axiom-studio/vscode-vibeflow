@@ -262,6 +262,11 @@
         "icon": "$(output)"
       },
       {
+        "command": "vibeflow.chat.askSelection",
+        "title": "VibeFlow: Ask Agent About Selection",
+        "icon": "$(comment-discussion)"
+      },
+      {
         "command": "vibeflow.openWorkItemPanel",
         "title": "VibeFlow: Open Work Item Panel"
       },
@@ -287,6 +292,13 @@
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "vibeflow.chat.askSelection",
+          "when": "editorHasSelection",
+          "group": "vibeflow@1"
+        }
+      ],
       "view/item/context": [
         {
           "command": "vibeflow.focusTerminal",
