@@ -60,10 +60,39 @@ const CHAT_PAGE_SIZE = 50;
  * Polling reuses the existing 5s `refreshPanel` interval; WebSocket realtime
  * is deferred to todo #1612.
  */
+/**
+ * Virtual scheme used by the `openDiff` flow. The chat's DiffBlock posts
+ * reconstructed before/after text — we register a TextDocumentContentProvider
+ * for this scheme so the synthetic docs can back VS Code's `vscode.diff`
+ * command without writing temp files to disk.
+ *
+ * URI shape: `vibeflow-diff:<token>/<side>?n=<n>` where `<token>` keys into
+ * `diffContents` and `<side>` is 'before' or 'after'. The `?n=` query is
+ * a monotonic counter so each open gets a fresh URI (otherwise VS Code
+ * caches the document and won't re-render new content).
+ */
+const DIFF_SCHEME = 'vibeflow-diff';
+
 export class SessionPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
   private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
   private chatState = new Map<string, ChatCursor>();
+
+  /**
+   * Synthetic before/after text for each pending diff open. Keyed by a
+   * URI-safe token the provider parses out of `uri.path`. Entries are
+   * never deleted — the chat session is short enough that the memory
+   * cost is trivial, and keeping them around lets the user reload the
+   * diff editor tab without losing the content.
+   */
+  private diffContents = new Map<string, string>();
+  private diffSequence = 0;
+  /**
+   * The provider + its registration disposable. Registered lazily on the
+   * first `open()` call (we only need it once per workspace; the provider
+   * itself is shared across all session panels).
+   */
+  private diffProviderDisposable?: vscode.Disposable;
   /**
    * Set of session ids that currently have a live stream-json subscription
    * (todo #1620). When live, the panel skips REST backfill polling for
@@ -115,6 +144,7 @@ export class SessionPanelManager implements vscode.Disposable {
    * Open (or focus) a session panel for the given session.
    */
   open(session: VibeFlowSession): void {
+    this.ensureDiffProviderRegistered();
     const key = session.session_id;
     const existing = this.panels.get(key);
     if (existing) {
@@ -233,6 +263,10 @@ export class SessionPanelManager implements vscode.Disposable {
           await this.openCommitDiff(msg.payload.hash);
           break;
         }
+        case 'openDiff': {
+          await this.openSyntheticDiff(msg.payload);
+          break;
+        }
         case 'chatMentionQuery': {
           // @mention autocomplete fetch (todo #1614). Host
           // resolves the right entity list / LSP call, returns
@@ -278,7 +312,7 @@ export class SessionPanelManager implements vscode.Disposable {
     if (this.projectId === undefined) {
       this.postToWebview(panel, {
         type: 'update',
-        payload: toReactUpdatePayload(session, []),
+        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting()),
       });
       return;
     }
@@ -289,8 +323,90 @@ export class SessionPanelManager implements vscode.Disposable {
     ]);
     this.postToWebview(panel, {
       type: 'update',
-      payload: toReactUpdatePayload(session, logs),
+      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting()),
     });
+  }
+
+  private readDiffViewSetting(): 'unified' | 'split' {
+    const v = vscode.workspace.getConfiguration('vibeflow').get<string>('chat.diffView', 'unified');
+    return v === 'split' ? 'split' : 'unified';
+  }
+
+  /**
+   * Register a `vibeflow-diff:` TextDocumentContentProvider once per
+   * panel-manager lifetime. The provider serves up the synthetic
+   * before/after documents the chat's DiffBlock "Open in Editor" flow
+   * stashes via `openSyntheticDiff` below — no temp files on disk.
+   *
+   * Idempotent: subsequent calls are no-ops. Registration is deferred
+   * until first `open()` so we don't pay the cost when no session
+   * panels have ever been opened.
+   */
+  private ensureDiffProviderRegistered(): void {
+    if (this.diffProviderDisposable) { return; }
+    const provider: vscode.TextDocumentContentProvider = {
+      provideTextDocumentContent: (uri: vscode.Uri): string => {
+        // URI shape: `vibeflow-diff:<token>/<side>` (we ignore the
+        // ?n=<n> query — it's only there to bust VS Code's doc cache).
+        const [token, side] = uri.path.replace(/^\//, '').split('/');
+        const key = `${token}/${side}`;
+        return this.diffContents.get(key) ?? '';
+      },
+    };
+    this.diffProviderDisposable = vscode.workspace.registerTextDocumentContentProvider(
+      DIFF_SCHEME,
+      provider,
+    );
+  }
+
+  /**
+   * Materialize the chat DiffBlock's reconstructed before/after pair
+   * as two virtual documents under the `vibeflow-diff:` scheme and open
+   * them in VS Code's native diff editor via the built-in `vscode.diff`
+   * command. The user gets the full power-review surface — scroll-sync,
+   * navigate-hunks, inline edits if they save-as, etc.
+   *
+   * The synthetic docs are kept in `diffContents` for the rest of the
+   * session so reload-from-tab still works. Memory cost is bounded by
+   * panel lifetime, which is short enough to ignore.
+   */
+  private async openSyntheticDiff(payload: {
+    title: string;
+    before: string;
+    after: string;
+    language?: string;
+    filePath?: string;
+  }): Promise<void> {
+    this.ensureDiffProviderRegistered();
+    const token = `d${++this.diffSequence}-${Date.now().toString(36)}`;
+    this.diffContents.set(`${token}/before`, payload.before);
+    this.diffContents.set(`${token}/after`, payload.after);
+    // Pretty path component in the URI so the diff editor's title
+    // shows something meaningful instead of a hash blob.
+    const tail = payload.filePath
+      ? encodeURIComponent(payload.filePath.replace(/^.*\//, ''))
+      : 'diff';
+    const leftUri = vscode.Uri.parse(`${DIFF_SCHEME}:/${token}/before/${tail}?n=${this.diffSequence}`);
+    const rightUri = vscode.Uri.parse(`${DIFF_SCHEME}:/${token}/after/${tail}?n=${this.diffSequence}`);
+    try {
+      await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, payload.title);
+      // Assign languageId AFTER the diff opens so syntax highlighting
+      // matches the file type. `setTextDocumentLanguage` is a no-op
+      // when language is undefined.
+      if (payload.language) {
+        try {
+          const leftDoc = await vscode.workspace.openTextDocument(leftUri);
+          const rightDoc = await vscode.workspace.openTextDocument(rightUri);
+          await vscode.languages.setTextDocumentLanguage(leftDoc, payload.language);
+          await vscode.languages.setTextDocumentLanguage(rightDoc, payload.language);
+        } catch {
+          // Unknown language id — leave docs as plain text.
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showWarningMessage(`Could not open diff: ${msg}`);
+    }
   }
 
   /**
@@ -839,6 +955,7 @@ export class SessionPanelManager implements vscode.Disposable {
     const taskStatus = session.last_message_at
       ? new Date(session.last_message_at).toLocaleTimeString()
       : '';
+    const diffView = this.readDiffViewSetting();
 
     const distUri = vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'dist');
     const scriptUri = webview.asWebviewUri(
@@ -881,6 +998,7 @@ export class SessionPanelManager implements vscode.Disposable {
   data-vf-status="${escapeHtml(status)}"
   data-vf-task-title="${escapeHtml(taskTitle)}"
   data-vf-task-status="${escapeHtml(taskStatus)}"
+  data-vf-diff-view="${escapeHtml(diffView)}"
 >
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -897,6 +1015,9 @@ export class SessionPanelManager implements vscode.Disposable {
     for (const panel of this.panels.values()) {
       panel.dispose();
     }
+    this.diffProviderDisposable?.dispose();
+    this.diffProviderDisposable = undefined;
+    this.diffContents.clear();
     this.panels.clear();
     this.pollTimers.clear();
     this.chatState.clear();
@@ -914,6 +1035,7 @@ export class SessionPanelManager implements vscode.Disposable {
 function toReactUpdatePayload(
   session: VibeFlowSession,
   logs: PanelLog[],
+  chatDiffView: 'unified' | 'split',
 ): {
   session: {
     sessionId: string;
@@ -926,6 +1048,7 @@ function toReactUpdatePayload(
     taskStatus: string;
   };
   logs: { text: string; time?: string; src?: string }[];
+  chatDiffView: 'unified' | 'split';
 } {
   const status: 'active' | 'stale' | 'inactive' = session.active
     ? (session.stale ? 'stale' : 'active')
@@ -948,5 +1071,6 @@ function toReactUpdatePayload(
       time: l.created_at ? new Date(l.created_at).toLocaleTimeString() : undefined,
       src: l.source ? `${l.source.type} #${l.source.id}` : undefined,
     })),
+    chatDiffView,
   };
 }
