@@ -965,6 +965,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // ACTIVATION: try auto-connect with stored credentials
   // =============================================
 
+  // Dev-mode convenience: if the extension is running under F5 (Run
+  // Extension) with no workspace folder open, auto-add the extension's
+  // own folder as a workspace. This avoids the empty-`workDir` failure
+  // mode in `launchSession` / `ensureMcpConfig` that surfaces as a
+  // "`.mcp.json` not found in ." warning on chat-first launches. Gated
+  // strictly on `ExtensionMode.Development` so shipped .vsix installs
+  // never see this behavior — replaces the `vibeflow.devMode.workspaceFolder`
+  // config knob removed in v1.0.0-R1 (commit `bfd42a0`) with a no-knob
+  // dev-only path. Override path with the `VIBEFLOW_DEV_FOLDER` env var
+  // when the project lives somewhere other than `--extensionDevelopmentPath`.
+  if (
+    context.extensionMode === vscode.ExtensionMode.Development &&
+    (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0)
+  ) {
+    const devFolder = process.env.VIBEFLOW_DEV_FOLDER ?? context.extensionUri.fsPath;
+    try {
+      vscode.workspace.updateWorkspaceFolders(0, 0, {
+        uri: vscode.Uri.file(devFolder),
+        name: 'vibeflow-dev',
+      });
+      console.log('[VibeFlow] Dev mode: auto-added workspace folder:', devFolder);
+    } catch (err) {
+      console.log('[VibeFlow] Dev mode: failed to add workspace folder —', err);
+    }
+  }
+
   await authService.initialize();
 
   // Import credentials/project from vibeflow-cli config
