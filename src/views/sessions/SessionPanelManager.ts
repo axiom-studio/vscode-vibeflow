@@ -956,6 +956,11 @@ export class SessionPanelManager implements vscode.Disposable {
       ? new Date(session.last_message_at).toLocaleTimeString()
       : '';
     const diffView = this.readDiffViewSetting();
+    // Avatar portraits live on the axiomcloud server (same source the
+    // dashboard's agent topology uses). Pass the base URL through so the
+    // chat header / message bubbles render the persona portrait instead
+    // of a single-letter glyph.
+    const serverUrl = this.client.getBaseUrl();
 
     const distUri = vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'dist');
     const scriptUri = webview.asWebviewUri(
@@ -979,7 +984,7 @@ export class SessionPanelManager implements vscode.Disposable {
     content="default-src 'none';
       style-src ${webview.cspSource} 'unsafe-inline';
       script-src 'nonce-${nonce}';
-      img-src ${webview.cspSource} data:;
+      img-src ${webview.cspSource} https: data:;
       font-src ${webview.cspSource};">
   <link rel="stylesheet" href="${styleUri}">
   <title>${escapeHtml(personaName)}</title>
@@ -999,6 +1004,7 @@ export class SessionPanelManager implements vscode.Disposable {
   data-vf-task-title="${escapeHtml(taskTitle)}"
   data-vf-task-status="${escapeHtml(taskStatus)}"
   data-vf-diff-view="${escapeHtml(diffView)}"
+  data-vf-server-url="${escapeHtml(serverUrl)}"
 >
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
