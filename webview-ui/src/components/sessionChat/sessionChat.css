@@ -5,13 +5,26 @@
 /* ============================== Layout ============================== */
 .session-chat-root {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: 1fr 340px;
   height: 100vh;
   width: 100%;
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
+  transition: grid-template-columns 200ms ease;
+}
+
+/* Rail collapsed: chat fills full width. Rail itself stays mounted
+   so its scroll position survives the toggle; we just hide it. */
+.session-chat-root.rail-collapsed {
+  grid-template-columns: 1fr 0px;
+}
+
+.session-chat-root.rail-collapsed .side-rail {
+  width: 0;
+  border-left: none;
+  overflow: hidden;
 }
 
 @media (max-width: 720px) {
@@ -26,8 +39,89 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  min-width: 0; /* allow scroller to shrink correctly */
+  min-width: 0;
+  /* CRITICAL: min-height: 0 makes `.chat-scroller` (flex:1, overflow-y:auto)
+     actually scroll inside a grid track. Without this, grid items default
+     to min-height: auto and the track expands to fit content instead of
+     the scroller overflowing. Same fix below for .side-rail. */
+  min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--vscode-panel-border);
+}
+
+/* Chat-column header — persona breadcrumb + rail-collapse toggle.
+   Sticks at the top of the chat column so you always know which
+   session you're looking at when scrolled deep. */
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+  flex-shrink: 0;
+}
+
+.chat-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-header-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--vscode-textLink-foreground);
+  color: var(--vscode-editor-background);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.chat-header-name {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header-meta {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-header-meta .dot {
+  margin: 0 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.chat-header-toggle {
+  background: transparent;
+  border: 1px solid var(--vscode-panel-border);
+  color: var(--vscode-foreground);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.chat-header-toggle:hover {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
 }
 
 .chat-load-older {
@@ -485,9 +579,14 @@
 .side-rail {
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  /* Match the chat-column fix: grid item with internal flex column needs
+     min-height: 0 + overflow:hidden so the inner scroll regions can
+     actually scroll instead of stretching the track. */
+  min-height: 0;
+  overflow: hidden;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   border-left: 1px solid var(--vscode-panel-border);
+  transition: width 200ms ease;
 }
 
 .rail-section {
@@ -572,12 +671,39 @@
   display: inline-block;
 }
 
-/* Current task */
+/* Current task — clamped to 4 lines by default, expand-on-click reveals
+   the full body. Clamp is purely visual; the dataset still holds the
+   complete string so expanding doesn't re-fetch anything. */
 .rail-task {
   font-size: 13px;
   line-height: 1.5;
   color: var(--vscode-foreground);
   word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.rail-task.is-collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rail-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 11px;
+  padding: 4px 0;
+  cursor: pointer;
+  margin-top: 4px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.rail-expand-btn:hover {
+  text-decoration: underline;
 }
 
 .rail-task-empty {
@@ -613,14 +739,49 @@
 }
 
 .rail-log-row {
-  padding: 6px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--vscode-panel-border);
   display: flex;
   flex-direction: column;
   gap: 2px;
+  cursor: pointer;
+  transition: background 100ms ease;
+  border-radius: 4px;
+  padding-left: 6px;
+  padding-right: 6px;
+  margin: 0 -6px;
+}
+
+.rail-log-row:hover {
+  background: var(--vscode-list-hoverBackground);
 }
 
 .rail-log-row:last-child { border-bottom: none; }
+
+/* Log rows clamp to 3 lines until expanded — keeps the rail compact
+   while still letting users drill into any entry that's been truncated. */
+.rail-log-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--vscode-font-family);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.rail-log-row.is-collapsed .rail-log-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rail-log-expand-hint {
+  font-size: 10px;
+  color: var(--vscode-textLink-foreground);
+  margin-top: 2px;
+  font-weight: 500;
+}
 
 .rail-log-src {
   display: inline-block;
@@ -638,14 +799,6 @@
 .rail-log-time {
   font-size: 10px;
   color: var(--vscode-descriptionForeground);
-}
-
-.rail-log-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--vscode-font-family);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 /* Action buttons */
