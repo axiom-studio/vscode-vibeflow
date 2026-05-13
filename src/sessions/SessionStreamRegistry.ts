@@ -99,6 +99,14 @@ export class SessionStreamRegistry implements vscode.Disposable {
     adapter: ProviderAdapter;
     env: Record<string, string>;
     initPrompt: string;
+    /**
+     * Absolute path to the workspace's `.mcp.json` file. Forwarded to
+     * the adapter's `buildArgs` so providers whose headless mode
+     * requires explicit MCP config (Claude `--mcp-config <path>`) can
+     * register the VibeFlow MCP server at spawn time. Without it the
+     * agent boots with no MCP servers and can't call session_init.
+     */
+    mcpConfigPath?: string;
   }): StreamHandle {
     const handleId = `${opts.providerKey}::${opts.persona}::${opts.branch}::${Date.now()}::${Math.random().toString(36).slice(2, 8)}`;
 
@@ -108,6 +116,7 @@ export class SessionStreamRegistry implements vscode.Disposable {
       cwd: opts.workDir,
       env: opts.env,
       initPrompt: opts.initPrompt,
+      mcpConfigPath: opts.mcpConfigPath,
     });
 
     const handle: StreamHandle = {

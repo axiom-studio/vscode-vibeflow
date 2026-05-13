@@ -47,8 +47,18 @@ export class StreamJsonProcess implements vscode.Disposable {
     cwd: string;
     env: Record<string, string>;
     initPrompt: string;
+    /**
+     * Absolute path to a `.mcp.json` config file. Forwarded to the
+     * adapter's `buildArgs` so providers whose headless mode requires
+     * an explicit `--mcp-config` flag (Claude Code) get it. Optional —
+     * adapters that don't yet wire MCP through argv ignore this.
+     */
+    mcpConfigPath?: string;
   }) {
-    const argv = opts.adapter.buildArgs({ initPrompt: opts.initPrompt });
+    const argv = opts.adapter.buildArgs({
+      initPrompt: opts.initPrompt,
+      mcpConfigPath: opts.mcpConfigPath,
+    });
 
     // Spawn detached: false (default) — the child lives under the
     // extension host process and dies when the host dies. If the user

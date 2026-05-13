@@ -518,6 +518,22 @@ export async function launchSession(
           `Attach from any terminal: tmux -L vibeflow-headless attach -t ${tmuxName}`,
         );
       } else if (sessionMode === 'chat_first' && adapter) {
+        // Pin the workspace `.mcp.json` so headless agents (Claude
+        // especially — see todo #1621) can register the VibeFlow MCP
+        // server explicitly. `ensureMcpConfig` already wrote this file
+        // earlier in launchSession; if it isn't there, the agent will
+        // boot with no MCP servers and the 30s session-poll will time
+        // out without ever opening the chat panel. Warn loudly so the
+        // user sees a path forward rather than a silent failure.
+        const mcpConfigPath = path.join(workDir, '.mcp.json');
+        const mcpConfigExists = fs.existsSync(mcpConfigPath);
+        if (!mcpConfigExists) {
+          vscode.window.showWarningMessage(
+            `VibeFlow: ${persona} chat-first launch — \`.mcp.json\` not found in ${workDir}. ` +
+            'The agent will likely fail to call session_init. Run "VibeFlow: Setup" or set ' +
+            'vibeflow.serverUrl + API key, then relaunch.',
+          );
+        }
         streamRegistry.start({
           providerKey: personaProviderKey as ProviderKey,
           persona,
@@ -527,6 +543,7 @@ export async function launchSession(
           adapter,
           env: fullEnv,
           initPrompt,
+          mcpConfigPath: mcpConfigExists ? mcpConfigPath : undefined,
         });
       } else {
         if (sessionMode === 'chat_first' && !adapter) {
