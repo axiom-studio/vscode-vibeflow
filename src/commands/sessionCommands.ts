@@ -13,6 +13,9 @@ import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
 import { killTmuxSession } from '../sessions/tmuxState.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
+import { SessionStreamRegistry } from '../sessions/SessionStreamRegistry.js';
+import { getAdapter } from '../sessions/providerAdapters/index.js';
+import type { ProviderKey } from '../sessions/providerAdapters/types.js';
 
 /**
  * Best-effort delete of `.vibeflow-session-{persona}` from the session's
@@ -115,6 +118,7 @@ export async function launchSession(
   terminalRegistry: TerminalRegistry,
   stickyModels: StickyModels,
   context: ContextProxy,
+  streamRegistry: SessionStreamRegistry,
   onProjectSwitched?: (project: DetectedProject) => void,
   prefill?: LaunchSessionPrefill,
 ): Promise<void> {
@@ -452,30 +456,61 @@ export async function launchSession(
     try {
       const personaProviderKey = personaProviders.get(persona) ?? provider.value;
       const model = stickyModels.getModel(persona);
-      const command = buildLaunchCommand(
-        binaries[personaProviderKey] ?? 'claude',
-        personaProviderKey,
-        sessionMode,
-      );
+      const binary = binaries[personaProviderKey] ?? 'claude';
 
       // Build the init prompt that tells the agent which persona and project to use.
-      // This is sent to the terminal after claude's TUI loads (~4s delay).
+      // For TUI mode this is sent to the terminal after the agent loads (~4s delay).
+      // For stream-json mode it's passed as a positional argv element to the agent CLI.
       const initPrompt = `Initialize a vibeflow session for project ${project.projectName} with persona ${persona} and follow the agent prompt. Call session_init with project_name: ${project.projectName}, persona: ${persona}, git_branch: ${branch} and begin Phase 1 immediately.`;
 
-      terminalRegistry.create({
-        persona,
-        branch,
-        provider: personaProviderKey,
-        workDir,
-        command,
-        env: {
-          ...env,
-          VIBEFLOW_PERSONA: persona,
-          VIBEFLOW_MODEL: model,
-        },
-        terminalMode,
-        initPrompt,
-      });
+      const fullEnv = {
+        ...env,
+        VIBEFLOW_PERSONA: persona,
+        VIBEFLOW_MODEL: model,
+      };
+
+      // Chat-first sessions spawn directly via SessionStreamRegistry in
+      // stream-json mode (todo #1620, doc #285). The hidden TUI terminal
+      // is replaced by a direct child_process.spawn — chat is the only
+      // surface, and the "Agent Activity" Output channel is the escape
+      // hatch for raw event visibility.
+      //
+      // If the chosen provider has no stream-json adapter yet, fall back
+      // to the hidden-TUI behavior shipped in #1611 (visible-terminal-
+      // wrapped agent with REST polling at 5s cadence) and warn the user
+      // once. The chat panel works either way; the only difference is
+      // sub-second realtime vs. 5s polling.
+      const adapter = sessionMode === 'chat_first' ? getAdapter(personaProviderKey) : undefined;
+
+      if (sessionMode === 'chat_first' && adapter) {
+        streamRegistry.start({
+          providerKey: personaProviderKey as ProviderKey,
+          persona,
+          branch,
+          workDir,
+          binary,
+          adapter,
+          env: fullEnv,
+          initPrompt,
+        });
+      } else {
+        if (sessionMode === 'chat_first' && !adapter) {
+          vscode.window.showWarningMessage(
+            `VibeFlow: ${personaProviderKey} has no stream-json adapter yet; chat-first mode for this persona falls back to a hidden TUI terminal with REST polling. Chat still works at ~5s cadence.`,
+          );
+        }
+        const command = buildLaunchCommand(binary, personaProviderKey, sessionMode);
+        terminalRegistry.create({
+          persona,
+          branch,
+          provider: personaProviderKey,
+          workDir,
+          command,
+          env: fullEnv,
+          terminalMode,
+          initPrompt,
+        });
+      }
 
       // Remember the mode so a future window-reload reattach (or a
       // right-click Restart) doesn't silently downgrade a YOLO agent

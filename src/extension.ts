@@ -18,6 +18,8 @@ import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
 import { openCli } from './commands/cliCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
+import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
+import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus, changePriority } from './commands/workItemCommands.js';
@@ -114,6 +116,63 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const terminalRegistry = new TerminalRegistry();
   const stickyModels = new StickyModels(contextProxy);
   context.subscriptions.push(terminalRegistry);
+
+  // --- Stream-JSON Registry + Agent Activity Output Channel ---
+  // For chat-first / headless sessions (todo #1611) we spawn the agent
+  // CLI in its `--output-format stream-json` mode and tail stdout as a
+  // live activity feed. The Output channel renders normalized events
+  // for users / maintainers; the SessionPanelManager subscribes for
+  // chat-relevant tool_use events. See VibeFlow document #285 for the
+  // full architectural rationale.
+  const agentActivityChannel = new AgentActivityOutputChannel();
+  const streamRegistry = new SessionStreamRegistry();
+  context.subscriptions.push(
+    agentActivityChannel,
+    streamRegistry,
+    // Wire every normalized event from every running agent into the
+    // Output channel. Non-chat events render here; chat-relevant
+    // events ALSO flow to the SessionPanelManager via a separate
+    // subscription wired below (commit D — for now this is the only
+    // consumer).
+    streamRegistry.onEvent(payload => agentActivityChannel.appendEvent({
+      providerKey: payload.providerKey,
+      persona: payload.persona,
+      branch: payload.branch,
+      agentSessionId: payload.agentSessionId,
+      event: payload.event,
+    })),
+    streamRegistry.onStderr(payload => {
+      const handle = streamRegistry.get(payload.handleId);
+      if (handle) {
+        agentActivityChannel.appendStderr({
+          providerKey: handle.providerKey,
+          persona: handle.persona,
+          branch: handle.branch,
+          chunk: payload.chunk,
+        });
+      }
+    }),
+    streamRegistry.onParseError(payload => {
+      const handle = streamRegistry.get(payload.handleId);
+      if (handle) {
+        agentActivityChannel.appendParseError({
+          providerKey: handle.providerKey,
+          persona: handle.persona,
+          branch: handle.branch,
+          line: payload.line,
+          err: payload.err,
+        });
+      }
+    }),
+    streamRegistry.onExit(payload => agentActivityChannel.appendExit({
+      providerKey: payload.providerKey,
+      persona: payload.persona,
+      branch: payload.branch,
+      agentSessionId: payload.agentSessionId,
+      code: payload.code,
+      signal: payload.signal,
+    })),
+  );
 
   // --- Focus Panels ---
   const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
@@ -503,7 +562,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void openCli(root);
         return;
       }
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, connectToProject);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, connectToProject);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -553,6 +612,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { sessionPanelManager.open(session); }
       else { vscode.window.showInformationMessage('VibeFlow: Session not found — it may have expired'); }
+    }),
+    vscode.commands.registerCommand('vibeflow.openAgentActivity', () => {
+      // Reveals the "VibeFlow Agent Activity" Output channel. For
+      // chat-first / stream-json sessions (todo #1620, doc #285) this
+      // is the escape hatch that shows raw normalized agent events
+      // (tool_use, tool_result, agent_text, api_retry, …) — the
+      // replacement for "reveal the hidden TUI terminal" since
+      // stream-json sessions don't have a terminal.
+      agentActivityChannel.show();
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
@@ -747,6 +815,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         terminalRegistry,
         stickyModels,
         contextProxy,
+        streamRegistry,
         connectToProject,
         { branch: wt.branch, workDir: wt.path },
       );
