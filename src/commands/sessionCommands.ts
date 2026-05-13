@@ -16,6 +16,8 @@ import type { ContextProxy } from '../core/ContextProxy.js';
 import { SessionStreamRegistry } from '../sessions/SessionStreamRegistry.js';
 import { getAdapter } from '../sessions/providerAdapters/index.js';
 import type { ProviderKey } from '../sessions/providerAdapters/types.js';
+import { TmuxBacking, buildHeadlessTmuxName } from '../sessions/tmuxBacking.js';
+import { detectTmuxAvailability } from '../sessions/tmuxAvailability.js';
 
 /**
  * Best-effort delete of `.vibeflow-session-{persona}` from the session's
@@ -119,6 +121,7 @@ export async function launchSession(
   stickyModels: StickyModels,
   context: ContextProxy,
   streamRegistry: SessionStreamRegistry,
+  tmuxBacking: TmuxBacking,
   onProjectSwitched?: (project: DetectedProject) => void,
   prefill?: LaunchSessionPrefill,
 ): Promise<void> {
@@ -482,7 +485,39 @@ export async function launchSession(
       // sub-second realtime vs. 5s polling.
       const adapter = sessionMode === 'chat_first' ? getAdapter(personaProviderKey) : undefined;
 
-      if (sessionMode === 'chat_first' && adapter) {
+      // Resolve headless backing for chat-first sessions (todo
+      // #1615). 'tmux' is opt-in only — 'auto' and 'vscode' both
+      // route to the existing flow (streamJsonProcess if an
+      // adapter exists, hidden VS Code terminal otherwise). On
+      // Windows or when tmux is missing, an explicit 'tmux'
+      // request degrades to 'vscode' with a one-time warning.
+      const headlessBacking = sessionMode === 'chat_first'
+        ? await resolveHeadlessBacking()
+        : 'vscode';
+
+      if (sessionMode === 'chat_first' && headlessBacking === 'tmux') {
+        // Tmux-backed chat-first launch. The agent runs inside a
+        // detached tmux session on the dedicated
+        // `vibeflow-headless` socket. Chat events route via REST
+        // polling (no stream-json — capturing JSONL from a tmux
+        // pane is unreliable when the pane is also showing the
+        // TUI). Trade-off the user explicitly opted into.
+        const tmuxName = buildHeadlessTmuxName(persona, branch, workDir);
+        const command = buildLaunchCommand(binary, personaProviderKey, sessionMode);
+        const fullCommand = initPrompt
+          ? `${command} ${shellQuote(initPrompt)}`
+          : command;
+        await tmuxBacking.start({
+          name: tmuxName,
+          workDir,
+          command: fullCommand,
+          env: fullEnv,
+        });
+        vscode.window.showInformationMessage(
+          `VibeFlow: ${persona} launched in tmux session "${tmuxName}" on socket "vibeflow-headless". ` +
+          `Attach from any terminal: tmux -L vibeflow-headless attach -t ${tmuxName}`,
+        );
+      } else if (sessionMode === 'chat_first' && adapter) {
         streamRegistry.start({
           providerKey: personaProviderKey as ProviderKey,
           persona,
@@ -859,6 +894,20 @@ async function killSessionInternal(
   // this session" flag through the call site.
   terminalRegistry.kill(session.persona_key, session.git_branch);
   killTmuxSession(session.agent_type ?? '', session.session_id);
+  // Headless tmux-backing (todo #1615) lives on a different socket
+  // (`vibeflow-headless`). Names follow `buildHeadlessTmuxName` —
+  // we recompute here from (persona, branch, workDir) so we don't
+  // need to thread another parameter through every kill call site.
+  // TmuxBacking is stateless (verb dispatcher only); local instance.
+  // Best-effort; no-op when the session was launched any other way.
+  const workDir = session.git_worktree_path
+    || session.working_directory
+    || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    || '';
+  if (workDir) {
+    const headlessName = buildHeadlessTmuxName(session.persona_key, session.git_branch, workDir);
+    void new TmuxBacking().kill(headlessName);
+  }
 
   // Sidecar handling depends on whether the user picked "Kill" or
   // "Kill & Forget". Default Kill preserves the sidecar to enable
@@ -1105,4 +1154,49 @@ export async function restartSession(
     const msg = err instanceof Error ? err.message : String(err);
     vscode.window.showErrorMessage(`VibeFlow: Failed to respawn terminal — ${msg}`);
   }
+}
+
+/**
+ * Resolve `vibeflow.session.headlessBacking` to a concrete
+ * 'tmux' | 'vscode' value (todo #1615).
+ *
+ * Conservative policy: 'auto' maps to 'vscode' — tmux is OFF by
+ * default per the feature-level architectural decision in
+ * #1610. Users who want tmux must set the config explicitly
+ * to 'tmux'. This avoids silently changing agent lifecycle
+ * semantics for users who happen to have tmux installed.
+ *
+ * If the user explicitly chose 'tmux' but tmux isn't available
+ * (Windows; not on PATH; missing), we fall back to 'vscode'
+ * with a one-time warning.
+ */
+async function resolveHeadlessBacking(): Promise<'tmux' | 'vscode'> {
+  const config = vscode.workspace.getConfiguration('vibeflow');
+  const setting = config.get<string>('session.headlessBacking', 'auto');
+  if (setting !== 'tmux') {
+    return 'vscode';
+  }
+  const probe = await detectTmuxAvailability();
+  if (!probe.available) {
+    vscode.window.showWarningMessage(
+      'VibeFlow: tmux backing requested but tmux is not available on this system. Falling back to a hidden VS Code terminal. Install tmux or change vibeflow.session.headlessBacking to suppress this warning.',
+    );
+    return 'vscode';
+  }
+  return 'tmux';
+}
+
+/**
+ * Minimal POSIX-shell single-quoter for the init prompt passed
+ * to tmux's `new-session <command>`. tmux invokes `$SHELL -c
+ * <command>` to run our argument string; we hand it a single
+ * argv element that's already correctly quoted for that shell.
+ *
+ * Pattern matches the existing `terminal.sendText` path in
+ * TerminalRegistry (line 103): wrap in single quotes, escape
+ * embedded `'` as `'\''`. Single-quotes are immune to all other
+ * shell metacharacters under POSIX rules.
+ */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
