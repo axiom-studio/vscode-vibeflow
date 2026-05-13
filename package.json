@@ -257,6 +257,11 @@
         "icon": "$(eye)"
       },
       {
+        "command": "vibeflow.openAgentActivity",
+        "title": "VibeFlow: Show Agent Activity",
+        "icon": "$(output)"
+      },
+      {
         "command": "vibeflow.openWorkItemPanel",
         "title": "VibeFlow: Open Work Item Panel"
       },
