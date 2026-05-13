@@ -4,7 +4,7 @@ import type { VibeFlowSession } from '../../api/types.js';
 import { listWorktrees, type Worktree } from '../../commands/worktreeCommands.js';
 import { getLiveTmuxSessions, buildTmuxName } from '../../sessions/tmuxState.js';
 
-type NodeType = 'branch' | 'session' | 'placeholder' | 'worktreeSection' | 'worktreeItem';
+type NodeType = 'branch' | 'session' | 'pendingSession' | 'placeholder' | 'worktreeSection' | 'worktreeItem';
 
 interface SessionNode {
   id: string;
@@ -19,6 +19,27 @@ interface SessionNode {
   contextValue?: string;
   session?: VibeFlowSession;
   worktree?: Worktree;
+  /** Set on pending-session nodes so commands can route to the right handle. */
+  pendingHandleId?: string;
+}
+
+/**
+ * In-flight stream-json launch awaiting its first `session_init` event.
+ * Surfaces in Agent Fleet as a "Starting…" or "Failed" row before the
+ * server-side session record exists — without this, chat-first launches
+ * gave the user zero visual feedback for 5-30s after clicking play.
+ */
+export interface PendingSession {
+  handleId: string;
+  personaKey: string;
+  branch: string;
+  /** 'starting' while we're waiting for session_init; 'failed' if the
+   *  child exited before registering (binary missing, auth, MCP config). */
+  state: 'starting' | 'failed';
+  /** Captured stderr / exit reason — surfaced in the row tooltip. */
+  failureMessage?: string;
+  /** Ms timestamp the launch was kicked off, for elapsed-time display. */
+  startedAt: number;
 }
 
 type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
@@ -132,6 +153,20 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     }).length;
   }
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Pending chat-first launches awaiting `session_init`. Surfaced as
+   * "Starting…" rows in the tree so the user has visual confirmation that
+   * a launch is in flight — without this, chat-first mode gave zero
+   * feedback between click and the first session record landing
+   * server-side (up to 30s, or never if the agent crashed before
+   * registering).
+   *
+   * Entries are added by `addPending` from the launch path, dropped by
+   * `clearPending` once the server-side session_init lands, or upgraded
+   * in-place to `state: 'failed'` by `markFailed` when the child exits
+   * before registering.
+   */
+  private pendingSessions = new Map<string, PendingSession>();
   // Session lookup by TreeItem id — needed because VSCode strips custom fields
   // from TreeItem arguments when passing to commands
   private sessionById = new Map<string, VibeFlowSession>();
@@ -158,6 +193,57 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
   refresh(): void {
     this.fetchAndRefresh();
+  }
+
+  /**
+   * Inject an optimistic "Starting…" row for a chat-first launch the
+   * moment we spawn the agent child process. The row is replaced by the
+   * real server-side session record once `session_init` lands.
+   */
+  addPending(info: { handleId: string; personaKey: string; branch: string }): void {
+    this.pendingSessions.set(info.handleId, {
+      handleId: info.handleId,
+      personaKey: info.personaKey,
+      branch: info.branch,
+      state: 'starting',
+      startedAt: Date.now(),
+    });
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Upgrade a pending row to a "Failed" state with the captured stderr /
+   * exit reason. Used when the agent child exits before emitting
+   * `session_init` — keeping the row visible (vs. silently dropping it)
+   * lets the user actually find the failure and open the output channel.
+   */
+  markFailed(handleId: string, failureMessage: string): void {
+    const existing = this.pendingSessions.get(handleId);
+    if (!existing) { return; }
+    this.pendingSessions.set(handleId, {
+      ...existing,
+      state: 'failed',
+      failureMessage,
+    });
+    this._onDidChangeTreeData.fire();
+  }
+
+  /**
+   * Drop a pending row — called when the server-side session record for
+   * this handle appears in `listSessions`, so the real session takes over.
+   */
+  clearPending(handleId: string): void {
+    if (this.pendingSessions.delete(handleId)) {
+      this._onDidChangeTreeData.fire();
+    }
+  }
+
+  /**
+   * Snapshot the current pending entries. Used by command handlers
+   * (e.g. dismiss-failed-pending) that need to enumerate failures.
+   */
+  getPendingSessions(): PendingSession[] {
+    return Array.from(this.pendingSessions.values());
   }
 
   connect(client: VibeFlowClient, projectId: number): void {
@@ -187,6 +273,23 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       this.sessions = await this.client.listSessions(this.projectId);
     } catch {
       // API error — keep stale data, don't clear the tree
+    }
+
+    // Drop pending entries whose real server-side session has now landed.
+    // This is the canonical "pending → real" transition: we hold the
+    // "Starting…" row visible until listSessions actually contains the
+    // new session, avoiding a flicker gap where session_init has fired
+    // locally but the server hasn't published yet.
+    for (const pending of this.pendingSessions.values()) {
+      if (pending.state !== 'starting') { continue; }
+      const realLanded = this.sessions.some(s =>
+        s.persona_key === pending.personaKey
+        && (s.git_branch || 'unknown') === pending.branch
+        && s.active,
+      );
+      if (realLanded) {
+        this.pendingSessions.delete(pending.handleId);
+      }
     }
 
     // Probe local tmux only when CLI mode is on. The probe is sync but
@@ -233,9 +336,10 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     this.sessionById.clear();
     this.worktreeById.clear();
 
-    const top: SessionNode[] = this.sessions.length === 0
-      ? this.buildPlaceholderTree()
-      : this.buildSessionTree();
+    const hasAnyRow = this.sessions.length > 0 || this.pendingSessions.size > 0;
+    const top: SessionNode[] = hasAnyRow
+      ? this.buildSessionTree()
+      : this.buildPlaceholderTree();
 
     const wtSection = this.buildWorktreeSection();
     if (wtSection) { top.push(wtSection); }
@@ -244,7 +348,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildSessionTree(): SessionNode[] {
-    // Group sessions by branch
+    // Group server sessions by branch.
     const byBranch = new Map<string, VibeFlowSession[]>();
     for (const s of this.sessions) {
       const branch = s.git_branch || 'unknown';
@@ -252,30 +356,93 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       list.push(s);
       byBranch.set(branch, list);
     }
+    // Merge pending entries — they live under the same branch grouping
+    // as real sessions, so a chat-first "Starting…" row appears right
+    // where the real row will land once the agent registers.
+    const pendingByBranch = new Map<string, PendingSession[]>();
+    for (const p of this.pendingSessions.values()) {
+      const branch = p.branch || 'unknown';
+      const list = pendingByBranch.get(branch) ?? [];
+      list.push(p);
+      pendingByBranch.set(branch, list);
+      // Ensure the branch exists in the outer map even if it has no
+      // server sessions yet — so the pending row has a parent.
+      if (!byBranch.has(branch)) { byBranch.set(branch, []); }
+    }
 
     const nodes: SessionNode[] = [];
     for (const [branch, branchSessions] of byBranch) {
-      // "active" in the branch label = anything with a live presence
-      // somewhere — backend heartbeat OR local tmux pane (in CLI mode).
-      // Without this, a branch with two stalled-but-running agents
-      // would show "0 active" while their nodes underneath are warning
-      // icons, which is confusing.
       const activeCount = branchSessions.filter(s => {
         const status = deriveStatus(s, this.liveTmuxSessions);
         return status === 'active' || status === 'stale' || status === 'stalled';
       }).length;
+      const pendingHere = pendingByBranch.get(branch) ?? [];
+      const startingCount = pendingHere.filter(p => p.state === 'starting').length;
+      const failedCount = pendingHere.filter(p => p.state === 'failed').length;
+
+      // Branch description: "N active · 1 starting" / "· 2 failed"
+      const descParts = [`${activeCount} active`];
+      if (startingCount) { descParts.push(`${startingCount} starting`); }
+      if (failedCount) { descParts.push(`${failedCount} failed`); }
+
+      const children: SessionNode[] = [
+        ...branchSessions.map(s => this.buildSessionNode(s)),
+        ...pendingHere.map(p => this.buildPendingNode(p)),
+      ];
       nodes.push({
         id: `branch-${branch}`,
         type: 'branch',
         label: branch,
-        description: `${activeCount} active`,
+        description: descParts.join(' · '),
         collapsibleState: vscode.TreeItemCollapsibleState.Expanded,
         contextValue: 'branch',
-        children: branchSessions.map(s => this.buildSessionNode(s)),
+        children,
       });
     }
 
     return nodes;
+  }
+
+  /**
+   * Render a pending chat-first launch as a tree row. Two display
+   * states:
+   *   - `starting` → spinning sync icon, "Starting…" status, persona
+   *     label as the title (no session_id yet).
+   *   - `failed`   → red error icon, captured stderr in the tooltip,
+   *     contextValue routes right-click to "Open Agent Activity" /
+   *     "Dismiss".
+   */
+  private buildPendingNode(p: PendingSession): SessionNode {
+    const personaLabel = PERSONA_LABELS[p.personaKey] ?? p.personaKey;
+    const elapsedSec = Math.floor((Date.now() - p.startedAt) / 1000);
+    const isFailed = p.state === 'failed';
+    const tooltip = new vscode.MarkdownString();
+    tooltip.appendMarkdown(`**${personaLabel}** — chat-first launch\n\n`);
+    tooltip.appendMarkdown(`- Branch: \`${p.branch}\`\n`);
+    if (isFailed) {
+      tooltip.appendMarkdown(`- Status: **Failed** to register session_init\n`);
+      if (p.failureMessage) {
+        tooltip.appendMarkdown(`- Reason: \`${truncate(p.failureMessage, 200)}\`\n`);
+      }
+      tooltip.appendMarkdown('\n> Open **VibeFlow: Agent Activity** Output channel for full stderr / exit detail.\n');
+    } else {
+      tooltip.appendMarkdown(`- Status: Waiting for the agent to call \`session_init\` (${elapsedSec}s)\n`);
+      tooltip.appendMarkdown('\n> If this row sticks for >30s, check the **VibeFlow: Agent Activity** Output channel.\n');
+    }
+    return {
+      id: `pending-${p.handleId}`,
+      type: 'pendingSession',
+      label: personaLabel,
+      description: isFailed
+        ? (p.failureMessage ? `failed — ${truncate(p.failureMessage, 60)}` : 'failed')
+        : `starting… (${elapsedSec}s)`,
+      tooltip,
+      iconId: isFailed ? 'error' : 'sync~spin',
+      iconColor: new vscode.ThemeColor(isFailed ? 'errorForeground' : 'editorInfo.foreground'),
+      collapsibleState: vscode.TreeItemCollapsibleState.None,
+      contextValue: isFailed ? 'pendingSessionFailed' : 'pendingSessionStarting',
+      pendingHandleId: p.handleId,
+    };
   }
 
   /**

@@ -192,6 +192,61 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       code: payload.code,
       signal: payload.signal,
     })),
+    // Track stderr per-handle so a chat-first launch that exits before
+    // calling session_init can surface its last-line error in the
+    // Agent Fleet "Failed" row tooltip — without this, the user has to
+    // open the Output channel to see why the process died.
+    (() => {
+      const lastStderrByHandle = new Map<string, string>();
+      const subStderr = streamRegistry.onStderr(payload => {
+        const text = payload.chunk.toString().trim();
+        if (text) { lastStderrByHandle.set(payload.handleId, text); }
+      });
+      const subInit = streamRegistry.onEvent(payload => {
+        // First session_init means the agent registered — trigger a
+        // fast Agent Fleet refresh so the user sees the real session
+        // row promptly without waiting for the 30s default poll.
+        // The "Starting…" row is dropped inside fetchAndRefresh once
+        // the new session actually appears in listSessions (avoids a
+        // flicker between local session_init and server propagation).
+        if (payload.event.kind === 'session_init' && payload.agentSessionId) {
+          lastStderrByHandle.delete(payload.handleId);
+          sessionsProvider.refresh();
+        }
+      });
+      const subExit = streamRegistry.onExit(payload => {
+        // Exit before session_init → the launch failed. Upgrade the
+        // pending row to "Failed" so the user can find the failure
+        // and dig into the Output channel.
+        if (!payload.agentSessionId) {
+          const lastErr = lastStderrByHandle.get(payload.handleId);
+          const reason = lastErr
+            ? lastErr
+            : payload.signal
+              ? `killed by signal ${payload.signal}`
+              : payload.code != null
+                ? `exited with code ${payload.code}`
+                : 'exited before session_init';
+          sessionsProvider.markFailed(payload.handleId, reason);
+          // Loud toast — chat-first has no terminal, so without this
+          // the user has zero idea the launch failed.
+          vscode.window.showErrorMessage(
+            `VibeFlow: ${payload.persona} chat-first launch failed — ${reason}`,
+            'Open Agent Activity',
+          ).then(action => {
+            if (action === 'Open Agent Activity') {
+              vscode.commands.executeCommand('vibeflow.openAgentActivity');
+            }
+          });
+        }
+        lastStderrByHandle.delete(payload.handleId);
+      });
+      return new vscode.Disposable(() => {
+        subStderr.dispose();
+        subInit.dispose();
+        subExit.dispose();
+      });
+    })(),
   );
 
   // --- Focus Panels ---
