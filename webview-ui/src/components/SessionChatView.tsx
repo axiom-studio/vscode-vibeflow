@@ -36,6 +36,11 @@ export function SessionChatView() {
   // Side rail visibility — collapse to give chat the full width.
   // Persisted within the panel's life only; reload starts expanded.
   const [railOpen, setRailOpen] = useState(true);
+  // User preference for how ```diff fences render inline in chat.
+  // Seeded from the body data attribute the host stamps in getHtml,
+  // live-updated when the host pushes an `update` carrying chatDiffView
+  // (Settings → Session Defaults → Chat — Diff View).
+  const [diffView, setDiffView] = useState<'unified' | 'split'>(readInitialDiffView());
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   // Track whether the user is currently pinned to the bottom. Drives
@@ -78,6 +83,9 @@ export function SessionChatView() {
           }
           if (Array.isArray(m.payload.logs)) {
             setLogs(m.payload.logs);
+          }
+          if (m.payload.chatDiffView === 'unified' || m.payload.chatDiffView === 'split') {
+            setDiffView(m.payload.chatDiffView);
           }
           break;
       }
@@ -186,6 +194,7 @@ export function SessionChatView() {
                 key={msg.id}
                 msg={msg}
                 personaName={meta.personaName}
+                diffView={diffView}
                 onRespond={respond}
               />
             ))
@@ -256,6 +265,11 @@ function EmptyState({ personaName }: { personaName: string }) {
       </div>
     </div>
   );
+}
+
+function readInitialDiffView(): 'unified' | 'split' {
+  const v = document.body.dataset.vfDiffView;
+  return v === 'split' ? 'split' : 'unified';
 }
 
 function readInitialMeta(): SessionMeta {

@@ -35,6 +35,7 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'worktree.baseDir': 'worktreeBaseDir',
   'worktree.autoCreate': 'worktreeAutoCreate',
   'worktree.cleanupOnKill': 'worktreeCleanupOnKill',
+  'chat.diffView': 'chatDiffView',
 };
 
 const TABS = [

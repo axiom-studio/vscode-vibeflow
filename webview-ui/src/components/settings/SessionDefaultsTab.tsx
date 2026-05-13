@@ -41,6 +41,21 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
           <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>seconds</span>
         </div>
       </Card>
+
+      <Card
+        title="Chat — Diff View"
+        description="How diff code blocks render inside the Session Chat panel. Either style supports an 'Open in Editor' button that opens VSCode's native diff editor for full-fidelity review."
+      >
+        <RadioGroup
+          name="chatDiffView"
+          value={data.chatDiffView ?? 'unified'}
+          options={[
+            { value: 'unified', label: 'Unified (default)', desc: 'Added / removed lines stacked vertically with +/- gutter' },
+            { value: 'split', label: 'Split / Side-by-side', desc: 'Before and after in two columns, aligned by hunk' },
+          ]}
+          onChange={v => onUpdate('chat.diffView', v)}
+        />
+      </Card>
     </div>
   );
 }

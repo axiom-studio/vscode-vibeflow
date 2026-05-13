@@ -37,6 +37,9 @@ export interface SettingsData {
   notifyAgentPrompts: boolean;
   notifyWorkComplete: boolean;
 
+  // Chat rendering preferences (session-defaults concern)
+  chatDiffView: 'unified' | 'split';
+
   // Models — per-persona sticky model preferences. `stickyModels`
   // maps persona_key -> model_id; `knownModels` is the full picker
   // catalog grouped by provider key (claude/codex/gemini/cursor).

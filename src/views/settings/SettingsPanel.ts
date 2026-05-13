@@ -138,6 +138,7 @@ export class SettingsPanel {
             'session.terminalMode',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
             'cli.enabled', 'cli.binaryPath',
+            'chat.diffView',
           ];
 
           if (settingsKeys.includes(key)) {
@@ -399,6 +400,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
+    chatDiffView: config.get<'unified' | 'split'>('chat.diffView', 'unified'),
     // Models tab data — empty objects when stickyModels isn't wired
     // so the tab can still render its empty-state UI.
     stickyModels: deps.stickyModels?.getAll() ?? {},
