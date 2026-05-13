@@ -12,6 +12,13 @@
 ### Changed
 - `launchSession` accepts an optional `streamRegistry` parameter. For chat-first launches with a registered provider adapter, the agent is now spawned via `StreamJsonProcess` (background, hidden) instead of the VS Code TUI Terminal. TUI launch remains the fallback when no adapter exists for the provider.
 
+### Added — IDE Superpowers in chat (todo #1613)
+- **Chat-message renderer**: bold / italic / inline-code / triple-backtick code fences / markdown links render correctly in the Session Panel transcript. CSP-safe pipeline (pure-function tokenizer in `src/views/sessions/chatRenderer.ts` + parallel JS port inlined in the nonced webview script).
+- **Clickable file paths**: `path/to/file.ts:42:7` patterns in messages become links. Click → opens the file in the editor at the line/column. Workspace-relative only — absolute paths and `..`-escape attempts are rejected at the host boundary.
+- **Clickable commit hashes**: `[a-f0-9]{7,40}` patterns become links rendered as the 8-char short form. Click → invokes the built-in `git.viewCommit` if the git extension is available, otherwise offers a terminal fallback with `git show --stat <hash>`. Hash is regex-validated before any git invocation.
+- **Right-click "Ask Agent About Selection"** (`vibeflow.chat.askSelection`): editor-context menu entry on any editor with a non-empty selection. Composes a fenced-code-block prompt with a workspace-relative `path:startLine-endLine` header, picks the open chat panel (Quick Pick if multiple), and seeds the textarea via the new `chatPrefill` host→webview message.
+- **Drag-to-attach**: drop files from the VS Code Explorer onto the chat input bar → inserts `[filename](workspace-relative-path)` at the cursor. The agent reads via its own filesystem tools — no server roundtrip.
+
 ## 1.0.0 (2026-05-08)
 
 First public Marketplace release.
