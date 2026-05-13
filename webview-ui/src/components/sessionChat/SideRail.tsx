@@ -73,8 +73,20 @@ export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Pr
 
       {/* Actions */}
       <div className="rail-section rail-actions">
-        <button onClick={onRefresh} className="rail-btn rail-btn-secondary">Refresh</button>
-        <button onClick={onStop} className="rail-btn rail-btn-danger">Stop</button>
+        <button
+          onClick={onRefresh}
+          className="rail-btn rail-btn-secondary"
+          title="Re-fetch chat history and the Activity rail right now. Auto-refresh already runs every 5s — use this for an immediate pull (e.g. after editing settings)."
+        >
+          Refresh
+        </button>
+        <button
+          onClick={onStop}
+          className="rail-btn rail-btn-danger"
+          title="Kill this agent session — terminates the local process (or tmux pane) and tells the server to release any claimed work items."
+        >
+          Stop
+        </button>
       </div>
     </div>
   );
