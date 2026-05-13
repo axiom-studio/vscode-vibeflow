@@ -254,6 +254,39 @@
   color: var(--vscode-editor-background);
 }
 
+/* Subtle "agent is autonomous" explainer rendered under a user message
+   that has been pending >60s — chat-first agents intentionally ignore
+   conversational messages and only respond to tracked work items, so
+   without this hint the pending badge reads like a bug. */
+.msg-pending-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground, #ffc107) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground, #ffc107) 35%, transparent);
+  color: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.msg-pending-hint-icon {
+  flex-shrink: 0;
+  color: var(--vscode-editorWarning-foreground, #ffc107);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.msg-pending-hint code {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+}
+
 .msg-content {
   font-size: 14px;
   line-height: 1.55;
