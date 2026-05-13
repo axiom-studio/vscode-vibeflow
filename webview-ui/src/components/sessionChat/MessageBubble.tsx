@@ -42,6 +42,16 @@ export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, on
   const author = isUser ? 'You' : personaName;
   const time = formatTime(msg.created_at);
 
+  // User → agent prompts can sit in `pending` indefinitely when the
+  // agent is autonomous: it picks up work items via `wait_for_work` and
+  // doesn't reply to conversational messages unless they match a tracked
+  // todo / issue. Without a hint, the `pending` badge reads like a bug
+  // ("the agent ignored me"). Surface a subtle explainer once the message
+  // has been pending past PENDING_HINT_THRESHOLD_MS.
+  const showStalePendingHint = isUser
+    && msg.status === 'pending'
+    && isStale(msg.created_at, PENDING_HINT_THRESHOLD_MS);
+
   return (
     <div className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}>
       <PersonaAvatar
@@ -77,6 +87,18 @@ export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, on
             >
               {msg.response_text}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {showStalePendingHint && (
+          <div className="msg-pending-hint" role="note">
+            <span className="msg-pending-hint-icon" aria-hidden="true">ⓘ</span>
+            <span>
+              The agent is running autonomously — it picks up tracked todos and
+              issues via <code>wait_for_work</code> and won&apos;t reply to
+              plain chat. Create a work item or attach this message to one to
+              get a response.
+            </span>
           </div>
         )}
 
@@ -171,6 +193,26 @@ function extractSingleCodeChild(children: ReactNode): { className?: string } | n
     return (only as { props: { className?: string } }).props;
   }
   return null;
+}
+
+/**
+ * How long a user → agent prompt must sit in `pending` before we
+ * surface the "agent is autonomous, won't reply to chitchat" hint.
+ * 60s is long enough to skip the normal-latency case (agent processes
+ * within ~5s when it's actually polling) but short enough to be
+ * useful — by the time you've sent a follow-up, the hint is already
+ * up on the first message.
+ *
+ * The hint re-evaluates on every parent re-render (poll-driven, every
+ * ~5s + on every chatAppend), so it appears within ~5s of crossing
+ * the threshold without needing a per-message timer.
+ */
+const PENDING_HINT_THRESHOLD_MS = 60 * 1000;
+
+function isStale(iso: string, thresholdMs: number): boolean {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) { return false; }
+  return Date.now() - t >= thresholdMs;
 }
 
 function avatarGlyph(isUser: boolean, personaName: string): string {
