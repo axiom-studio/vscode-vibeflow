@@ -206,7 +206,29 @@ export type SessionPanelHostMessage =
   // Pre-populate the chat textarea. Used by the askSelection command
   // (todo #1613) to seed a fenced-code-block prompt from an editor
   // selection. `focus: true` reveals + focuses the panel.
-  | { type: 'chatPrefill'; payload: { text: string; focus: boolean } };
+  | { type: 'chatPrefill'; payload: { text: string; focus: boolean } }
+  // Response to a `chatMentionQuery` from the webview (todo #1614).
+  // Results are filtered server-side resolution-ready entities;
+  // the picker just renders them. `requestId` matches the client's
+  // query so stale results from older queries are dropped.
+  | { type: 'chatMentionResults'; payload: { requestId: number; kind: string; items: MentionItem[] } };
+
+/**
+ * One entry in the @mention picker (todo #1614). Shared host↔webview
+ * shape: the host resolves the type-specific list (todos, issues,
+ * documents, etc., or VS Code workspace symbols) and the webview
+ * renders a single dropdown row per item.
+ *
+ * `id` is type-mixed: numeric for vibeflow entities, string for
+ * workspace symbols (`<relativePath>#<line>`). The mention-token
+ * formatter handles both cleanly.
+ */
+export interface MentionItem {
+  id: number | string;
+  name: string;
+  /** Optional secondary text — e.g. status, parent name. Plain text only. */
+  detail?: string;
+}
 
 export type SessionPanelClientMessage =
   // User submitted the inline chat input. `text` is non-empty (host trims
@@ -223,6 +245,13 @@ export type SessionPanelClientMessage =
   // User clicked a `[a-f0-9]{7,40}` hash in a chat message. Host
   // invokes `git.diff` for that commit (todo #1613, sub-feature 5).
   | { type: 'chatOpenCommit'; payload: { hash: string } }
+  // The @mention picker is asking the host to fetch suggestions
+  // (todo #1614). `kind` is one of MENTION_KINDS from
+  // mentionParser.ts; `query` is the post-colon filter string.
+  // `requestId` is a monotonic counter the webview attaches —
+  // host echoes it in `chatMentionResults` so stale responses
+  // can be dropped client-side.
+  | { type: 'chatMentionQuery'; payload: { requestId: number; kind: string; query: string } }
   | { type: 'stop' }
   | { type: 'refresh' };
 
