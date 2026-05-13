@@ -3,6 +3,13 @@
   "tasks": [
     {
       "type": "npm",
+      "script": "build:extension",
+      "group": "build",
+      "label": "npm: build:extension",
+      "problemMatcher": []
+    },
+    {
+      "type": "npm",
       "script": "dev",
       "group": "build",
       "label": "npm: dev",
