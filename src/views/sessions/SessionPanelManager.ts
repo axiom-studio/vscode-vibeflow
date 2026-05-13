@@ -728,6 +728,12 @@ export class SessionPanelManager implements vscode.Disposable {
       : '';
     const taskType = '';
     const taskId = '';
+    // Workspace folder fsPath for drag-to-attach path normalization
+    // (todo #1613, sub-feature 3). The webview converts dropped file
+    // URIs into workspace-relative paths when they fall inside this
+    // folder; absolute paths are kept as-is. Empty string when no
+    // folder is open (drag-to-attach degrades to filename-only).
+    const workspaceFsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -788,9 +794,11 @@ export class SessionPanelManager implements vscode.Disposable {
     .vf-chat-msg-body a.vf-chat-path, .vf-chat-msg-body a.vf-chat-commit { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
     .vf-chat-msg-body a.vf-chat-path:hover, .vf-chat-msg-body a.vf-chat-commit:hover { text-decoration: underline; }
     .vf-chat-msg-body a.vf-chat-commit { font-family: var(--vscode-editor-font-family); }
+    /* Drag-to-attach drop-target highlight (todo #1613, #4-3) */
+    .vf-chat-input-bar.vf-drop-target { outline: 2px dashed var(--vscode-focusBorder); outline-offset: -2px; }
   </style>
 </head>
-<body data-persona-label="${escapeHtml(personaName)}">
+<body data-persona-label="${escapeHtml(personaName)}" data-workspace-folder="${escapeHtml(workspaceFsPath)}">
   <div class="header">
     <h1>${escapeHtml(personaName)}</h1>
     <span class="meta">
@@ -899,6 +907,91 @@ export class SessionPanelManager implements vscode.Disposable {
           sendChat();
         }
       });
+    }
+
+    // Drag-to-attach (todo #1613, sub-feature 3). Drops on the
+    // input bar insert markdown references at the textarea cursor:
+    //   [filename](workspace-relative-path)
+    // The agent reads via its own tools — no upload, no MCP
+    // roundtrip, no attachment table mutation. We are already
+    // local; the agent has the same filesystem view.
+    //
+    // VS Code Explorer drops deliver paths via the
+    // text/uri-list MIME (one URI per line). Falls back to
+    // text/plain when the source uses that instead.
+    const workspaceFolder = document.body.dataset.workspaceFolder || '';
+    const inputBar = document.querySelector('.vf-chat-input-bar');
+    if (inputBar instanceof HTMLElement) {
+      inputBar.addEventListener('dragover', (e) => {
+        // Required to allow drop.
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'link';
+          e.preventDefault();
+          inputBar.classList.add('vf-drop-target');
+        }
+      });
+      inputBar.addEventListener('dragleave', () => {
+        inputBar.classList.remove('vf-drop-target');
+      });
+      inputBar.addEventListener('drop', (e) => {
+        e.preventDefault();
+        inputBar.classList.remove('vf-drop-target');
+        if (!e.dataTransfer) { return; }
+        const uriList = e.dataTransfer.getData('text/uri-list');
+        const plain = e.dataTransfer.getData('text/plain');
+        const raw = uriList || plain;
+        if (!raw) { return; }
+        const lines = raw.split(/\\r?\\n/).map(s => s.trim()).filter(s => s && !s.startsWith('#'));
+        const refs = lines.map(line => buildPathReference(line, workspaceFolder)).filter(Boolean);
+        if (refs.length === 0) { return; }
+        insertAtCursor(refs.join(' '));
+      });
+    }
+
+    function buildPathReference(line, workspace) {
+      let fsPath = line;
+      // file:// URI handling. URI decode (percent-escapes for spaces etc).
+      if (fsPath.startsWith('file://')) {
+        try { fsPath = decodeURIComponent(fsPath.replace(/^file:\\/\\//, '')); }
+        catch (_) { return ''; }
+      }
+      // Strip Windows drive-letter normalization quirk: file:///C:/foo
+      // decodes to /C:/foo — drop the leading slash if followed by
+      // drive-letter.
+      if (/^\\/[A-Za-z]:/.test(fsPath)) { fsPath = fsPath.slice(1); }
+      // Make workspace-relative when inside the workspace folder.
+      let display = fsPath;
+      if (workspace && fsPath.startsWith(workspace + '/')) {
+        display = fsPath.slice(workspace.length + 1);
+      } else if (workspace && fsPath === workspace) {
+        display = '.';
+      }
+      // Basename for the markdown link label.
+      const slash = display.lastIndexOf('/');
+      const base = slash >= 0 ? display.slice(slash + 1) : display;
+      if (!base) { return ''; }
+      // Escape closing brackets so the link parser doesn't break on
+      // paths containing ']' (rare but possible).
+      const label = base.replace(/\\]/g, '\\\\]');
+      const href = display.replace(/\\)/g, '\\\\)');
+      return '[' + label + '](' + href + ')';
+    }
+
+    function insertAtCursor(text) {
+      const ta = document.getElementById('vf-chat-textarea');
+      if (!(ta instanceof HTMLTextAreaElement)) { return; }
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? ta.value.length;
+      const before = ta.value.slice(0, start);
+      const after = ta.value.slice(end);
+      // Add a leading space if the cursor isn't at a whitespace
+      // boundary, and a trailing space so the next char isn't glued.
+      const leading = (start > 0 && !/\\s$/.test(before)) ? ' ' : '';
+      const trailing = (after.length === 0 || !/^\\s/.test(after)) ? ' ' : '';
+      ta.value = before + leading + text + trailing + after;
+      const caret = before.length + leading.length + text.length + trailing.length;
+      ta.setSelectionRange(caret, caret);
+      ta.focus();
     }
 
     function sendChat() {
