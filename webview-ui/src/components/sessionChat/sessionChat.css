@@ -623,6 +623,91 @@
   cursor: not-allowed;
 }
 
+/* ============================== Mention picker (todo #1614) ============================== */
+.chat-textarea-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+}
+
+.chat-textarea-wrap .chat-textarea {
+  flex: 1;
+}
+
+.mention-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 240px;
+  max-width: 480px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 4px 0;
+  z-index: 20;
+}
+
+.mention-picker-header {
+  padding: 6px 12px 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mention-picker-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+}
+
+.mention-row {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  background: transparent;
+  color: inherit;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.mention-row.selected,
+.mention-row:hover {
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.mention-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.mention-row-detail {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-variant: tabular-nums;
+}
+
+.mention-row.selected .mention-row-detail {
+  color: inherit;
+  opacity: 0.85;
+}
+
 /* ============================== Side rail ============================== */
 .side-rail {
   display: flex;

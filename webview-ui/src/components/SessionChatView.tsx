@@ -1,12 +1,22 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import { MessageBubble } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
 import { PersonaAvatar } from './sessionChat/PersonaAvatar';
+import { MentionPicker } from './sessionChat/MentionPicker';
 import { personaAvatarUrl } from '../personaAvatars';
+import {
+  MENTION_KINDS,
+  applyMention,
+  formatMentionToken,
+  parseMentionState,
+  type MentionKind,
+  type MentionState,
+} from './sessionChat/mentionParser';
 import type {
   ChatPrompt,
   LogEntry,
+  MentionItem,
   SessionMeta,
   ChatHostMessage,
   ChatClientMessage,
@@ -50,10 +60,152 @@ export function SessionChatView() {
   const personaAvatar = personaAvatarUrl(meta.personaKey, serverUrl);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   // Track whether the user is currently pinned to the bottom. Drives
   // auto-scroll-on-append + the visibility of the floating "scroll to
   // bottom" pill.
   const pinnedToBottomRef = useRef(true);
+
+  // @mention picker state (todo #1614). `cursor` is the textarea
+  // selectionStart snapshot taken on every change/keyup; combined with
+  // `draft` it drives `mentionState`. `mentionResults` holds the latest
+  // host response keyed by the most-recent requestId we've sent.
+  // `selectedIndex` tracks the highlighted row (resets to 0 whenever the
+  // visible list changes shape). `requestSeqRef` is monotonic; we drop
+  // stale `chatMentionResults` whose echoed requestId is older.
+  const [cursor, setCursor] = useState(0);
+  const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const lastQuerySignatureRef = useRef<string>('');
+  const requestSeqRef = useRef(0);
+  const latestRequestIdRef = useRef(0);
+  // Track the tokenStart the user dismissed via Escape. While the
+  // cursor remains inside the same @-token, the picker stays closed
+  // without erasing what they typed (matches VS Code / GitHub UX).
+  // Cleared automatically once the user moves past the token or
+  // starts a fresh @-token.
+  const dismissedTokenStartRef = useRef<number>(-1);
+
+  const rawMentionState: MentionState = useMemo(
+    () => parseMentionState(draft, cursor),
+    [draft, cursor],
+  );
+
+  // Apply the Escape-dismissal mask: same @-token, same start ⇒ keep closed.
+  const mentionState: MentionState = (
+    rawMentionState.active && dismissedTokenStartRef.current === rawMentionState.tokenStart
+  )
+    ? { active: false, tokenStart: -1, rawToken: '', query: '' }
+    : rawMentionState;
+
+  // Reset dismissal when the user starts a new @-token (different start)
+  // or leaves any @-token entirely.
+  useEffect(() => {
+    if (!rawMentionState.active || rawMentionState.tokenStart !== dismissedTokenStartRef.current) {
+      dismissedTokenStartRef.current = -1;
+    }
+  }, [rawMentionState.active, rawMentionState.tokenStart]);
+
+  // List of options visible in the picker (kind chooser vs item list).
+  // Used to bound selectedIndex during keyboard nav.
+  const visibleOptionCount = mentionState.active
+    ? (mentionState.kind === undefined
+        ? (MENTION_KINDS as readonly MentionKind[]).filter(k =>
+            mentionState.query === '' || k.startsWith(mentionState.query.toLowerCase()),
+          ).length
+        : mentionItems.length)
+    : 0;
+
+  // Reset selected index when the visible list changes shape.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [mentionState.kind, mentionState.query, mentionItems.length, mentionState.active]);
+
+  // Issue a host query whenever the kind+query signature changes while
+  // the picker is open. Skipping when `kind` is undefined (kind chooser
+  // is purely client-side — no host involvement until a kind is picked).
+  useEffect(() => {
+    if (!mentionState.active || mentionState.kind === undefined) {
+      // Picker closed or still on kind chooser — clear any prior items.
+      if (mentionItems.length > 0) { setMentionItems([]); }
+      if (mentionLoading) { setMentionLoading(false); }
+      return;
+    }
+    const signature = `${mentionState.kind} ${mentionState.query}`;
+    if (signature === lastQuerySignatureRef.current) { return; }
+    lastQuerySignatureRef.current = signature;
+    const requestId = ++requestSeqRef.current;
+    latestRequestIdRef.current = requestId;
+    setMentionLoading(true);
+    vscode.postMessage({
+      type: 'chatMentionQuery',
+      payload: { requestId, kind: mentionState.kind, query: mentionState.query },
+    });
+  }, [mentionState.active, mentionState.kind, mentionState.query, mentionItems.length, mentionLoading]);
+
+  function commitMention(index: number) {
+    if (!mentionState.active) { return; }
+    let token: string;
+    if (mentionState.kind === undefined) {
+      const filtered = (MENTION_KINDS as readonly MentionKind[]).filter(k =>
+        mentionState.query === '' || k.startsWith(mentionState.query.toLowerCase()),
+      );
+      const k = filtered[index];
+      if (!k) { return; }
+      // Pre-seed the chosen kind by replacing the @-token with `@kind:`.
+      const before = draft.slice(0, mentionState.tokenStart);
+      // Walk to the end of the current @-token in the source.
+      let end = mentionState.tokenStart + 1;
+      while (end < draft.length) {
+        const ch = draft[end];
+        if (ch === ' ' || ch === '\n' || ch === '\t' || ch === ')' || ch === ']') { break; }
+        end++;
+      }
+      const after = draft.slice(end);
+      const inserted = `@${k}:`;
+      const next = before + inserted + after;
+      const caret = before.length + inserted.length;
+      setDraft(next);
+      // Reset list state for the new kind; the host query effect
+      // will refire on the next render because (kind, query) changes.
+      setMentionItems([]);
+      requestAnimationFrame(() => {
+        const el = textareaRef.current;
+        if (!el) { return; }
+        el.focus();
+        el.setSelectionRange(caret, caret);
+        setCursor(caret);
+      });
+      return;
+    }
+    const item = mentionItems[index];
+    if (!item) { return; }
+    token = formatMentionToken(mentionState.kind, item.id, item.name);
+    const { next, caret } = applyMention(draft, mentionState, token);
+    setDraft(next);
+    setMentionItems([]);
+    lastQuerySignatureRef.current = '';
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) { return; }
+      el.focus();
+      el.setSelectionRange(caret, caret);
+      setCursor(caret);
+    });
+  }
+
+  function dismissMention() {
+    // Close the picker without modifying the text — the user keeps
+    // whatever @-token they were typing (it becomes literal text).
+    // The mask is keyed on tokenStart, so starting a new @-token
+    // reopens the picker automatically.
+    if (!rawMentionState.active) { return; }
+    dismissedTokenStartRef.current = rawMentionState.tokenStart;
+    setMentionItems([]);
+    lastQuerySignatureRef.current = '';
+    setMentionLoading(false);
+  }
 
   // Host message subscription. Mirrors the SessionPanelHostMessage union
   // from the host's webviewMessages.ts.
@@ -84,6 +236,13 @@ export function SessionChatView() {
         case 'chatPrefill':
           setDraft(m.payload.text);
           break;
+        case 'chatMentionResults': {
+          // Drop stale results — only the latest in-flight requestId wins.
+          if (m.payload.requestId !== latestRequestIdRef.current) { break; }
+          setMentionItems(m.payload.items);
+          setMentionLoading(false);
+          break;
+        }
         case 'update':
           if (m.payload.session) {
             setMeta(prev => ({ ...prev, ...(m.payload.session as Partial<SessionMeta>) }));
@@ -137,6 +296,36 @@ export function SessionChatView() {
   }
 
   function onTextareaKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // While the @mention picker is open, hijack Arrow/Enter/Escape so
+    // the textarea doesn't act on them. Enter no longer sends; it
+    // commits the highlighted picker row (todo #1614).
+    if (mentionState.active && visibleOptionCount > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(i => (i + 1) % visibleOptionCount);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(i => (i - 1 + visibleOptionCount) % visibleOptionCount);
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        commitMention(selectedIndex);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dismissMention();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        commitMention(selectedIndex);
+        return;
+      }
+    }
     // Plain Enter sends, Shift+Enter inserts a newline (Slack/Discord
     // /ChatGPT convention). Avoids the Cmd+Enter collision with
     // extensions like LeetCode that bind Cmd+Enter globally — webview
@@ -147,6 +336,12 @@ export function SessionChatView() {
       e.preventDefault();
       send();
     }
+  }
+
+  function snapshotCursor() {
+    const el = textareaRef.current;
+    if (!el) { return; }
+    setCursor(el.selectionStart);
   }
 
   return (
@@ -236,14 +431,33 @@ export function SessionChatView() {
         )}
 
         <div className="chat-input-row">
-          <textarea
-            className="chat-textarea"
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={onTextareaKey}
-            placeholder={`Message ${meta.personaName}…   (Enter to send · Shift+Enter for newline)`}
-            rows={2}
-          />
+          <div className="chat-textarea-wrap">
+            <MentionPicker
+              state={mentionState}
+              items={mentionItems}
+              selectedIndex={selectedIndex}
+              loading={mentionLoading}
+              onPick={commitMention}
+              onHoverIndex={setSelectedIndex}
+            />
+            <textarea
+              ref={textareaRef}
+              className="chat-textarea"
+              value={draft}
+              onChange={e => {
+                setDraft(e.target.value);
+                // Cursor moves with the change; snapshot after React
+                // applies the new value (selectionStart reflects post-edit).
+                snapshotCursor();
+              }}
+              onKeyUp={snapshotCursor}
+              onClick={snapshotCursor}
+              onSelect={snapshotCursor}
+              onKeyDown={onTextareaKey}
+              placeholder={`Message ${meta.personaName}…   (Enter to send · Shift+Enter for newline · @ to mention)`}
+              rows={2}
+            />
+          </div>
           <button
             className="chat-send"
             onClick={send}
