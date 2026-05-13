@@ -1,5 +1,9 @@
 import type { ProviderAdapter, ProviderKey } from './types.js';
 import { claudeAdapter } from './claude.js';
+import { codexAdapter } from './codex.js';
+import { geminiAdapter } from './gemini.js';
+import { qwenAdapter } from './qwen.js';
+import { cursorAdapter } from './cursor.js';
 
 /**
  * Provider-key → adapter registry.
@@ -8,13 +12,16 @@ import { claudeAdapter } from './claude.js';
  * callers must downgrade to REST polling and surface a one-time
  * warning. See `SessionStreamRegistry` for that policy.
  *
- * Adapters land incrementally per the commit plan in the parent todo:
- *   - Commit A: claude
- *   - Commit B: codex, gemini, qwen, cursor
+ * All five providers in the launch wizard's PROVIDERS list have a
+ * stream-json adapter registered here. See VibeFlow document #285
+ * §3.2 for the provider matrix.
  */
 const ADAPTERS: Partial<Record<ProviderKey, ProviderAdapter>> = {
   claude: claudeAdapter,
-  // codex, gemini, qwen, cursor land in commit B
+  codex: codexAdapter,
+  gemini: geminiAdapter,
+  qwen: qwenAdapter,
+  cursor: cursorAdapter,
 };
 
 /** Look up the adapter for a provider key; undefined if unsupported. */
