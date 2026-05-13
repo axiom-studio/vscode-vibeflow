@@ -7,6 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import type { ChatPrompt } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
+import { PersonaAvatar } from './PersonaAvatar';
 
 interface Props {
   msg: ChatPrompt;
@@ -43,13 +44,11 @@ export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, on
 
   return (
     <div className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}>
-      <div className="msg-avatar" aria-hidden="true">
-        {!isUser && personaAvatarUrl ? (
-          <img src={personaAvatarUrl} alt="" />
-        ) : (
-          avatarGlyph(isUser, personaName)
-        )}
-      </div>
+      <PersonaAvatar
+        className="msg-avatar"
+        src={isUser ? undefined : personaAvatarUrl}
+        fallbackGlyph={avatarGlyph(isUser, personaName)}
+      />
       <div className="msg-body">
         <div className="msg-header">
           <span className="msg-author">{author}</span>
