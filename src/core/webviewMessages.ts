@@ -191,7 +191,18 @@ export type WorkItemPanelClientMessage =
 import type { VibeFlowPrompt } from '../api/types.js';
 
 export type SessionPanelHostMessage =
-  | { type: 'update'; payload: { session: unknown; logs: unknown[] } }
+  | {
+      type: 'update';
+      payload: {
+        session: unknown;
+        logs: unknown[];
+        // User's current inline-diff layout preference. Threaded through
+        // each refresh so the webview can live-respond to the
+        // Settings → Session Defaults → Chat — Diff View radio without a
+        // panel reload.
+        chatDiffView?: 'unified' | 'split';
+      };
+    }
   // Initial chat load OR full replace after a session switch.
   // `messages` is oldest-first within the page (server-side ordering).
   | { type: 'chatTranscript'; payload: { messages: VibeFlowPrompt[]; hasMore: boolean } }
@@ -252,6 +263,22 @@ export type SessionPanelClientMessage =
   // host echoes it in `chatMentionResults` so stale responses
   // can be dropped client-side.
   | { type: 'chatMentionQuery'; payload: { requestId: number; kind: string; query: string } }
+  // Open a reconstructed before/after pair in VSCode's native diff editor
+  // (`vscode.diff`). Sent by the chat's DiffBlock "Open in Editor" button.
+  // `title` is shown in the diff editor tab title; `language` (optional)
+  // sets the languageId on the synthetic documents so syntax highlighting
+  // matches the file type. `filePath` is a hint, not a real file path —
+  // the host renders the diff against a virtual `vibeflow-diff:` scheme.
+  | {
+      type: 'openDiff';
+      payload: {
+        title: string;
+        before: string;
+        after: string;
+        language?: string;
+        filePath?: string;
+      };
+    }
   | { type: 'stop' }
   | { type: 'refresh' };
 

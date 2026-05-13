@@ -47,12 +47,31 @@ export type ChatHostMessage =
   | { type: 'chatPrepend'; payload: { messages: ChatPrompt[]; hasMore: boolean } }
   | { type: 'chatError'; payload: { message: string } }
   | { type: 'chatPrefill'; payload: { text: string; focus: boolean } }
-  | { type: 'update'; payload: { session: Partial<SessionMeta>; logs: LogEntry[] } };
+  | {
+      type: 'update';
+      payload: {
+        session: Partial<SessionMeta>;
+        logs: LogEntry[];
+        // Optional so older host builds (without the diff-view setting wired)
+        // don't break the type. Falls back to the body data attribute.
+        chatDiffView?: 'unified' | 'split';
+      };
+    };
 
 // Webview → host
 export type ChatClientMessage =
   | { type: 'chatSend'; payload: { text: string } }
   | { type: 'chatRespond'; payload: { promptId: string; text: string } }
   | { type: 'chatLoadOlder'; payload: { beforeId: number } }
+  | {
+      type: 'openDiff';
+      payload: {
+        title: string;
+        before: string;
+        after: string;
+        language?: string;
+        filePath?: string;
+      };
+    }
   | { type: 'stop' }
   | { type: 'refresh' };
