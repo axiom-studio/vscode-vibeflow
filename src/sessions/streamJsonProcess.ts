@@ -68,9 +68,18 @@ export class StreamJsonProcess implements vscode.Disposable {
     // extension host process and dies when the host dies. If the user
     // wants survival across IDE restart, that's tmux-backed mode
     // (todo #1615), tracked separately.
+    //
+    // Merge process.env first — `child_process.spawn` REPLACES the env
+    // when an explicit `env:` is set (it does not merge like
+    // vscode.window.createTerminal does). Without this, the spawned
+    // CLI has no PATH/HOME/USER and hangs trying to read its own
+    // config (~/.claude.json), resolve npx for MCP servers, etc. —
+    // the silent chat-first hang that triggered the 30s session_init
+    // timeout. opts.env wins on key collisions so VIBEFLOW_* overrides
+    // anything inherited.
     this.proc = spawn(opts.binary, argv, {
       cwd: opts.cwd,
-      env: opts.env,
+      env: { ...(process.env as Record<string, string>), ...opts.env },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
