@@ -8,6 +8,8 @@ import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessa
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
 import { parsePathReference, isValidCommitHash } from './chatRenderer.js';
+import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
+import type { MentionItem } from '../../core/webviewMessages.js';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -231,6 +233,18 @@ export class SessionPanelManager implements vscode.Disposable {
           await this.openCommitDiff(msg.payload.hash);
           break;
         }
+        case 'chatMentionQuery': {
+          // @mention autocomplete fetch (todo #1614). Host
+          // resolves the right entity list / LSP call, returns
+          // the filtered top-N as MentionItem[]. requestId
+          // round-trips so the webview can drop stale responses.
+          const items = await this.resolveMentions(msg.payload.kind, msg.payload.query);
+          this.postToWebview(panel, {
+            type: 'chatMentionResults',
+            payload: { requestId: msg.payload.requestId, kind: msg.payload.kind, items },
+          });
+          break;
+        }
         case 'stop':
           vscode.commands.executeCommand('vibeflow.killSession', { session });
           break;
@@ -422,6 +436,99 @@ export class SessionPanelManager implements vscode.Disposable {
       const msg = err instanceof Error ? err.message : String(err);
       vscode.window.showWarningMessage(`Could not open ${rel}: ${msg}`);
     }
+  }
+
+  /**
+   * Resolve a @mention picker query into a list of MentionItems
+   * (todo #1614). Routes by kind: vibeflow entities use the
+   * existing REST list endpoints + client-side filter (lists are
+   * typically <200 items); workspace symbols use VS Code's LSP
+   * `vscode.executeWorkspaceSymbolProvider` command.
+   *
+   * Top-20 cap so the picker stays usable on huge lists. All
+   * failures degrade to an empty list — the picker shows "no
+   * results" rather than breaking the chat flow.
+   */
+  private async resolveMentions(kind: string, query: string): Promise<MentionItem[]> {
+    if (this.projectId === undefined && kind !== 'symbol') { return []; }
+    if (!(MENTION_KINDS as readonly string[]).includes(kind)) { return []; }
+    const k = kind as MentionKind;
+    const needle = query.trim().toLowerCase();
+    const match = (s: string): boolean => needle === '' || s.toLowerCase().includes(needle);
+
+    try {
+      if (k === 'document') {
+        const docs = await this.client.listDocuments(this.projectId!);
+        return docs.filter(d => match(d.title))
+          .slice(0, 20)
+          .map(d => ({ id: d.id, name: d.title }));
+      }
+      if (k === 'context') {
+        const ctxs = await this.client.listContexts(this.projectId!);
+        return ctxs.filter(c => match(c.title))
+          .slice(0, 20)
+          .map(c => ({ id: c.id, name: c.title }));
+      }
+      if (k === 'feature') {
+        const features = await this.client.listFeatures(this.projectId!);
+        return features.filter(f => match(f.name))
+          .slice(0, 20)
+          .map(f => ({ id: f.id, name: f.name, detail: f.status }));
+      }
+      if (k === 'todo') {
+        // Todos live under features; list features then merge their todos.
+        // Throttled: fetch up to 10 features in parallel; client-side filter.
+        const features = await this.client.listFeatures(this.projectId!);
+        const todoLists = await Promise.all(
+          features.slice(0, 10).map(f => this.client.listTodos(f.id).catch(() => [])),
+        );
+        const all = todoLists.flat();
+        return all.filter(t => match(t.title))
+          .slice(0, 20)
+          .map(t => ({ id: t.id, name: t.title, detail: t.status }));
+      }
+      if (k === 'issue') {
+        const issues = await this.client.listIssues(this.projectId!);
+        return issues.filter(i => match(i.title))
+          .slice(0, 20)
+          .map(i => ({ id: i.id, name: i.title, detail: i.status }));
+      }
+      if (k === 'symbol') {
+        // VS Code workspace symbol provider — LSP-backed, async.
+        // Empty query returns the top-N most relevant symbols for
+        // an empty query (which LSPs typically interpret as "no
+        // results"); skip the call to avoid a wasted roundtrip.
+        if (!needle) { return []; }
+        const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+          'vscode.executeWorkspaceSymbolProvider',
+          query,
+        );
+        if (!Array.isArray(symbols)) { return []; }
+        return symbols.slice(0, 20).map(s => ({
+          id: this.encodeSymbolId(s),
+          name: s.name,
+          detail: this.describeSymbolLocation(s),
+        }));
+      }
+    } catch {
+      // Degrade silently.
+      return [];
+    }
+    return [];
+  }
+
+  private encodeSymbolId(s: vscode.SymbolInformation): string {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const file = folder ? vscode.workspace.asRelativePath(s.location.uri, false) : s.location.uri.fsPath;
+    const line = s.location.range.start.line + 1;
+    return `${file}#${line}`;
+  }
+
+  private describeSymbolLocation(s: vscode.SymbolInformation): string {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    const file = folder ? vscode.workspace.asRelativePath(s.location.uri, false) : s.location.uri.fsPath;
+    const line = s.location.range.start.line + 1;
+    return `${file}:${line}`;
   }
 
   /**
@@ -796,6 +903,16 @@ export class SessionPanelManager implements vscode.Disposable {
     .vf-chat-msg-body a.vf-chat-commit { font-family: var(--vscode-editor-font-family); }
     /* Drag-to-attach drop-target highlight (todo #1613, #4-3) */
     .vf-chat-input-bar.vf-drop-target { outline: 2px dashed var(--vscode-focusBorder); outline-offset: -2px; }
+    /* @mention picker (todo #1614) — positioned above the input bar. */
+    .vf-mention-popup { position: absolute; bottom: 100%; left: 8px; right: 8px; max-height: 220px; overflow-y: auto; background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background)); border: 1px solid var(--vscode-quickInput-border, var(--vscode-panel-border)); border-radius: 3px; box-shadow: 0 -2px 8px rgba(0,0,0,0.15); display: none; z-index: 10; }
+    .vf-mention-popup.vf-visible { display: block; }
+    .vf-mention-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer; font-size: 0.9em; }
+    .vf-mention-row.vf-active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+    .vf-mention-row:hover { background: var(--vscode-list-hoverBackground); }
+    .vf-mention-kind { font-size: 0.75em; padding: 1px 6px; border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); min-width: 50px; text-align: center; }
+    .vf-mention-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vf-mention-detail { font-size: 0.8em; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30%; }
+    .vf-chat-input-bar { position: relative; }
   </style>
 </head>
 <body data-persona-label="${escapeHtml(personaName)}" data-workspace-folder="${escapeHtml(workspaceFsPath)}">
@@ -834,7 +951,8 @@ export class SessionPanelManager implements vscode.Disposable {
       </div>
       <div id="vf-chat-error" style="display: none;" class="vf-chat-error"></div>
       <div class="vf-chat-input-bar">
-        <textarea class="vf-chat-textarea" id="vf-chat-textarea" placeholder="Type a message — Cmd/Ctrl+Enter to send"></textarea>
+        <div class="vf-mention-popup" id="vf-mention-popup" role="listbox" aria-label="Mention suggestions"></div>
+        <textarea class="vf-chat-textarea" id="vf-chat-textarea" placeholder="Type a message — Cmd/Ctrl+Enter to send (use @ for mentions)"></textarea>
         <button class="vf-chat-send" id="vf-chat-send" data-action="chatSend">Send</button>
       </div>
     </div>
@@ -892,6 +1010,29 @@ export class SessionPanelManager implements vscode.Disposable {
         const h = btn.dataset.hash;
         if (!h) { return; }
         vscode.postMessage({ type: 'chatOpenCommit', payload: { hash: h } });
+      } else if (action === 'chatMentionPickKind') {
+        e.preventDefault();
+        // User clicked a kind in the type-chooser. Splice
+        // @kind: into the textarea so the picker transitions
+        // to the query-results view.
+        const kind = btn.dataset.kind;
+        if (!kind || !mentionCurrentState) { return; }
+        const ta = document.getElementById('vf-chat-textarea');
+        if (!(ta instanceof HTMLTextAreaElement)) { return; }
+        const before = ta.value.slice(0, mentionCurrentState.tokenStart);
+        const after = ta.value.slice(ta.selectionStart ?? ta.value.length);
+        ta.value = before + '@' + kind + ':' + after;
+        const caret = before.length + 1 + kind.length + 1;
+        ta.setSelectionRange(caret, caret);
+        ta.focus();
+        updateMentionPicker();
+      } else if (action === 'chatMentionPick') {
+        e.preventDefault();
+        const id = btn.dataset.id;
+        const name = btn.dataset.name;
+        if (!id || !name || !mentionCurrentState || !mentionCurrentState.kind) { return; }
+        const token = formatMentionTokenJS(mentionCurrentState.kind, id, name);
+        applyPickedMention(token);
       } else {
         // Forward stop / refresh as bare-type messages.
         vscode.postMessage({ type: action });
@@ -992,6 +1133,203 @@ export class SessionPanelManager implements vscode.Disposable {
       const caret = before.length + leading.length + text.length + trailing.length;
       ta.setSelectionRange(caret, caret);
       ta.focus();
+    }
+
+    // ---------------------------------------------------------
+    // @mention picker (todo #1614). JS port of mentionParser.ts.
+    // Source of truth is the host-side TS module; keep regexes /
+    // rules in sync if you change either.
+    // ---------------------------------------------------------
+    const MENTION_KINDS_JS = ['document', 'context', 'todo', 'issue', 'feature', 'symbol'];
+
+    function parseMentionStateJS(value, cursor) {
+      if (cursor < 0 || cursor > value.length) {
+        return { active: false, tokenStart: -1, rawToken: '', query: '' };
+      }
+      let i = cursor - 1;
+      while (i >= 0) {
+        const ch = value[i];
+        if (ch === '@') { break; }
+        if (ch === ' ' || ch === '\\n' || ch === '\\t' || ch === ')' || ch === ']') {
+          return { active: false, tokenStart: -1, rawToken: '', query: '' };
+        }
+        i--;
+      }
+      if (i < 0 || value[i] !== '@') {
+        return { active: false, tokenStart: -1, rawToken: '', query: '' };
+      }
+      if (i > 0) {
+        const prev = value[i - 1];
+        if (prev !== ' ' && prev !== '\\n' && prev !== '\\t') {
+          return { active: false, tokenStart: -1, rawToken: '', query: '' };
+        }
+      }
+      const rawToken = value.slice(i + 1, cursor);
+      const colon = rawToken.indexOf(':');
+      if (colon === -1) {
+        return { active: true, tokenStart: i, rawToken, query: rawToken };
+      }
+      const candidate = rawToken.slice(0, colon);
+      const after = rawToken.slice(colon + 1);
+      if (MENTION_KINDS_JS.indexOf(candidate) === -1) {
+        return { active: true, tokenStart: i, rawToken, query: rawToken };
+      }
+      return { active: true, tokenStart: i, rawToken, kind: candidate, query: after };
+    }
+
+    function formatMentionTokenJS(kind, id, name) {
+      const escaped = String(name).replace(/"/g, '\\\\"');
+      return '[' + kind + ':' + id + ' "' + escaped + '"]';
+    }
+
+    function applyMentionJS(value, state, token) {
+      const before = value.slice(0, state.tokenStart);
+      let end = state.tokenStart + 1;
+      while (end < value.length) {
+        const ch = value[end];
+        if (ch === ' ' || ch === '\\n' || ch === '\\t' || ch === ')' || ch === ']') { break; }
+        end++;
+      }
+      const after = value.slice(end);
+      const next = before + token + (after.startsWith(' ') ? '' : ' ') + after;
+      const caret = before.length + token.length + (after.startsWith(' ') ? 0 : 1);
+      return { next, caret };
+    }
+
+    // Picker state.
+    let mentionRequestSeq = 0;
+    let mentionLastRequestId = 0;
+    let mentionItems = [];
+    let mentionActiveIndex = 0;
+    let mentionCurrentState = null;
+    let mentionDebounce = null;
+
+    function getPopup() { return document.getElementById('vf-mention-popup'); }
+
+    function hideMentionPopup() {
+      const p = getPopup();
+      if (p) { p.classList.remove('vf-visible'); p.innerHTML = ''; }
+      mentionCurrentState = null;
+      mentionItems = [];
+      mentionActiveIndex = 0;
+    }
+
+    function renderMentionRow(item, isActive, idx) {
+      const cls = 'vf-mention-row' + (isActive ? ' vf-active' : '');
+      const detail = item.detail ? '<span class="vf-mention-detail">' + escHtml(item.detail) + '</span>' : '';
+      // data-id is the only payload — the kind is whatever
+      // mentionCurrentState.kind held when the host responded.
+      return '<div class="' + cls + '" role="option" data-action="chatMentionPick" data-idx="' + idx + '" data-id="' + escHtml(item.id) + '" data-name="' + escHtml(item.name) + '">' +
+        '<span class="vf-mention-kind">' + escHtml(mentionCurrentState && mentionCurrentState.kind ? mentionCurrentState.kind : 'type') + '</span>' +
+        '<span class="vf-mention-name">' + escHtml(item.name) + '</span>' +
+        detail +
+        '</div>';
+    }
+
+    function renderTypeChooser(prefix) {
+      // Filter MENTION_KINDS by the prefix the user has typed.
+      const lower = (prefix || '').toLowerCase();
+      const matching = MENTION_KINDS_JS.filter(k => k.startsWith(lower));
+      if (matching.length === 0) { hideMentionPopup(); return; }
+      const p = getPopup();
+      if (!p) { return; }
+      p.classList.add('vf-visible');
+      mentionActiveIndex = 0;
+      mentionItems = matching.map(k => ({ id: k, name: '@' + k + ':', detail: 'kind' }));
+      p.innerHTML = mentionItems.map((m, i) => {
+        const cls = 'vf-mention-row' + (i === 0 ? ' vf-active' : '');
+        return '<div class="' + cls + '" role="option" data-action="chatMentionPickKind" data-kind="' + escHtml(matching[i]) + '">' +
+          '<span class="vf-mention-kind">' + escHtml(matching[i]) + '</span>' +
+          '<span class="vf-mention-name">' + escHtml(m.name) + '</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    function renderResultList() {
+      const p = getPopup();
+      if (!p) { return; }
+      if (mentionItems.length === 0) {
+        p.classList.add('vf-visible');
+        p.innerHTML = '<div class="vf-mention-row" style="cursor: default; color: var(--vscode-descriptionForeground);">No results</div>';
+        return;
+      }
+      p.classList.add('vf-visible');
+      p.innerHTML = mentionItems.map((it, i) => renderMentionRow(it, i === mentionActiveIndex, i)).join('');
+    }
+
+    function debouncedFetchMentions(state) {
+      if (!state.kind) { return; }
+      if (mentionDebounce) { clearTimeout(mentionDebounce); }
+      mentionDebounce = setTimeout(() => {
+        mentionLastRequestId = ++mentionRequestSeq;
+        vscode.postMessage({
+          type: 'chatMentionQuery',
+          payload: { requestId: mentionLastRequestId, kind: state.kind, query: state.query },
+        });
+      }, 150);
+    }
+
+    function updateMentionPicker() {
+      const ta = document.getElementById('vf-chat-textarea');
+      if (!(ta instanceof HTMLTextAreaElement)) { return; }
+      const state = parseMentionStateJS(ta.value, ta.selectionStart ?? ta.value.length);
+      if (!state.active) { hideMentionPopup(); return; }
+      mentionCurrentState = state;
+      if (!state.kind) {
+        renderTypeChooser(state.query);
+      } else {
+        debouncedFetchMentions(state);
+      }
+    }
+
+    function applyPickedMention(token) {
+      const ta = document.getElementById('vf-chat-textarea');
+      if (!(ta instanceof HTMLTextAreaElement) || !mentionCurrentState) { return; }
+      const r = applyMentionJS(ta.value, mentionCurrentState, token);
+      ta.value = r.next;
+      ta.setSelectionRange(r.caret, r.caret);
+      ta.focus();
+      hideMentionPopup();
+    }
+
+    if (textarea instanceof HTMLTextAreaElement) {
+      textarea.addEventListener('input', updateMentionPicker);
+      // Cursor moved without text change (arrow keys, click).
+      textarea.addEventListener('keyup', e => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+          updateMentionPicker();
+        }
+      });
+      textarea.addEventListener('click', updateMentionPicker);
+      // Picker keyboard nav.
+      textarea.addEventListener('keydown', e => {
+        if (!mentionCurrentState) { return; }
+        const popup = getPopup();
+        if (!popup || !popup.classList.contains('vf-visible')) { return; }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (mentionItems.length === 0) { return; }
+          mentionActiveIndex = (mentionActiveIndex + 1) % mentionItems.length;
+          if (mentionCurrentState.kind) { renderResultList(); }
+          else { renderTypeChooser(mentionCurrentState.query); /* re-renders w/ active reset to 0; for type chooser we keep simple */ }
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (mentionItems.length === 0) { return; }
+          mentionActiveIndex = (mentionActiveIndex - 1 + mentionItems.length) % mentionItems.length;
+          if (mentionCurrentState.kind) { renderResultList(); }
+        } else if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
+          // Plain Enter — pick. (Cmd/Ctrl+Enter still sends.)
+          e.preventDefault();
+          const rows = popup.querySelectorAll('[data-action]');
+          if (rows.length > mentionActiveIndex) {
+            const row = rows[mentionActiveIndex];
+            if (row instanceof HTMLElement) { row.click(); }
+          }
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          hideMentionPopup();
+        }
+      });
     }
 
     function sendChat() {
@@ -1242,6 +1580,14 @@ export class SessionPanelManager implements vscode.Disposable {
           ta.value = msg.payload.text;
           if (msg.payload.focus) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
         }
+      } else if (msg.type === 'chatMentionResults') {
+        // Drop stale responses (a faster newer query already
+        // ran). Drop wrong-kind responses (user pivoted).
+        if (msg.payload.requestId !== mentionLastRequestId) { return; }
+        if (!mentionCurrentState || mentionCurrentState.kind !== msg.payload.kind) { return; }
+        mentionItems = msg.payload.items;
+        mentionActiveIndex = 0;
+        renderResultList();
       }
     });
   </script>

@@ -12,6 +12,11 @@
 ### Changed
 - `launchSession` accepts an optional `streamRegistry` parameter. For chat-first launches with a registered provider adapter, the agent is now spawned via `StreamJsonProcess` (background, hidden) instead of the VS Code TUI Terminal. TUI launch remains the fallback when no adapter exists for the provider.
 
+### Added — @mention autocomplete in chat (todo #1614)
+- **Picker** in the Session Panel: type `@` to surface a kind chooser (`document` / `context` / `todo` / `issue` / `feature` / `symbol`); then `@<kind>:<query>` filters live. Arrow keys + Enter to select; Escape to dismiss; Cmd/Ctrl+Enter still sends.
+- **Wire-shape parity** with axiomcloud: selected mentions embed as `[<type>:<id> "<name>"]` so the server-side `parseAttachmentRefs` resolves them without any new endpoint.
+- **Workspace symbols** (IDE-only, not in axiomcloud): `@symbol:<query>` dispatches `vscode.executeWorkspaceSymbolProvider` and renders LSP results. The token id encodes `<relativePath>#<line>` so the agent can resolve the location locally.
+
 ### Added — IDE Superpowers in chat (todo #1613)
 - **Chat-message renderer**: bold / italic / inline-code / triple-backtick code fences / markdown links render correctly in the Session Panel transcript. CSP-safe pipeline (pure-function tokenizer in `src/views/sessions/chatRenderer.ts` + parallel JS port inlined in the nonced webview script).
 - **Clickable file paths**: `path/to/file.ts:42:7` patterns in messages become links. Click → opens the file in the editor at the line/column. Workspace-relative only — absolute paths and `..`-escape attempts are rejected at the host boundary.
