@@ -32,6 +32,7 @@ import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
 import { KanbanPanel } from './views/kanban/KanbanPanel.js';
 import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
+import { composeSelectionPrompt } from './views/sessions/chatRenderer.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { FeedStateController } from './views/activity/feedStateController.js';
@@ -625,6 +626,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // replacement for "reveal the hidden TUI terminal" since
       // stream-json sessions don't have a terminal.
       agentActivityChannel.show();
+    }),
+    vscode.commands.registerCommand('vibeflow.chat.askSelection', async () => {
+      // IDE superpower #1 (todo #1613): right-click an editor
+      // selection → composes a fenced-code-block prompt and seeds
+      // an open chat panel's textarea via `chatPrefill`.
+      //
+      // Resolution: prefer the active session panel; if multiple
+      // panels are open, ask the user which one. If none are
+      // open, point at vibeflow.launchSession.
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.selection.isEmpty) {
+        vscode.window.showInformationMessage('VibeFlow: Select some code first.');
+        return;
+      }
+      const openIds = sessionPanelManager.getOpenSessionIds();
+      if (openIds.length === 0) {
+        const action = await vscode.window.showInformationMessage(
+          'VibeFlow: Open a chat session first to send a selection.',
+          'Launch Session',
+        );
+        if (action === 'Launch Session') {
+          vscode.commands.executeCommand('vibeflow.launchSession');
+        }
+        return;
+      }
+      let targetId = openIds[0];
+      if (openIds.length > 1) {
+        const pick = await vscode.window.showQuickPick(
+          openIds.map(id => ({ label: id.slice(-12), description: 'session id (last 12)', id })),
+          { placeHolder: 'Send selection to which session?' },
+        );
+        if (!pick) { return; }
+        targetId = pick.id;
+      }
+      // Build the prompt — workspace-relative path keeps it
+      // portable when copied to axiomcloud / agent logs.
+      const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+      const rel = folder ? vscode.workspace.asRelativePath(editor.document.uri, false) : editor.document.uri.fsPath;
+      const text = composeSelectionPrompt({
+        relativePath: rel,
+        startLine: editor.selection.start.line,
+        endLine: editor.selection.end.line,
+        text: editor.document.getText(editor.selection),
+        languageId: editor.document.languageId,
+      });
+      const ok = sessionPanelManager.prefillChat(targetId, text);
+      if (!ok) {
+        vscode.window.showWarningMessage('VibeFlow: Could not seed the chat panel.');
+      }
     }),
     vscode.commands.registerCommand('vibeflow.createWorkItem', () => {
       createWorkItem(client, detector, workItemsProvider);
