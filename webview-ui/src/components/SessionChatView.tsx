@@ -33,6 +33,9 @@ export function SessionChatView() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [showScrollDown, setShowScrollDown] = useState(false);
+  // Side rail visibility — collapse to give chat the full width.
+  // Persisted within the panel's life only; reload starts expanded.
+  const [railOpen, setRailOpen] = useState(true);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   // Track whether the user is currently pinned to the bottom. Drives
@@ -128,9 +131,36 @@ export function SessionChatView() {
   }
 
   return (
-    <div className="session-chat-root">
-      {/* Chat column (75%) */}
+    <div className={`session-chat-root${railOpen ? '' : ' rail-collapsed'}`}>
+      {/* Chat column (75% — full width when rail is collapsed) */}
       <div className="chat-column">
+        <div className="chat-header">
+          <div className="chat-header-title">
+            <div className="chat-header-avatar">
+              {meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="chat-header-name">{meta.personaName}</div>
+              <div className="chat-header-meta">
+                {meta.model}
+                {meta.model && <span className="dot">·</span>}
+                <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>
+                  ⎇ {meta.branch}
+                </span>
+                <span className="dot">·</span>
+                <span style={{ textTransform: 'capitalize' }}>{meta.status}</span>
+              </div>
+            </div>
+          </div>
+          <button
+            className="chat-header-toggle"
+            onClick={() => setRailOpen(o => !o)}
+            aria-label={railOpen ? 'Collapse side rail' : 'Expand side rail'}
+          >
+            {railOpen ? 'Hide details ›' : '‹ Show details'}
+          </button>
+        </div>
+
         {hasMore && (
           <div className="chat-load-older">
             <button onClick={loadOlder}>Load older messages</button>
