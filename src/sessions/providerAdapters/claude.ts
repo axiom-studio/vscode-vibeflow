@@ -54,14 +54,28 @@ import type { ProviderAdapter, NormalizedAgentEvent } from './types.js';
 export const claudeAdapter: ProviderAdapter = {
   providerKey: 'claude',
 
-  buildArgs: ({ initPrompt }) => [
-    '--print',
-    '--input-format', 'stream-json',
-    '--output-format', 'stream-json',
-    '--verbose',
-    '--dangerously-skip-permissions',
-    initPrompt,
-  ],
+  buildArgs: ({ initPrompt, mcpConfigPath }) => {
+    // Headless `claude --print` does NOT auto-load `.mcp.json` from the
+    // workspace the way the TUI does — per
+    // https://docs.anthropic.com/en/docs/claude-code/headless-mode the
+    // `--mcp-config <file>` flag is required to register MCP servers in
+    // headless mode. Without it the agent boots with zero MCP servers,
+    // can't call `session_init` against the VibeFlow MCP, and the
+    // chat-first launch path (which polls the backend for a session
+    // row) times out after 30s. Fixed by todo #1621.
+    const args = [
+      '--print',
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--dangerously-skip-permissions',
+    ];
+    if (mcpConfigPath) {
+      args.push('--mcp-config', mcpConfigPath);
+    }
+    args.push(initPrompt);
+    return args;
+  },
 
   normalize: (raw: unknown): NormalizedAgentEvent => {
     if (!raw || typeof raw !== 'object') { return { kind: 'unknown', raw }; }

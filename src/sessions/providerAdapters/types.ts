@@ -134,8 +134,18 @@ export interface ProviderAdapter {
    * Build the argv array to pass to `child_process.spawn` for
    * stream-json headless mode. The init prompt is passed as a
    * positional argument or via stdin per the provider's convention.
+   *
+   * `mcpConfigPath` (optional): absolute path to a `.mcp.json` file.
+   * Claude Code's headless mode (and other providers that follow the
+   * same model) does NOT auto-discover MCP config in the workspace —
+   * it must be passed explicitly via the provider's `--mcp-config`
+   * flag. Without it, the spawned agent boots with zero MCP servers
+   * and can't call VibeFlow MCP tools like `session_init`. See todo
+   * #1621 for the gap that surfaced this. Adapters that don't yet
+   * wire the flag may safely ignore the field; they document their
+   * gap with a TODO in the body.
    */
-  buildArgs(opts: { initPrompt: string }): string[];
+  buildArgs(opts: { initPrompt: string; mcpConfigPath?: string }): string[];
 
   /**
    * Translate a single raw JSON event from the provider's stdout into
