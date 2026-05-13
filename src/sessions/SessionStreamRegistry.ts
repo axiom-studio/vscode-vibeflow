@@ -86,6 +86,42 @@ export class SessionStreamRegistry implements vscode.Disposable {
   readonly onExit = this._onExit.event;
 
   /**
+   * Fired immediately after a child process is spawned with the exact
+   * binary + argv + cwd used. Subscribers (the Agent Activity output
+   * channel) log this so users debugging a chat-first launch can
+   * reproduce the command verbatim in a shell.
+   */
+  private readonly _onSpawn = new vscode.EventEmitter<{
+    handleId: string;
+    providerKey: ProviderKey;
+    persona: string;
+    branch: string;
+    binary: string;
+    argv: readonly string[];
+    cwd: string;
+  }>();
+  readonly onSpawn = this._onSpawn.event;
+
+  /**
+   * Fired when a process has been alive for `WATCHDOG_MS` without
+   * emitting any stream event. Lets the user notice silent hangs
+   * (Claude waiting on stdin, binary mis-config) without needing to
+   * sit through the 30s session_init timeout. Subscribers should
+   * surface a warning into the Agent Activity output channel.
+   */
+  private readonly _onSilent = new vscode.EventEmitter<{
+    handleId: string;
+    providerKey: ProviderKey;
+    persona: string;
+    branch: string;
+    elapsedMs: number;
+  }>();
+  readonly onSilent = this._onSilent.event;
+
+  /** Watchdog window — fires once if no events arrive within this. */
+  private static readonly WATCHDOG_MS = 15000;
+
+  /**
    * Spawn a new agent process in stream-json mode and register it.
    * Returns the handle immediately; the `agentSessionId` field is
    * populated asynchronously when the stream emits `session_init`.
@@ -129,7 +165,40 @@ export class SessionStreamRegistry implements vscode.Disposable {
 
     this.streams.set(handleId, handle);
 
+    // Surface the exact command for diagnostics — copy-paste reproducible.
+    this._onSpawn.fire({
+      handleId,
+      providerKey: opts.providerKey,
+      persona: opts.persona,
+      branch: opts.branch,
+      binary: opts.binary,
+      argv: proc.argv,
+      cwd: opts.workDir,
+    });
+
+    // Watchdog: if the child emits zero events / stderr in WATCHDOG_MS,
+    // it's likely hung (binary waiting on stdin, auth stuck, network
+    // dead). Fire once so the output channel can surface a hint.
+    let firstSignal = false;
+    const watchdog = setTimeout(() => {
+      if (!firstSignal && this.streams.has(handleId)) {
+        this._onSilent.fire({
+          handleId,
+          providerKey: opts.providerKey,
+          persona: opts.persona,
+          branch: opts.branch,
+          elapsedMs: SessionStreamRegistry.WATCHDOG_MS,
+        });
+      }
+    }, SessionStreamRegistry.WATCHDOG_MS);
+    const markSignal = () => {
+      if (firstSignal) { return; }
+      firstSignal = true;
+      clearTimeout(watchdog);
+    };
+
     proc.onEvent(event => {
+      markSignal();
       // Bootstrap agentSessionId on the first init event.
       if (event.kind === 'session_init' && event.agentSessionId && !handle.agentSessionId) {
         handle.agentSessionId = event.agentSessionId;
@@ -146,14 +215,17 @@ export class SessionStreamRegistry implements vscode.Disposable {
     });
 
     proc.onParseError(({ line, err }) => {
+      markSignal();
       this._onParseError.fire({ handleId, line, err });
     });
 
     proc.onStderr(chunk => {
+      markSignal();
       this._onStderr.fire({ handleId, chunk });
     });
 
     proc.onExit(({ code, signal }) => {
+      markSignal();
       this._onExit.fire({
         handleId,
         agentSessionId: handle.agentSessionId,
@@ -223,5 +295,7 @@ export class SessionStreamRegistry implements vscode.Disposable {
     this._onParseError.dispose();
     this._onStderr.dispose();
     this._onExit.dispose();
+    this._onSpawn.dispose();
+    this._onSilent.dispose();
   }
 }

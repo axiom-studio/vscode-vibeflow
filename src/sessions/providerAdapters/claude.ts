@@ -54,7 +54,7 @@ import type { ProviderAdapter, NormalizedAgentEvent } from './types.js';
 export const claudeAdapter: ProviderAdapter = {
   providerKey: 'claude',
 
-  buildArgs: ({ initPrompt, mcpConfigPath }) => {
+  buildArgs: ({ mcpConfigPath }) => {
     // Headless `claude --print` does NOT auto-load `.mcp.json` from the
     // workspace the way the TUI does — per
     // https://docs.anthropic.com/en/docs/claude-code/headless-mode the
@@ -63,6 +63,15 @@ export const claudeAdapter: ProviderAdapter = {
     // can't call `session_init` against the VibeFlow MCP, and the
     // chat-first launch path (which polls the backend for a session
     // row) times out after 30s. Fixed by todo #1621.
+    //
+    // `--input-format stream-json` makes Claude read user messages from
+    // stdin as newline-delimited JSON; when this flag is set, the
+    // positional prompt argument is ignored. We write the agent prompt
+    // to stdin in `buildStdinPayload` below (and StreamJsonProcess
+    // closes stdin after writing so Claude can proceed to its single
+    // turn). Mixing positional + stream-json input made Claude hang
+    // forever waiting for stdin that never came — the cause of the
+    // 30s "session is taking longer than 30s to register" timeouts.
     const args = [
       '--print',
       '--input-format', 'stream-json',
@@ -73,8 +82,20 @@ export const claudeAdapter: ProviderAdapter = {
     if (mcpConfigPath) {
       args.push('--mcp-config', mcpConfigPath);
     }
-    args.push(initPrompt);
     return args;
+  },
+
+  buildStdinPayload: ({ initPrompt }) => {
+    // Documented Claude stream-json input shape:
+    //   { "type":"user", "message":{ "role":"user", "content":"..." } }
+    // Newline-terminated; one JSON object per line. After writing this
+    // single message, stdin is closed to signal "no more input" so
+    // Claude runs the one-turn agent loop and exits when the model
+    // stops emitting tool calls.
+    return JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: initPrompt },
+    }) + '\n';
   },
 
   normalize: (raw: unknown): NormalizedAgentEvent => {
