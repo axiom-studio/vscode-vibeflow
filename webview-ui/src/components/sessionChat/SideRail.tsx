@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { SessionMeta, LogEntry } from './sessionChatTypes';
+import { PersonaAvatar } from './PersonaAvatar';
 
 interface Props {
   meta: SessionMeta;
@@ -35,13 +36,11 @@ export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Pr
     <div className="side-rail">
       {/* Persona header */}
       <div className="rail-section rail-header">
-        <div className="rail-avatar">
-          {personaAvatarUrl ? (
-            <img src={personaAvatarUrl} alt="" />
-          ) : (
-            meta.personaName.trim().charAt(0).toUpperCase() || 'A'
-          )}
-        </div>
+        <PersonaAvatar
+          className="rail-avatar"
+          src={personaAvatarUrl}
+          fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+        />
         <div className="rail-header-text">
           <div className="rail-persona">{meta.personaName}</div>
           <div className="rail-meta">

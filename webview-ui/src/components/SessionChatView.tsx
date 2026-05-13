@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import { MessageBubble } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
+import { PersonaAvatar } from './sessionChat/PersonaAvatar';
 import { personaAvatarUrl } from '../personaAvatars';
 import type {
   ChatPrompt,
@@ -150,13 +151,11 @@ export function SessionChatView() {
       <div className="chat-column">
         <div className="chat-header">
           <div className="chat-header-title">
-            <div className="chat-header-avatar">
-              {personaAvatar ? (
-                <img src={personaAvatar} alt="" />
-              ) : (
-                meta.personaName.trim().charAt(0).toUpperCase() || 'A'
-              )}
-            </div>
+            <PersonaAvatar
+              className="chat-header-avatar"
+              src={personaAvatar}
+              fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+            />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="chat-header-name">{meta.personaName}</div>
               <div className="chat-header-meta">
@@ -267,9 +266,11 @@ function EmptyState({ personaName, personaAvatarUrl }: { personaName: string; pe
   const glyph = personaName.trim().charAt(0).toUpperCase() || 'A';
   return (
     <div className="chat-empty">
-      <div className="chat-empty-avatar">
-        {personaAvatarUrl ? <img src={personaAvatarUrl} alt="" /> : glyph}
-      </div>
+      <PersonaAvatar
+        className="chat-empty-avatar"
+        src={personaAvatarUrl}
+        fallbackGlyph={glyph}
+      />
       <div className="chat-empty-title">{personaName}</div>
       <div className="chat-empty-sub">
         Say hello or ask {personaName} to start on a work item.
