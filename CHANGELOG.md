@@ -12,6 +12,15 @@
 ### Changed
 - `launchSession` accepts an optional `streamRegistry` parameter. For chat-first launches with a registered provider adapter, the agent is now spawned via `StreamJsonProcess` (background, hidden) instead of the VS Code TUI Terminal. TUI launch remains the fallback when no adapter exists for the provider.
 
+### Added — Opt-in tmux backing for chat-first sessions (todo #1615)
+- **New config** `vibeflow.session.headlessBacking` with values `auto` (default — vscode terminal), `tmux` (opt-in; Unix only; agent survives IDE restart), `vscode` (force hidden terminal).
+- **`TmuxBacking`** wraps tmux operations on a dedicated `vibeflow-headless` socket (separate from CLI mode's `vibeflow` socket): `new-session -d`, `has-session`, `kill-session`, `list-sessions`, `send-keys -l`, `capture-pane`. Verb allowlist; session names validated against `^[a-zA-Z0-9_-]+$`; env-var names and values validated; argv-form `execFile` only (no shell).
+- **`detectTmuxAvailability()`** uses `tmux -V` via `execFile`; cached for the extension host lifetime; Windows returns `available: false` unconditionally.
+- **Session naming**: `vibeflow-<personaSlug>-<branchSlug>-<workDirHash8>` so two worktrees of the same branch coexist without collision.
+- **External observability**: a tmux-backed agent can be attached from any terminal via `tmux -L vibeflow-headless attach -t <name>`. Launch toast surfaces the exact command.
+- **`killSession`** cleans up both the VS Code terminal AND any tmux-backed session at the recomputed headless name (best-effort; no-op when nothing's there).
+- **Activation probe**: existing tmux-backed sessions left over from a previous IDE run are logged (not auto-reattached — the session record's `session_id` lives on the backend and is owned by the agent's `session_init`).
+
 ### Added — @mention autocomplete in chat (todo #1614)
 - **Picker** in the Session Panel: type `@` to surface a kind chooser (`document` / `context` / `todo` / `issue` / `feature` / `symbol`); then `@<kind>:<query>` filters live. Arrow keys + Enter to select; Escape to dismiss; Cmd/Ctrl+Enter still sends.
 - **Wire-shape parity** with axiomcloud: selected mentions embed as `[<type>:<id> "<name>"]` so the server-side `parseAttachmentRefs` resolves them without any new endpoint.

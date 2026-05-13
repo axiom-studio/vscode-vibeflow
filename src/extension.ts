@@ -20,6 +20,7 @@ import { openCli } from './commands/cliCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
 import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
+import { TmuxBacking } from './sessions/tmuxBacking.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
 import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus, changePriority } from './commands/workItemCommands.js';
@@ -117,6 +118,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const terminalRegistry = new TerminalRegistry();
   const stickyModels = new StickyModels(contextProxy);
   context.subscriptions.push(terminalRegistry);
+
+  // --- Tmux Backing (opt-in, todo #1615) ---
+  // For chat-first sessions when `vibeflow.session.headlessBacking`
+  // is set to `tmux`, the agent runs inside a detached tmux session
+  // on the `vibeflow-headless` socket instead of a hidden VS Code
+  // terminal. Killer benefit: agent survives IDE restart.
+  const tmuxBacking = new TmuxBacking();
+  context.subscriptions.push(tmuxBacking);
+  // Detect any pre-existing tmux-backed sessions left over from a
+  // previous IDE run. We don't try to re-register them as VS Code
+  // sessions (that requires the agent's session_id from session_init,
+  // which is owned by the backend) — we just log them so users
+  // know they're still alive and can attach externally.
+  void tmuxBacking.list().then(names => {
+    if (names.length > 0) {
+      console.log(`[VibeFlow] Found ${names.length} tmux-backed agent session(s) still alive: ${names.join(', ')}`);
+    }
+  });
 
   // --- Stream-JSON Registry + Agent Activity Output Channel ---
   // For chat-first / headless sessions (todo #1611) we spawn the agent
@@ -567,7 +586,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         void openCli(root);
         return;
       }
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, connectToProject);
+      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, tmuxBacking, connectToProject);
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -870,6 +889,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         stickyModels,
         contextProxy,
         streamRegistry,
+        tmuxBacking,
         connectToProject,
         { branch: wt.branch, workDir: wt.path },
       );
