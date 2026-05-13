@@ -291,7 +291,16 @@ export class SessionPanelManager implements vscode.Disposable {
           break;
         }
         case 'stop':
-          vscode.commands.executeCommand('vibeflow.killSession', { session });
+          // `vibeflow.killSession` resolves the target via
+          // sessionsProvider.getSessionById, which is keyed on the
+          // TreeView nodeId — `session-<session_id>`. The previous
+          // `{ session }` payload had no `.id` so the lookup silently
+          // returned undefined and Stop did nothing. Pass the matching
+          // tree id directly.
+          vscode.commands.executeCommand(
+            'vibeflow.killSession',
+            `session-${session.session_id}`,
+          );
           break;
         case 'refresh':
           this.refreshPanel(session, panel);
