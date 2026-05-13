@@ -175,7 +175,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- Focus Panels ---
-  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client);
+  // SessionPanelManager subscribes to streamRegistry for chat-first
+  // sessions (todo #1620) — tool_use events for prompt_user /
+  // respond_to_prompt route into the chat panel sub-millisecond,
+  // replacing the 5s REST polling for sessions with a live stream.
+  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry);
   const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider);
 
   // --- Activity poller (started when connected) ---

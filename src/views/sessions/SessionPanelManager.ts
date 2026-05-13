@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
+import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
+import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
+import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -59,6 +61,27 @@ export class SessionPanelManager implements vscode.Disposable {
   private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
   private chatState = new Map<string, ChatCursor>();
   /**
+   * Set of session ids that currently have a live stream-json subscription
+   * (todo #1620). When live, the panel skips REST backfill polling for
+   * THAT session — chat events come from the local stream tail instead.
+   * Initial transcript fetch still uses REST (history before stream
+   * started).
+   */
+  private streamLive = new Set<string>();
+  /**
+   * Pending `prompt_user` tool_use events waiting on a matching
+   * `tool_result` to resolve the server-assigned `prompt_id`. Indexed
+   * by `toolUseId`. Once the result arrives, we synthesize a
+   * VibeFlowPrompt with the canonical prompt_id and chatAppend it.
+   */
+  private pendingPromptUser = new Map<string, { sessionId: string; promptText: string }>();
+  /**
+   * Subscriptions to the stream registry — disposed when the panel
+   * manager itself is disposed.
+   */
+  private streamSubscriptions: vscode.Disposable[] = [];
+
+  /**
    * Project id for the currently-connected workspace. Set by
    * `setProjectId` from extension.ts once a project is detected — before
    * that, panels can render the static metadata header but log streaming
@@ -69,7 +92,15 @@ export class SessionPanelManager implements vscode.Disposable {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
-  ) {}
+    private readonly streamRegistry?: SessionStreamRegistry,
+  ) {
+    if (this.streamRegistry) {
+      this.streamSubscriptions.push(
+        this.streamRegistry.onEvent(payload => this.handleStreamEvent(payload)),
+        this.streamRegistry.onExit(payload => this.handleStreamExit(payload)),
+      );
+    }
+  }
 
   /** Wire (or rewire) the active project. Called from `connectToProject`. */
   setProjectId(projectId: number | undefined): void {
@@ -101,6 +132,13 @@ export class SessionPanelManager implements vscode.Disposable {
     panel.iconPath = vscode.Uri.joinPath(this.extensionUri, 'media', 'vibeflow-icon.svg');
 
     this.panels.set(key, panel);
+
+    // If a stream for this session is already live (e.g., the agent
+    // started before the panel opened), mark it so pollChatUpdates
+    // skips REST backfill once the initial transcript is fetched.
+    if (this.streamRegistry?.getBySessionId(key)) {
+      this.streamLive.add(key);
+    }
 
     panel.webview.html = this.getHtml(panel.webview, session);
 
@@ -235,6 +273,11 @@ export class SessionPanelManager implements vscode.Disposable {
     const state = this.chatState.get(sessionId);
     try {
       if (!state || !state.initialized) {
+        // Initial transcript fetch always uses REST — the stream-json
+        // tail only sees events from when it started; history before
+        // that comes from the server. After this fetch, we mark the
+        // panel initialized and (if a stream is live for this session)
+        // hand new-event delivery off to the local stream.
         const resp = await this.client.listSessionPrompts(projectId, sessionId, { limit: CHAT_PAGE_SIZE });
         this.chatState.set(sessionId, {
           newestId: resp.page.newest_id,
@@ -245,6 +288,12 @@ export class SessionPanelManager implements vscode.Disposable {
           type: 'chatTranscript',
           payload: { messages: resp.prompts, hasMore: resp.page.has_more },
         });
+      } else if (this.streamLive.has(sessionId)) {
+        // Stream is driving new events sub-millisecond — skip the
+        // REST backfill poll. If the stream dies, handleStreamExit
+        // clears `streamLive` and the next tick falls through to the
+        // after_id branch below.
+        return;
       } else if (state.newestId !== null) {
         const resp = await this.client.listSessionPrompts(projectId, sessionId, {
           after_id: state.newestId,
@@ -281,6 +330,186 @@ export class SessionPanelManager implements vscode.Disposable {
   /** Typed wrapper so a future drift in SessionPanelHostMessage fails the compile. */
   private postToWebview(panel: vscode.WebviewPanel, msg: SessionPanelHostMessage): void {
     panel.webview.postMessage(msg);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Stream-json subscription (todo #1620, doc #285).
+  //
+  // For chat-first / headless sessions, the agent CLI runs in
+  // stream-json mode under SessionStreamRegistry's lifetime. We tail
+  // its `tool_use` and `tool_result` events to render chat content
+  // sub-millisecond after the agent emits it — bypassing the 5s REST
+  // polling cadence WITHOUT bypassing the server (every tool_use is
+  // ALSO a network call to cloud.axiomstudio.ai, which is what
+  // populates the canonical vibeflow_prompts row that axiomcloud's
+  // web UI reads. We just learn about it earlier via the local pipe).
+  //
+  // De-duplication strategy: when a session has a live stream, REST
+  // backfill polling for THAT session is paused (see `pollChatUpdates`
+  // below). Initial transcript fetch still uses REST (history before
+  // the stream started). When the stream dies, REST polling resumes
+  // automatically on the next tick.
+  // ─────────────────────────────────────────────────────────────────────
+
+  private handleStreamEvent(payload: {
+    agentSessionId?: string;
+    event: NormalizedAgentEvent;
+  }): void {
+    if (!payload.agentSessionId) { return; }
+    const sessionId = payload.agentSessionId;
+
+    // Mark stream live on first session_init event we see.
+    if (payload.event.kind === 'session_init') {
+      this.streamLive.add(sessionId);
+    }
+
+    const panel = this.panels.get(sessionId);
+    if (!panel) {
+      // Panel for this session isn't open yet. Stream events still arrive
+      // — when the panel opens later, it'll pick up state via the
+      // initial REST fetch in `pollChatUpdates`. Drop the event here
+      // (the AgentActivityOutputChannel still renders it for the
+      // Output channel).
+      return;
+    }
+
+    const event = payload.event;
+
+    if (event.kind === 'tool_use') {
+      if (event.toolName === 'prompt_user') {
+        // Hold the prompt_text until the matching tool_result arrives
+        // with the server-assigned prompt_id. Typical latency:
+        // 100-500ms (one MCP roundtrip).
+        const input = event.input as { prompt_text?: string } | null | undefined;
+        const promptText = typeof input?.prompt_text === 'string' ? input.prompt_text : '';
+        if (promptText) {
+          this.pendingPromptUser.set(event.toolUseId, { sessionId, promptText });
+        }
+      } else if (event.toolName === 'respond_to_prompt') {
+        const input = event.input as { prompt_id?: string; response_text?: string } | null | undefined;
+        if (typeof input?.prompt_id === 'string') {
+          this.postToWebview(panel, {
+            type: 'chatAppend',
+            payload: {
+              messages: [this.synthesizeFromRespondToPrompt(sessionId, input)],
+            },
+          });
+        }
+      }
+    } else if (event.kind === 'tool_result') {
+      const pending = this.pendingPromptUser.get(event.toolUseId);
+      if (pending) {
+        this.pendingPromptUser.delete(event.toolUseId);
+        const promptId = this.extractPromptIdFromToolResult(event.content);
+        if (promptId) {
+          this.postToWebview(panel, {
+            type: 'chatAppend',
+            payload: {
+              messages: [this.synthesizeFromPromptUser(pending.sessionId, promptId, pending.promptText)],
+            },
+          });
+        }
+      }
+    }
+    // Other event kinds (agent_text, api_retry, turn_complete, error,
+    // unknown) flow only to the AgentActivityOutputChannel — they are
+    // operational narration, not chat content.
+  }
+
+  private handleStreamExit(payload: { agentSessionId?: string }): void {
+    if (!payload.agentSessionId) { return; }
+    this.streamLive.delete(payload.agentSessionId);
+    // Clear any pending tool_use entries for this session — the
+    // tool_result will never arrive.
+    for (const [toolUseId, pending] of this.pendingPromptUser) {
+      if (pending.sessionId === payload.agentSessionId) {
+        this.pendingPromptUser.delete(toolUseId);
+      }
+    }
+    // Surface a soft notice so the user knows realtime is down.
+    // Polling automatically resumes on the next refreshPanel tick.
+    const panel = this.panels.get(payload.agentSessionId);
+    if (panel) {
+      this.postToWebview(panel, {
+        type: 'chatError',
+        payload: { message: 'Agent stream closed — falling back to 5s polling. Relaunch the session for realtime.' },
+      });
+    }
+  }
+
+  private synthesizeFromPromptUser(sessionId: string, promptId: string, promptText: string): VibeFlowPrompt {
+    const now = new Date().toISOString();
+    return {
+      id: -1, // canonical id arrives via REST polling later (if the panel ever falls back)
+      created_at: now,
+      updated_at: now,
+      organization_id: '',
+      project_id: this.projectId ?? 0,
+      session_id: sessionId,
+      prompt_id: promptId,
+      prompt_text: promptText,
+      response_text: '',
+      status: 'pending',
+      responded_at: null,
+      source: 'agent',
+    };
+  }
+
+  private synthesizeFromRespondToPrompt(
+    sessionId: string,
+    input: { prompt_id?: string; response_text?: string },
+  ): VibeFlowPrompt {
+    const now = new Date().toISOString();
+    return {
+      id: -1,
+      created_at: now,
+      updated_at: now,
+      organization_id: '',
+      project_id: this.projectId ?? 0,
+      session_id: sessionId,
+      prompt_id: input.prompt_id ?? '',
+      prompt_text: '', // the original user→agent prompt text isn't in this tool_use; REST polling fills it
+      response_text: typeof input.response_text === 'string' ? input.response_text : '',
+      status: 'responded',
+      responded_at: now,
+      source: 'user', // we're seeing a response to a user→agent prompt
+    };
+  }
+
+  /**
+   * Tool-result content shape varies by provider; we look for a
+   * `prompt_id` field in common locations. Returns undefined if the
+   * tool didn't return one (in which case the chat-append is dropped
+   * — REST polling at 5s will surface it eventually).
+   */
+  private extractPromptIdFromToolResult(content: unknown): string | undefined {
+    if (!content) { return undefined; }
+    if (typeof content === 'string') {
+      try {
+        const parsed = JSON.parse(content) as Record<string, unknown>;
+        return typeof parsed.prompt_id === 'string' ? parsed.prompt_id : undefined;
+      } catch { return undefined; }
+    }
+    if (typeof content === 'object') {
+      const obj = content as Record<string, unknown>;
+      if (typeof obj.prompt_id === 'string') { return obj.prompt_id; }
+      // Some providers wrap the result in a content-blocks array.
+      const blocks = (obj as { content?: unknown }).content;
+      if (Array.isArray(blocks)) {
+        for (const block of blocks) {
+          if (typeof block === 'object' && block !== null) {
+            const b = block as Record<string, unknown>;
+            if (typeof b.text === 'string') {
+              try {
+                const parsed = JSON.parse(b.text) as Record<string, unknown>;
+                if (typeof parsed.prompt_id === 'string') { return parsed.prompt_id; }
+              } catch { /* skip non-JSON block */ }
+            }
+          }
+        }
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -648,6 +877,8 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   dispose(): void {
+    for (const sub of this.streamSubscriptions) { sub.dispose(); }
+    this.streamSubscriptions = [];
     for (const timer of this.pollTimers.values()) {
       clearInterval(timer);
     }
@@ -657,5 +888,7 @@ export class SessionPanelManager implements vscode.Disposable {
     this.panels.clear();
     this.pollTimers.clear();
     this.chatState.clear();
+    this.streamLive.clear();
+    this.pendingPromptUser.clear();
   }
 }

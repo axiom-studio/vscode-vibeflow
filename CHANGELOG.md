@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added — Chat-First Mode realtime (todo #1620, doc #285)
+- **Provider-agnostic stream-json transport** for chat-first sessions: spawn the agent CLI in line-delimited JSONL mode, parse native events through pure-function adapters, normalize to a single `NormalizedAgentEvent` discriminated union. Supported providers: Claude Code (`claude --print --input-format stream-json --output-format stream-json --verbose`), OpenAI Codex (`codex exec --json --yolo`), Gemini CLI / Qwen Code (`gemini|qwen -p "<init>" --output-format stream-json --yolo`), Cursor Agent (`cursor-agent -p "<init>" --output-format stream-json --yolo --approve-mcps`).
+- **`SessionStreamRegistry`** — owns per-session `StreamJsonProcess` child handles, indexed by both `handleId` and provider-assigned `agentSessionId`. Aggregates `onEvent` / `onStderr` / `onParseError` / `onExit` event emitters with auto-cleanup on exit.
+- **`AgentActivityOutputChannel`** — single `LogOutputChannel` ("VibeFlow Agent Activity") receiving every adapter event with session-aware prefixes (`[provider/persona@branch:sessionTail]`). Per-event-kind rendering: info for `session_init` / `tool_use`, debug for `agent_text` / `unknown`, warn for `api_retry` / stderr, error for `error` / parse failures. Credentials redacted on every write.
+- **`vibeflow.openAgentActivity`** command (with `$(output)` icon) reveals the Agent Activity output channel for stream observability.
+- **SessionPanelManager stream subscription** — for sessions with a live stream, `prompt_user` and `respond_to_prompt` tool_use events route directly into the embedded chat panel sub-millisecond after the agent emits them, bypassing the 5s REST polling cadence. Initial transcript fetch still uses REST (history before the stream started). When the stream dies (`onExit`), REST polling auto-resumes on the next tick and a soft "stream closed — falling back to 5s polling" notice surfaces in the chat error bar.
+
+### Changed
+- `launchSession` accepts an optional `streamRegistry` parameter. For chat-first launches with a registered provider adapter, the agent is now spawned via `StreamJsonProcess` (background, hidden) instead of the VS Code TUI Terminal. TUI launch remains the fallback when no adapter exists for the provider.
+
 ## 1.0.0 (2026-05-08)
 
 First public Marketplace release.
