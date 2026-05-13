@@ -40,6 +40,19 @@ export interface SessionMeta {
   taskStatus: string;
 }
 
+// One row of the @mention picker (todo #1614). Host resolves the
+// kind-specific list (vibeflow entities via REST, or VS Code workspace
+// symbols via LSP) and the React picker renders one row per item.
+// `id` is type-mixed: numeric for vibeflow entities, string
+// `<relativePath>#<line>` for workspace symbols. The token formatter
+// handles both cleanly.
+export interface MentionItem {
+  id: number | string;
+  name: string;
+  /** Optional secondary text (status, parent, etc.). Plain text only. */
+  detail?: string;
+}
+
 // Host → webview
 export type ChatHostMessage =
   | { type: 'chatTranscript'; payload: { messages: ChatPrompt[]; hasMore: boolean } }
@@ -47,6 +60,10 @@ export type ChatHostMessage =
   | { type: 'chatPrepend'; payload: { messages: ChatPrompt[]; hasMore: boolean } }
   | { type: 'chatError'; payload: { message: string } }
   | { type: 'chatPrefill'; payload: { text: string; focus: boolean } }
+  // Response to `chatMentionQuery` (todo #1614). `requestId` echoes the
+  // client's monotonic counter so stale results from older queries can
+  // be dropped before render.
+  | { type: 'chatMentionResults'; payload: { requestId: number; kind: string; items: MentionItem[] } }
   | {
       type: 'update';
       payload: {
@@ -63,6 +80,12 @@ export type ChatClientMessage =
   | { type: 'chatSend'; payload: { text: string } }
   | { type: 'chatRespond'; payload: { promptId: string; text: string } }
   | { type: 'chatLoadOlder'; payload: { beforeId: number } }
+  // Picker asks host to resolve a mention list (todo #1614). `kind` is
+  // one of MENTION_KINDS from mentionParser.ts; `query` is the post-colon
+  // filter string (or the rawToken when no `:` has been typed yet — the
+  // host's match() is a substring check either way). `requestId` is a
+  // monotonic counter; host echoes it in `chatMentionResults`.
+  | { type: 'chatMentionQuery'; payload: { requestId: number; kind: string; query: string } }
   | {
       type: 'openDiff';
       payload: {
