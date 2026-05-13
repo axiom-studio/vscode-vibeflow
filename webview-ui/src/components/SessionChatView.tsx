@@ -137,9 +137,13 @@ export function SessionChatView() {
   }
 
   function onTextareaKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    // Cmd/Ctrl+Enter sends. Plain Enter inserts a newline so multi-line
-    // prompts work without surprise sends.
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    // Plain Enter sends, Shift+Enter inserts a newline (Slack/Discord
+    // /ChatGPT convention). Avoids the Cmd+Enter collision with
+    // extensions like LeetCode that bind Cmd+Enter globally — webview
+    // keyboard events propagate to VS Code's keybinding service even
+    // after preventDefault, so the only reliable way to dodge the
+    // collision is to not use Cmd+Enter at all.
+    if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       send();
     }
@@ -237,7 +241,7 @@ export function SessionChatView() {
             value={draft}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={onTextareaKey}
-            placeholder={`Message ${meta.personaName}…   (⌘/Ctrl+Enter to send)`}
+            placeholder={`Message ${meta.personaName}…   (Enter to send · Shift+Enter for newline)`}
             rows={2}
           />
           <button
@@ -276,7 +280,7 @@ function EmptyState({ personaName, personaAvatarUrl }: { personaName: string; pe
         Say hello or ask {personaName} to start on a work item.
       </div>
       <div className="chat-empty-hints">
-        <div>Press <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send</div>
+        <div>Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for newline</div>
       </div>
     </div>
   );
