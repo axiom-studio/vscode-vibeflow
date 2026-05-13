@@ -28,6 +28,9 @@ export class StreamJsonProcess implements vscode.Disposable {
   private readonly proc: ChildProcess;
   private buf = '';
   private disposed = false;
+  /** Argv (excluding the binary) used to spawn the child — exposed so
+   *  the registry can surface the exact command for diagnostics. */
+  readonly argv: readonly string[];
 
   private readonly _onEvent = new vscode.EventEmitter<NormalizedAgentEvent>();
   readonly onEvent = this._onEvent.event;
@@ -59,6 +62,7 @@ export class StreamJsonProcess implements vscode.Disposable {
       initPrompt: opts.initPrompt,
       mcpConfigPath: opts.mcpConfigPath,
     });
+    this.argv = argv;
 
     // Spawn detached: false (default) — the child lives under the
     // extension host process and dies when the host dies. If the user
@@ -75,6 +79,22 @@ export class StreamJsonProcess implements vscode.Disposable {
 
     this.proc.stdout?.on('data', chunk => this.onChunk(chunk, opts.adapter));
     this.proc.stderr?.on('data', chunk => this._onStderr.fire(String(chunk)));
+
+    // Feed the init prompt via stdin for adapters that opt into the
+    // stream-json input channel (Claude `--input-format stream-json`),
+    // then close stdin unconditionally so providers can't hang on an
+    // unread pipe. Adapters that pass the prompt via positional argv
+    // (Codex, Gemini, Qwen, Cursor today) just see an EOF on stdin,
+    // which is the documented behavior they handle gracefully.
+    try {
+      const payload = opts.adapter.buildStdinPayload?.({ initPrompt: opts.initPrompt });
+      if (payload && this.proc.stdin) {
+        this.proc.stdin.write(payload, 'utf-8');
+      }
+    } catch (err) {
+      this._onStderr.fire(`<stdin write failed: ${err instanceof Error ? err.message : String(err)}>\n`);
+    }
+    this.proc.stdin?.end();
 
     this.proc.on('exit', (code, signal) => {
       // Flush any trailing line that wasn't newline-terminated. Most
