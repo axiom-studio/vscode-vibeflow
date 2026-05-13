@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
@@ -6,6 +7,7 @@ import { escapeHtml } from '../../utils/html.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
+import { parsePathReference, isValidCommitHash } from './chatRenderer.js';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -214,6 +216,21 @@ export class SessionPanelManager implements vscode.Disposable {
           }
           break;
         }
+        case 'chatOpenPath': {
+          // Defensive re-validation: the webview tokenizer emitted this,
+          // but treat the message payload as untrusted and re-parse via
+          // the same pure function before resolving (todo #1613, #4-2).
+          const parsed = parsePathReference(`${msg.payload.path}${msg.payload.line ? `:${msg.payload.line}${msg.payload.column ? `:${msg.payload.column}` : ''}` : ''}`);
+          if (!parsed) { break; }
+          await this.openWorkspaceRelativePath(parsed.path, parsed.line, parsed.column);
+          break;
+        }
+        case 'chatOpenCommit': {
+          // Defensive re-validation (todo #1613, #4-5).
+          if (!isValidCommitHash(msg.payload.hash)) { break; }
+          await this.openCommitDiff(msg.payload.hash);
+          break;
+        }
         case 'stop':
           vscode.commands.executeCommand('vibeflow.killSession', { session });
           break;
@@ -330,6 +347,127 @@ export class SessionPanelManager implements vscode.Disposable {
   /** Typed wrapper so a future drift in SessionPanelHostMessage fails the compile. */
   private postToWebview(panel: vscode.WebviewPanel, msg: SessionPanelHostMessage): void {
     panel.webview.postMessage(msg);
+  }
+
+  /**
+   * Pre-populate the chat textarea of a session's panel. Used by the
+   * `vibeflow.chat.askSelection` command (todo #1613, sub-feature 1)
+   * to seed a fenced-code-block prompt from an editor selection. If
+   * the panel isn't open, opens it first. Returns false if no
+   * session is available to receive the prefill.
+   */
+  prefillChat(sessionId: string, text: string): boolean {
+    const panel = this.panels.get(sessionId);
+    if (!panel) { return false; }
+    panel.reveal();
+    this.postToWebview(panel, { type: 'chatPrefill', payload: { text, focus: true } });
+    return true;
+  }
+
+  /**
+   * Return the session ids of every currently-open chat panel.
+   * Used by the askSelection command to pick a target when more
+   * than one panel is open (todo #1613).
+   */
+  getOpenSessionIds(): string[] {
+    return Array.from(this.panels.keys());
+  }
+
+  /**
+   * Resolve a workspace-relative path against the active workspace
+   * folder and open it at the given line/column (1-indexed in the
+   * payload, converted to 0-indexed `Position` for VS Code). If no
+   * workspace is open, falls back to opening as an absolute path
+   * only if it resolves cleanly inside the editor's known roots
+   * (defense-in-depth — never let a chat message open `/etc/passwd`).
+   *
+   * Failures surface as a notification, NOT a thrown exception, so
+   * a malformed agent message doesn't break the panel.
+   */
+  private async openWorkspaceRelativePath(rel: string, line?: number, column?: number): Promise<void> {
+    if (rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) {
+      // Absolute path — reject. Only workspace-relative is allowed.
+      // (A real path inside `/Users/...` could still be opened via
+      // the user's own File → Open; we just don't follow links to
+      // arbitrary disk locations from chat messages.)
+      vscode.window.showWarningMessage(`Chat link rejected (absolute path): ${rel}`);
+      return;
+    }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      vscode.window.showWarningMessage('Open a folder to follow chat links.');
+      return;
+    }
+    const absolute = path.join(folder.uri.fsPath, rel);
+    // Containment check: the joined path must still be inside the
+    // workspace folder. `path.relative` of an escape attempt
+    // (e.g. `../../etc/passwd`) returns a path starting with `..`.
+    const relCheck = path.relative(folder.uri.fsPath, absolute);
+    if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+      vscode.window.showWarningMessage(`Chat link rejected (escapes workspace): ${rel}`);
+      return;
+    }
+    const uri = vscode.Uri.file(absolute);
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc);
+      if (line && line > 0) {
+        const zeroLine = Math.max(0, line - 1);
+        const zeroCol = column && column > 0 ? Math.max(0, column - 1) : 0;
+        const pos = new vscode.Position(zeroLine, zeroCol);
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showWarningMessage(`Could not open ${rel}: ${msg}`);
+    }
+  }
+
+  /**
+   * Open a git commit diff via VS Code's built-in `git.viewChange`
+   * command (the Source Control extension registers it). Falls back
+   * to showing the commit details in a Quick Pick + offering a
+   * terminal command if the git extension isn't available.
+   *
+   * Hash is validated upstream via `isValidCommitHash` — we still
+   * pass it as an arg (never interpolated into a shell command).
+   */
+  private async openCommitDiff(hash: string): Promise<void> {
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      vscode.window.showWarningMessage('Open a folder to view commit diffs.');
+      return;
+    }
+    // Try VS Code git extension API first.
+    const gitExt = vscode.extensions.getExtension('vscode.git');
+    if (gitExt) {
+      try {
+        const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate())?.getAPI?.(1);
+        const repo = api?.repositories?.find((r: { rootUri: { fsPath: string } }) => r.rootUri.fsPath === folder.uri.fsPath);
+        if (repo) {
+          // The built-in `git.viewCommit` command renders a commit's
+          // tree of changed files. Args shape: (repository, hash).
+          await vscode.commands.executeCommand('git.viewCommit', repo, hash);
+          return;
+        }
+      } catch {
+        // Fall through to the terminal fallback.
+      }
+    }
+    // Fallback: surface a Quick Pick with the diff command.
+    const pick = await vscode.window.showInformationMessage(
+      `Show diff for commit ${hash.slice(0, 8)}?`,
+      'Open in terminal',
+      'Cancel',
+    );
+    if (pick === 'Open in terminal') {
+      const term = vscode.window.createTerminal({ name: `git show ${hash.slice(0, 8)}`, cwd: folder.uri.fsPath });
+      // Hash is validated; still pass via shell-quoting discipline
+      // (no interpolation of arbitrary user input).
+      term.sendText(`git show --stat ${hash}`, true);
+      term.show();
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -641,6 +779,15 @@ export class SessionPanelManager implements vscode.Disposable {
     .vf-chat-send { padding: 6px 14px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 3px; cursor: pointer; font-size: 0.9em; }
     .vf-chat-send:disabled { opacity: 0.6; cursor: not-allowed; }
     .vf-chat-error { margin: 6px 8px; padding: 6px 10px; background: var(--vscode-inputValidation-errorBackground, rgba(255,0,0,0.08)); color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); border-radius: 3px; font-size: 0.85em; }
+    /* IDE-superpower segment styles (todo #1613). All renderers
+       html-escape segment content before insertion — these styles
+       only affect the wrapper tag chosen by the tokenizer. */
+    .vf-chat-msg-body pre { margin: 6px 0; padding: 8px 10px; background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.1)); border-radius: 3px; overflow-x: auto; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
+    .vf-chat-msg-body pre code { background: transparent; padding: 0; }
+    .vf-chat-msg-body code { padding: 1px 4px; background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15)); border-radius: 3px; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
+    .vf-chat-msg-body a.vf-chat-path, .vf-chat-msg-body a.vf-chat-commit { color: var(--vscode-textLink-foreground); text-decoration: none; cursor: pointer; }
+    .vf-chat-msg-body a.vf-chat-path:hover, .vf-chat-msg-body a.vf-chat-commit:hover { text-decoration: underline; }
+    .vf-chat-msg-body a.vf-chat-commit { font-family: var(--vscode-editor-font-family); }
   </style>
 </head>
 <body data-persona-label="${escapeHtml(personaName)}">
@@ -725,6 +872,18 @@ export class SessionPanelManager implements vscode.Disposable {
         if (chatOldestId !== null) {
           vscode.postMessage({ type: 'chatLoadOlder', payload: { beforeId: chatOldestId } });
         }
+      } else if (action === 'chatOpenPath') {
+        e.preventDefault();
+        const p = btn.dataset.path;
+        if (!p) { return; }
+        const line = btn.dataset.line ? Number(btn.dataset.line) : undefined;
+        const column = btn.dataset.column ? Number(btn.dataset.column) : undefined;
+        vscode.postMessage({ type: 'chatOpenPath', payload: { path: p, line, column } });
+      } else if (action === 'chatOpenCommit') {
+        e.preventDefault();
+        const h = btn.dataset.hash;
+        if (!h) { return; }
+        vscode.postMessage({ type: 'chatOpenCommit', payload: { hash: h } });
       } else {
         // Forward stop / refresh as bare-type messages.
         vscode.postMessage({ type: action });
@@ -762,14 +921,129 @@ export class SessionPanelManager implements vscode.Disposable {
       catch (_) { return ''; }
     }
 
+    // ---------------------------------------------------------
+    // JS port of chatRenderer.ts (todo #1613). The host-side TS
+    // module is the source of truth; this JS mirrors it inside
+    // the nonced webview script because CSP forbids cross-process
+    // module loading at runtime. If you change a regex below,
+    // change it in src/views/sessions/chatRenderer.ts too.
+    //
+    // Security invariant: every segment's textual content is
+    // passed through escHtml before being inserted as innerHTML.
+    // The segment shape only picks the wrapper tag and
+    // data-action — untrusted strings never become markup.
+    // ---------------------------------------------------------
+    const RE_CODE_FENCE = /\`\`\`([a-zA-Z0-9_+-]*)\\n([\\s\\S]*?)\`\`\`/g;
+    const RE_INLINE_CODE = /\`([^\`\\n]+)\`/g;
+    const RE_BOLD = /\\*\\*([^*\\n]+)\\*\\*/g;
+    const RE_ITALIC = /(?<![*\\w])\\*([^*\\n]+)\\*(?!\\w)/g;
+    const RE_LINK = /\\[([^\\]\\n]+)\\]\\(([^()\\s]+)\\)/g;
+    const RE_PATH = /(?<![A-Za-z0-9_/\\\\.-])(\\.{0,2}\\/?[A-Za-z0-9_./-]+\\.[A-Za-z0-9]{1,8})(?::(\\d{1,6})(?::(\\d{1,6}))?)?(?![A-Za-z0-9_/\\\\.-])/g;
+    const RE_COMMIT = /(?<![#A-Za-z0-9])(?<!0x)\\b([a-f0-9]{7,40})\\b(?![A-Za-z0-9])/g;
+
+    function tokenize(input) {
+      if (!input) { return []; }
+      const out = [];
+      const fenceRe = new RegExp(RE_CODE_FENCE.source, RE_CODE_FENCE.flags);
+      let lastIndex = 0;
+      let m;
+      while ((m = fenceRe.exec(input)) !== null) {
+        if (m.index > lastIndex) { pushInline(input.slice(lastIndex, m.index), out); }
+        out.push({ kind: 'codeBlock', text: m[2], language: m[1] || undefined });
+        lastIndex = m.index + m[0].length;
+      }
+      if (lastIndex < input.length) { pushInline(input.slice(lastIndex), out); }
+      return mergePlain(out);
+    }
+
+    function collect(text, re, hits, priority, build) {
+      const r = new RegExp(re.source, re.flags);
+      let m;
+      while ((m = r.exec(text)) !== null) {
+        if (m[0].length === 0) { r.lastIndex++; continue; }
+        hits.push({ start: m.index, end: m.index + m[0].length, seg: build(m), priority });
+      }
+    }
+
+    function pushInline(text, out) {
+      if (!text) { return; }
+      const hits = [];
+      collect(text, RE_INLINE_CODE, hits, 5, m => ({ kind: 'inlineCode', text: m[1] }));
+      collect(text, RE_LINK, hits, 4, m => ({ kind: 'link', label: m[1], href: m[2] }));
+      collect(text, RE_BOLD, hits, 3, m => ({ kind: 'bold', text: m[1] }));
+      collect(text, RE_ITALIC, hits, 2, m => ({ kind: 'italic', text: m[1] }));
+      collect(text, RE_PATH, hits, 1, m => ({
+        kind: 'path', raw: m[0], path: m[1],
+        line: m[2] ? Number(m[2]) : undefined,
+        column: m[3] ? Number(m[3]) : undefined,
+      }));
+      collect(text, RE_COMMIT, hits, 1, m => ({ kind: 'commitHash', hash: m[1] }));
+      hits.sort((a, b) => a.start - b.start || b.priority - a.priority);
+      let cursor = 0;
+      for (const hit of hits) {
+        if (hit.start < cursor) { continue; }
+        if (hit.start > cursor) { out.push({ kind: 'plain', text: text.slice(cursor, hit.start) }); }
+        out.push(hit.seg);
+        cursor = hit.end;
+      }
+      if (cursor < text.length) { out.push({ kind: 'plain', text: text.slice(cursor) }); }
+    }
+
+    function mergePlain(segs) {
+      const out = [];
+      for (const s of segs) {
+        const prev = out[out.length - 1];
+        if (s.kind === 'plain' && prev && prev.kind === 'plain') { prev.text += s.text; }
+        else { out.push(s); }
+      }
+      return out;
+    }
+
+    function renderSegments(text) {
+      const segs = tokenize(String(text || ''));
+      const parts = [];
+      for (const s of segs) {
+        if (s.kind === 'plain') {
+          parts.push(escHtml(s.text));
+        } else if (s.kind === 'bold') {
+          parts.push('<strong>' + escHtml(s.text) + '</strong>');
+        } else if (s.kind === 'italic') {
+          parts.push('<em>' + escHtml(s.text) + '</em>');
+        } else if (s.kind === 'inlineCode') {
+          parts.push('<code>' + escHtml(s.text) + '</code>');
+        } else if (s.kind === 'codeBlock') {
+          const lang = s.language ? ' data-lang="' + escHtml(s.language) + '"' : '';
+          parts.push('<pre' + lang + '><code>' + escHtml(s.text) + '</code></pre>');
+        } else if (s.kind === 'link') {
+          // External-link rendering: only http/https schemes are honored
+          // (no javascript:/data:/file: URIs). Renders as plain text
+          // otherwise — defense-in-depth against link smuggling.
+          const href = s.href;
+          const safe = /^https?:\\/\\//i.test(href);
+          if (safe) {
+            parts.push('<a href="' + escHtml(href) + '" target="_blank" rel="noopener noreferrer">' + escHtml(s.label) + '</a>');
+          } else {
+            parts.push(escHtml(s.label) + ' (' + escHtml(href) + ')');
+          }
+        } else if (s.kind === 'path') {
+          const dataLine = s.line ? ' data-line="' + escHtml(s.line) + '"' : '';
+          const dataCol = s.column ? ' data-column="' + escHtml(s.column) + '"' : '';
+          parts.push('<a class="vf-chat-path" data-action="chatOpenPath" data-path="' + escHtml(s.path) + '"' + dataLine + dataCol + '>' + escHtml(s.raw) + '</a>');
+        } else if (s.kind === 'commitHash') {
+          parts.push('<a class="vf-chat-commit" data-action="chatOpenCommit" data-hash="' + escHtml(s.hash) + '">' + escHtml(s.hash.slice(0, 8)) + '</a>');
+        }
+      }
+      return parts.join('');
+    }
+
     function renderMessage(m) {
       const isAgent = m.source === 'agent';
       const author = isAgent ? personaLabel : userLabel;
       const cls = 'vf-chat-msg ' + (isAgent ? 'vf-chat-msg-agent' : 'vf-chat-msg-user');
       const status = (isAgent && m.status === 'pending') ? '<span class="vf-chat-msg-status">awaiting reply</span>' : '';
-      let body = '<div class="vf-chat-msg-body">' + escHtml(m.prompt_text) + '</div>';
+      let body = '<div class="vf-chat-msg-body">' + renderSegments(m.prompt_text) + '</div>';
       if (m.response_text) {
-        body += '<div class="vf-chat-msg-response">' + escHtml(m.response_text) + '</div>';
+        body += '<div class="vf-chat-msg-response">' + renderSegments(m.response_text) + '</div>';
       } else if (isAgent && m.status === 'pending') {
         body += '<div class="vf-chat-msg-reply-form" data-prompt-id="' + escHtml(m.prompt_id) + '">' +
           '<input type="text" placeholder="Reply..." />' +
@@ -869,6 +1143,12 @@ export class SessionPanelManager implements vscode.Disposable {
         prependMessages(msg.payload.messages, msg.payload.hasMore);
       } else if (msg.type === 'chatError') {
         showChatError(msg.payload.message);
+      } else if (msg.type === 'chatPrefill') {
+        const ta = document.getElementById('vf-chat-textarea');
+        if (ta instanceof HTMLTextAreaElement) {
+          ta.value = msg.payload.text;
+          if (msg.payload.focus) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        }
       }
     });
   </script>

@@ -202,7 +202,11 @@ export type SessionPanelHostMessage =
   | { type: 'chatPrepend'; payload: { messages: VibeFlowPrompt[]; hasMore: boolean } }
   // Surfaces a chat-related error (network / auth / validation) inline in
   // the chat UI without disrupting the rest of the panel.
-  | { type: 'chatError'; payload: { message: string } };
+  | { type: 'chatError'; payload: { message: string } }
+  // Pre-populate the chat textarea. Used by the askSelection command
+  // (todo #1613) to seed a fenced-code-block prompt from an editor
+  // selection. `focus: true` reveals + focuses the panel.
+  | { type: 'chatPrefill'; payload: { text: string; focus: boolean } };
 
 export type SessionPanelClientMessage =
   // User submitted the inline chat input. `text` is non-empty (host trims
@@ -212,6 +216,13 @@ export type SessionPanelClientMessage =
   | { type: 'chatRespond'; payload: { promptId: string; text: string } }
   // User clicked "Load older" — host pages backward via before_id cursor.
   | { type: 'chatLoadOlder'; payload: { beforeId: number } }
+  // User clicked a `path/to/file.ts:42` link in a chat message. Host
+  // resolves against the workspace folder and opens the file at the
+  // line (todo #1613, sub-feature 2).
+  | { type: 'chatOpenPath'; payload: { path: string; line?: number; column?: number } }
+  // User clicked a `[a-f0-9]{7,40}` hash in a chat message. Host
+  // invokes `git.diff` for that commit (todo #1613, sub-feature 5).
+  | { type: 'chatOpenCommit'; payload: { hash: string } }
   | { type: 'stop' }
   | { type: 'refresh' };
 
