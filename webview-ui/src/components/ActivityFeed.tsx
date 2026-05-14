@@ -81,9 +81,10 @@ export function ActivityFeed() {
     return (
       <div className="relative h-screen flex flex-col">
         {feedState?.kind === 'disconnected' && <DisconnectedBanner />}
-        <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
-          <p className="text-sm text-[var(--feed-muted)]">No activity yet</p>
-          <p className="text-xs text-[var(--feed-muted)] mt-1 opacity-70">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-2.5">
+          <InboxIcon />
+          <p className="text-[13px] font-medium tracking-[-0.005em]">No activity yet</p>
+          <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
             Launch an agent session to see real-time logs here.
           </p>
         </div>
@@ -119,10 +120,14 @@ export function ActivityFeed() {
       {!atBottom && (
         <button
           onClick={scrollToBottom}
-          className="absolute bottom-3 right-3 px-2.5 py-1 text-[11px] rounded-full shadow-md
+          aria-label="Scroll to latest activity"
+          className="absolute bottom-3 right-3 px-2.5 py-[5px] text-[11px] font-medium rounded-full
             bg-[var(--feed-badge-bg)] text-[var(--feed-badge-fg)]
             hover:opacity-90 cursor-pointer border-none outline-none
-            transition-opacity"
+            transition-all duration-150 ease-out active:scale-[0.96]"
+          style={{
+            boxShadow: '0 2px 8px color-mix(in oklab, var(--vscode-foreground) 18%, transparent)',
+          }}
         >
           ↓ Latest
         </button>
@@ -144,18 +149,22 @@ export function ActivityFeed() {
 
 function UnauthenticatedState({ onRunSetup }: { onRunSetup: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 text-center gap-3">
-      <div className="text-3xl" aria-hidden>⚡</div>
-      <p className="text-sm text-[var(--feed-muted)]">
-        Connect to VibeFlow to see agent activity
-      </p>
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
+      <BoltIcon />
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[13px] font-medium tracking-[-0.005em]">Connect to VibeFlow</p>
+        <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
+          Sign in to see your agents work in real time.
+        </p>
+      </div>
       <button
         onClick={onRunSetup}
-        className="mt-2 px-3 py-1.5 text-xs rounded-sm cursor-pointer
+        className="mt-1 px-3.5 py-1.5 text-[12px] font-medium rounded-sm cursor-pointer
           bg-[var(--vscode-button-background)]
           text-[var(--vscode-button-foreground)]
           hover:bg-[var(--vscode-button-hoverBackground)]
-          border-none outline-none transition-colors"
+          border-none outline-none
+          transition-all duration-150 ease-out active:scale-[0.97]"
       >
         Run Setup
       </button>
@@ -165,20 +174,22 @@ function UnauthenticatedState({ onRunSetup }: { onRunSetup: () => void }) {
 
 function NoSessionsState({ onLaunchSession }: { onLaunchSession: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 text-center gap-3">
-      <p className="text-sm text-[var(--feed-muted)]">
-        No active agent sessions
-      </p>
-      <p className="text-xs text-[var(--feed-muted)] opacity-70">
-        Launch a session to see activity here
-      </p>
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
+      <InboxIcon />
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[13px] font-medium tracking-[-0.005em]">No active sessions</p>
+        <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
+          Launch an agent session to see activity here.
+        </p>
+      </div>
       <button
         onClick={onLaunchSession}
-        className="mt-2 px-3 py-1.5 text-xs rounded-sm cursor-pointer
+        className="mt-1 px-3.5 py-1.5 text-[12px] font-medium rounded-sm cursor-pointer
           bg-[var(--vscode-button-background)]
           text-[var(--vscode-button-foreground)]
           hover:bg-[var(--vscode-button-hoverBackground)]
-          border-none outline-none transition-colors"
+          border-none outline-none
+          transition-all duration-150 ease-out active:scale-[0.97]"
       >
         Launch Session
       </button>
@@ -188,10 +199,10 @@ function NoSessionsState({ onLaunchSession }: { onLaunchSession: () => void }) {
 
 function LoadingState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-4 text-center gap-3">
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
       <Spinner />
-      <p className="text-sm text-[var(--feed-muted)]">
-        Connecting to agent activity feed...
+      <p className="text-[11.5px] text-[var(--feed-muted)] tracking-[0.005em]">
+        Connecting to agent activity…
       </p>
     </div>
   );
@@ -201,14 +212,56 @@ function DisconnectedBanner() {
   return (
     <div
       role="status"
-      className="flex items-center gap-2 px-3 py-1.5 text-xs
-        bg-[var(--vscode-inputValidation-warningBackground,rgba(255,165,0,0.15))]
+      className="flex items-center gap-2 px-3 py-[5px] text-[11px]
+        bg-[var(--vscode-inputValidation-warningBackground,rgba(255,165,0,0.12))]
         text-[var(--vscode-inputValidation-warningForeground,inherit)]
         border-b border-[var(--vscode-inputValidation-warningBorder,transparent)]"
     >
       <Spinner small />
-      <span>Connection lost. Retrying...</span>
+      <span>Connection lost. Retrying…</span>
     </div>
+  );
+}
+
+// Inline SVG icons for empty states. Stroke uses currentColor so the icon
+// inherits the muted-foreground via the wrapping span's `color` style —
+// adapts cleanly to light/dark/high-contrast themes.
+function BoltIcon() {
+  return (
+    <span aria-hidden style={{ color: 'var(--feed-muted)', opacity: 0.85 }}>
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+      </svg>
+    </span>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <span aria-hidden style={{ color: 'var(--feed-muted)', opacity: 0.85 }}>
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      </svg>
+    </span>
   );
 }
 
