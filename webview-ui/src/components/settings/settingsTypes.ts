@@ -32,6 +32,7 @@ export interface SettingsData {
   // Session
   pollInterval: number;
   sessionTerminalMode?: string;
+  sessionHeadlessBacking?: 'auto' | 'tmux' | 'vscode';
 
   // Notifications
   notifyAgentPrompts: boolean;
