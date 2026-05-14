@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { ActivityEntry } from '../types';
 import { PERSONA_COLORS, MESSAGE_ICONS } from '../types';
 
@@ -81,73 +82,53 @@ export function ActivityItem({ entry, onRespond }: ActivityItemProps) {
     : entry.personaName;
 
   return (
-    <div style={{
-      display: 'flex',
-      gap: 8,
-      padding: '6px 10px',
-      fontSize: 12,
-      borderBottom: '1px solid rgba(127,127,127,0.08)',
-    }}>
+    <div
+      className="flex gap-2.5 px-3 py-1.5 text-[12px] transition-colors duration-100 ease-out hover:bg-[var(--vscode-list-hoverBackground)]"
+      style={{
+        borderBottom: '1px solid color-mix(in oklab, var(--vscode-foreground) 7%, transparent)',
+      }}
+    >
       {/* Timestamp */}
-      <span style={{
-        flexShrink: 0,
-        fontSize: 10,
-        lineHeight: '18px',
-        opacity: 0.45,
-        fontVariantNumeric: 'tabular-nums',
-        width: 38,
-      }}>
+      <span
+        className="shrink-0 text-[10.5px] leading-[18px] w-[40px] tabular-nums"
+        style={{
+          color: 'var(--feed-muted)',
+          opacity: 0.7,
+          fontFeatureSettings: '"tnum"',
+          letterSpacing: '0.01em',
+        }}
+      >
         {formatTime(entry.timestamp)}
       </span>
 
-      {/* Persona dot */}
+      {/* Persona dot — ring-haloed for dimensional presence */}
       <span
+        className="shrink-0 mt-[5px] w-[9px] h-[9px] rounded-full"
         style={{
-          flexShrink: 0,
-          marginTop: 5,
-          width: 7,
-          height: 7,
-          borderRadius: '50%',
           backgroundColor: personaColor,
+          boxShadow: `0 0 0 2px color-mix(in oklab, ${personaColor} 22%, transparent)`,
         }}
         title={displayName}
+        aria-hidden
       />
 
       {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="flex-1 min-w-0">
         {/* Header line: icon + persona + optional work item badge */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11 }}>{icon}</span>
-          <span style={{ fontSize: 11, fontWeight: 600, color: personaColor }}>{displayName}</span>
+        <div className="flex items-baseline gap-[6px] flex-wrap">
+          <span className="text-[11px] leading-none" aria-hidden>{icon}</span>
+          <span
+            className="text-[11.5px] font-medium tracking-[-0.005em]"
+            style={{ color: personaColor }}
+          >
+            {displayName}
+          </span>
 
-          {workItem && (
-            <span style={{
-              fontSize: 9,
-              padding: '1px 5px',
-              borderRadius: 3,
-              background: 'rgba(127,127,127,0.12)',
-              color: 'var(--feed-muted)',
-              fontFamily: 'var(--vscode-editor-font-family)',
-            }}>
-              {workItem.type} #{workItem.id}
-            </span>
-          )}
-
-          {transition && (
-            <span style={{
-              fontSize: 9,
-              padding: '1px 5px',
-              borderRadius: 3,
-              background: `${STATUS_COLORS[transition.to] ?? 'var(--feed-muted)'}22`,
-              color: STATUS_COLORS[transition.to] ?? 'var(--feed-muted)',
-              fontWeight: 600,
-            }}>
-              → {transition.to.replace(/_/g, ' ')}
-            </span>
-          )}
+          {workItem && <WorkItemBadge type={workItem.type} id={workItem.id} />}
+          {transition && <StatusPill statusKey={transition.to} />}
 
           {entry.messageType === 'thinking' && (
-            <span style={{ fontSize: 10, fontStyle: 'italic', opacity: 0.5 }}>thinking...</span>
+            <span className="text-[10px] italic opacity-50">thinking…</span>
           )}
         </div>
 
@@ -158,16 +139,7 @@ export function ActivityItem({ entry, onRespond }: ActivityItemProps) {
         {entry.messageType === 'prompt' && onRespond && (
           <button
             onClick={() => onRespond((entry.metadata?.promptId as string) ?? entry.id)}
-            style={{
-              marginTop: 4,
-              padding: '3px 10px',
-              fontSize: 10,
-              borderRadius: 3,
-              background: 'var(--feed-button-bg)',
-              color: 'var(--feed-button-fg)',
-              border: 'none',
-              cursor: 'pointer',
-            }}
+            className="mt-1.5 px-2.5 py-[3px] text-[10.5px] font-medium rounded-sm cursor-pointer border-none outline-none transition-all duration-150 ease-out active:scale-[0.97] bg-[var(--feed-button-bg)] text-[var(--feed-button-fg)] hover:bg-[var(--feed-button-hover)]"
           >
             Respond
           </button>
@@ -177,21 +149,62 @@ export function ActivityItem({ entry, onRespond }: ActivityItemProps) {
   );
 }
 
+function WorkItemBadge({ type, id }: { type: string; id: string }) {
+  return (
+    <span
+      className="text-[9.5px] px-[5px] py-[1px] rounded-[3px] tabular-nums"
+      style={{
+        background: 'color-mix(in oklab, var(--vscode-foreground) 8%, transparent)',
+        color: 'var(--feed-muted)',
+        fontFamily: 'var(--vscode-editor-font-family, monospace)',
+        letterSpacing: '0.01em',
+      }}
+    >
+      {type} #{id}
+    </span>
+  );
+}
+
+function StatusPill({ statusKey }: { statusKey: string }) {
+  const color = STATUS_COLORS[statusKey] ?? 'var(--feed-muted)';
+  const label = statusKey.replace(/_/g, ' ');
+  return (
+    <span
+      className="text-[9.5px] px-[5px] py-[1px] rounded-[3px] font-semibold whitespace-nowrap"
+      style={{
+        color,
+        background: `color-mix(in oklab, ${color} 16%, transparent)`,
+      }}
+    >
+      → {label}
+    </span>
+  );
+}
+
 function ContentBody({ entry }: { entry: ActivityEntry }) {
-  const style: React.CSSProperties = {
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 1.4,
+  const baseStyle: CSSProperties = {
+    fontSize: 11.5,
+    marginTop: 3,
+    lineHeight: 1.5,
+    wordBreak: 'break-word',
   };
 
   switch (entry.messageType) {
     case 'commit':
       return (
-        <div style={style}>
-          <span style={{ color: 'var(--feed-success)', fontWeight: 500 }}>committed</span>{' '}
-          <span style={{ opacity: 0.85 }}>{entry.content}</span>
+        <div style={baseStyle}>
+          <span style={{ color: 'var(--feed-success)', fontWeight: 600 }}>committed</span>{' '}
+          <span style={{ opacity: 0.9 }}>{entry.content}</span>
           {Array.isArray(entry.metadata?.files) && (
-            <div style={{ marginTop: 2, opacity: 0.5, fontSize: 10 }}>
+            <div
+              style={{
+                marginTop: 3,
+                opacity: 0.55,
+                fontSize: 10,
+                lineHeight: 1.45,
+                fontFamily: 'var(--vscode-editor-font-family, monospace)',
+              }}
+            >
               {(entry.metadata.files as string[]).join(', ')}
             </div>
           )}
@@ -199,38 +212,46 @@ function ContentBody({ entry }: { entry: ActivityEntry }) {
       );
 
     case 'error':
-      return <div style={{ ...style, color: 'var(--feed-error)' }}>{entry.content}</div>;
+      return <div style={{ ...baseStyle, color: 'var(--feed-error)' }}>{entry.content}</div>;
 
     case 'completion':
-      return <div style={{ ...style, color: 'var(--feed-success)', fontWeight: 500 }}>{entry.content}</div>;
+      return (
+        <div style={{ ...baseStyle, color: 'var(--feed-success)', fontWeight: 600 }}>
+          {entry.content}
+        </div>
+      );
 
     case 'prompt':
       return (
-        <div style={{
-          ...style,
-          padding: '4px 8px',
-          borderRadius: 4,
-          border: '1px solid var(--feed-input-border)',
-          background: 'var(--feed-input-bg)',
-        }}>
+        <div
+          style={{
+            ...baseStyle,
+            padding: '5px 9px',
+            borderRadius: 5,
+            border: '1px solid var(--feed-input-border)',
+            background: 'var(--feed-input-bg)',
+          }}
+        >
           {entry.content}
         </div>
       );
 
     case 'summary':
       return (
-        <div style={{
-          ...style,
-          padding: '4px 8px',
-          borderRadius: 4,
-          background: 'var(--vscode-textBlockQuote-background)',
-          borderLeft: '2px solid var(--feed-link)',
-        }}>
+        <div
+          style={{
+            ...baseStyle,
+            padding: '5px 10px',
+            borderRadius: 5,
+            background: 'var(--vscode-textBlockQuote-background)',
+            borderLeft: '2px solid var(--feed-link)',
+          }}
+        >
           {entry.content}
         </div>
       );
 
     default:
-      return <div style={{ ...style, opacity: 0.85 }}>{entry.content}</div>;
+      return <div style={{ ...baseStyle, opacity: 0.88 }}>{entry.content}</div>;
   }
 }
