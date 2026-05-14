@@ -26,6 +26,22 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
       </Card>
 
       <Card
+        title="Headless Backing (chat-first)"
+        description="How chat-first / headless agent sessions are run under the hood. tmux backing lets the agent survive an IDE restart and be observed from any terminal via `tmux -L vibeflow-headless attach -t <name>`. Default uses a hidden VS Code terminal — simpler, but the agent dies with the IDE window."
+      >
+        <RadioGroup
+          name="sessionHeadlessBacking"
+          value={data.sessionHeadlessBacking ?? 'auto'}
+          options={[
+            { value: 'auto', label: 'Auto (default)', desc: 'Hidden VS Code terminal — tmux backing is opt-in via the "tmux" option' },
+            { value: 'tmux', label: 'tmux (Unix only)', desc: 'Agent survives IDE restart. Ignored on Windows; falls back to VS Code if tmux is missing' },
+            { value: 'vscode', label: 'VS Code terminal', desc: 'Always use a hidden VS Code terminal — explicit form of the default' },
+          ]}
+          onChange={v => onUpdate('session.headlessBacking', v)}
+        />
+      </Card>
+
+      <Card
         title="Polling Interval"
         description="How often the extension refreshes data from the VibeFlow API. Lower values = more responsive Agent Fleet and Work Items, but more API calls. The Activity Feed has its own 5-second poll regardless of this setting."
       >
