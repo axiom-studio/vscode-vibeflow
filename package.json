@@ -658,11 +658,11 @@
             "vscode"
           ],
           "enumDescriptions": [
-            "Use tmux when available (Unix only); fall back to hidden VS Code terminal otherwise",
-            "Always use tmux (Unix only; ignored on Windows)",
+            "Use a hidden VS Code terminal (default — tmux backing is opt-in via 'tmux')",
+            "Always use tmux (Unix only; ignored on Windows). Agent survives IDE restart; attach via `tmux -L vibeflow-headless attach -t <name>`",
             "Always use a hidden VS Code terminal — chat-first agents are tied to this IDE window's lifetime"
           ],
-          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' is the recommended default. 'tmux' lets agents survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal."
+          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' is the recommended default and keeps agents tied to this IDE window. 'tmux' is opt-in — it lets agents survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal."
         },
         "vibeflow.chat.diffView": {
           "type": "string",
