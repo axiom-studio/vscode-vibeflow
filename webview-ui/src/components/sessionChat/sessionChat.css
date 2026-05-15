@@ -3,6 +3,14 @@
    in light, dark, and high-contrast themes without conditional CSS. */
 
 /* ============================== Layout ============================== */
+/* Grid tracks stay fixed at `1fr 340px`. The collapse animation runs
+ * on the rail's `transform` (GPU-composited) instead of the previous
+ * `grid-template-columns` transition (a layout property — costs CPU
+ * each frame and risks dropping frames on slow surfaces). The chat
+ * column instantly grabs the freed space via a negative right margin;
+ * the rail visibly slides out on top of it, so the layout snap is
+ * masked by the moving rail. Net: smoother feel, less CPU.
+ */
 .session-chat-root {
   display: grid;
   grid-template-columns: 1fr 340px;
@@ -12,25 +20,46 @@
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
-  transition: grid-template-columns 200ms ease;
+  overflow: hidden; /* clip the off-screen rail cleanly */
+}
+
+/* Rail slide animation — iOS-drawer ease. Mounted always so its
+ * scroll position survives the toggle.
+ */
+.side-rail {
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+
+.chat-column {
+  transition: margin 220ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Rail collapsed: chat fills full width. Rail itself stays mounted
    so its scroll position survives the toggle; we just hide it. */
-.session-chat-root.rail-collapsed {
-  grid-template-columns: 1fr 0px;
+.session-chat-root.rail-collapsed .side-rail {
+  transform: translateX(100%);
+  pointer-events: none;
+  border-left: none;
 }
 
-.session-chat-root.rail-collapsed .side-rail {
-  width: 0;
-  border-left: none;
-  overflow: hidden;
+.session-chat-root.rail-collapsed .chat-column {
+  margin-right: -340px; /* take over the freed grid track */
 }
 
 @media (max-width: 720px) {
   .session-chat-root {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr auto;
+  }
+  /* On narrow widths the rail is stacked below the chat (see grid-rows
+   * above) — disable the desktop slide-out transform so it doesn't
+   * accidentally render off-screen in the stacked layout. */
+  .session-chat-root.rail-collapsed .side-rail {
+    transform: none;
+  }
+  .session-chat-root.rail-collapsed .chat-column {
+    margin-right: 0;
   }
 }
 
