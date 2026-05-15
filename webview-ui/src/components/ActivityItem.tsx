@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { ActivityEntry } from '../types';
 import { PERSONA_COLORS, MESSAGE_ICONS } from '../types';
+import { StatusPill } from './_shared/StatusPill';
 
 interface ActivityItemProps {
   entry: ActivityEntry;
@@ -125,7 +126,11 @@ export function ActivityItem({ entry, onRespond }: ActivityItemProps) {
           </span>
 
           {workItem && <WorkItemBadge type={workItem.type} id={workItem.id} />}
-          {transition && <StatusPill statusKey={transition.to} />}
+          {transition && (
+            <StatusPill color={STATUS_COLORS[transition.to] ?? 'var(--feed-muted)'}>
+              → {transition.to.replace(/_/g, ' ')}
+            </StatusPill>
+          )}
 
           {entry.messageType === 'thinking' && (
             <span className="text-[10px] italic opacity-50">thinking…</span>
@@ -161,22 +166,6 @@ function WorkItemBadge({ type, id }: { type: string; id: string }) {
       }}
     >
       {type} #{id}
-    </span>
-  );
-}
-
-function StatusPill({ statusKey }: { statusKey: string }) {
-  const color = STATUS_COLORS[statusKey] ?? 'var(--feed-muted)';
-  const label = statusKey.replace(/_/g, ' ');
-  return (
-    <span
-      className="text-[9.5px] px-[5px] py-[1px] rounded-[3px] font-semibold whitespace-nowrap"
-      style={{
-        color,
-        background: `color-mix(in oklab, ${color} 16%, transparent)`,
-      }}
-    >
-      → {label}
     </span>
   );
 }
