@@ -5,6 +5,8 @@ import { useMessages, applyEntries } from '../hooks/useMessages';
 import { ActivityItem } from './ActivityItem';
 import { PinnedPlan, type PinnedProgressData } from './PinnedPlan';
 import { getVsCodeApi } from '../vscodeApi';
+import { EmptyState } from './_shared/EmptyState';
+import { BoltIcon, InboxIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as {
   postMessage: (msg: { type: string; payload?: unknown }) => void;
@@ -81,13 +83,12 @@ export function ActivityFeed() {
     return (
       <div className="relative h-screen flex flex-col">
         {feedState?.kind === 'disconnected' && <DisconnectedBanner />}
-        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-2.5">
-          <InboxIcon />
-          <p className="text-[13px] font-medium tracking-[-0.005em]">No activity yet</p>
-          <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
-            Launch an agent session to see real-time logs here.
-          </p>
-        </div>
+        <EmptyState
+          icon={<InboxIcon />}
+          headline="No activity yet"
+          subtext="Launch an agent session to see real-time logs here."
+          className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-2.5"
+        />
       </div>
     );
   }
@@ -149,51 +150,23 @@ export function ActivityFeed() {
 
 function UnauthenticatedState({ onRunSetup }: { onRunSetup: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
-      <BoltIcon />
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[13px] font-medium tracking-[-0.005em]">Connect to VibeFlow</p>
-        <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
-          Sign in to see your agents work in real time.
-        </p>
-      </div>
-      <button
-        onClick={onRunSetup}
-        className="mt-1 px-3.5 py-1.5 text-[12px] font-medium rounded-sm cursor-pointer
-          bg-[var(--vscode-button-background)]
-          text-[var(--vscode-button-foreground)]
-          hover:bg-[var(--vscode-button-hoverBackground)]
-          border-none outline-none
-          transition-all duration-150 ease-out active:scale-[0.97]"
-      >
-        Run Setup
-      </button>
-    </div>
+    <EmptyState
+      icon={<BoltIcon />}
+      headline="Connect to VibeFlow"
+      subtext="Sign in to see your agents work in real time."
+      action={{ label: 'Run Setup', onClick: onRunSetup }}
+    />
   );
 }
 
 function NoSessionsState({ onLaunchSession }: { onLaunchSession: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 text-center gap-3">
-      <InboxIcon />
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[13px] font-medium tracking-[-0.005em]">No active sessions</p>
-        <p className="text-[11.5px] text-[var(--feed-muted)] max-w-[260px] leading-relaxed">
-          Launch an agent session to see activity here.
-        </p>
-      </div>
-      <button
-        onClick={onLaunchSession}
-        className="mt-1 px-3.5 py-1.5 text-[12px] font-medium rounded-sm cursor-pointer
-          bg-[var(--vscode-button-background)]
-          text-[var(--vscode-button-foreground)]
-          hover:bg-[var(--vscode-button-hoverBackground)]
-          border-none outline-none
-          transition-all duration-150 ease-out active:scale-[0.97]"
-      >
-        Launch Session
-      </button>
-    </div>
+    <EmptyState
+      icon={<InboxIcon />}
+      headline="No active sessions"
+      subtext="Launch an agent session to see activity here."
+      action={{ label: 'Launch Session', onClick: onLaunchSession }}
+    />
   );
 }
 
@@ -220,48 +193,6 @@ function DisconnectedBanner() {
       <Spinner small />
       <span>Connection lost. Retrying…</span>
     </div>
-  );
-}
-
-// Inline SVG icons for empty states. Stroke uses currentColor so the icon
-// inherits the muted-foreground via the wrapping span's `color` style —
-// adapts cleanly to light/dark/high-contrast themes.
-function BoltIcon() {
-  return (
-    <span aria-hidden style={{ color: 'var(--feed-muted)', opacity: 0.85 }}>
-      <svg
-        width="28"
-        height="28"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
-      </svg>
-    </span>
-  );
-}
-
-function InboxIcon() {
-  return (
-    <span aria-hidden style={{ color: 'var(--feed-muted)', opacity: 0.85 }}>
-      <svg
-        width="28"
-        height="28"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-      </svg>
-    </span>
   );
 }
 

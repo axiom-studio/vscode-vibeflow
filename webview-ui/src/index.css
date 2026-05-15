@@ -168,3 +168,82 @@ body {
 .prose-vf-block input[type="checkbox"] { margin-right: 0.4em; }
 .prose-vf-block > :first-child { margin-top: 0; }
 .prose-vf-block > :last-child { margin-bottom: 0; }
+
+/*
+ * ============================================================
+ * Global polish (introduced #1657)
+ * ============================================================
+ */
+
+/*
+ * Keyboard focus ring — scoped to interactive elements so we don't
+ * paint outlines on every <div>. Uses the same `--vscode-focusBorder`
+ * token that VS Code's own UI uses, so the ring is theme-correct in
+ * light / dark / high-contrast.
+ */
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder, currentColor);
+  outline-offset: 2px;
+}
+
+/*
+ * Skeleton shimmer — drop the `.shimmer` class on a placeholder block
+ * to get a 1.4s left-to-right gradient sweep. Theme-token colors so
+ * the shimmer reads as a subtle highlight, not a flash.
+ */
+@keyframes shimmer-sweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.shimmer {
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--vscode-foreground) 6%, transparent) 0%,
+      color-mix(in oklab, var(--vscode-foreground) 14%, transparent) 50%,
+      color-mix(in oklab, var(--vscode-foreground) 6%, transparent) 100%
+    );
+  background-size: 200% 100%;
+  animation: shimmer-sweep 1.4s linear infinite;
+}
+
+/*
+ * Spinner rotation — applied to the `.spinner` class produced by
+ * <SpinnerIcon> in `_shared/icons.tsx`.
+ */
+@keyframes spin-360 {
+  to { transform: rotate(360deg); }
+}
+.spinner {
+  animation: spin-360 1s linear infinite;
+  transform-origin: center;
+}
+
+/*
+ * Respect `prefers-reduced-motion`: collapse all non-essential motion
+ * to near-zero duration. Loading affordances (.shimmer, .spinner) are
+ * deliberately exempt — they're how the system tells the user "I'm
+ * working." Without them, a busy state becomes indistinguishable from
+ * a frozen UI.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .shimmer {
+    animation: shimmer-sweep 1.4s linear infinite !important;
+  }
+  .spinner {
+    animation: spin-360 1s linear infinite !important;
+  }
+}
