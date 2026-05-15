@@ -225,6 +225,32 @@ select:focus-visible {
 }
 
 /*
+ * Dashboard SummaryGrid bento layout (introduced #1660).
+ * Top tier: Sessions hero + Work items hero (each spans 3 cols).
+ * Bottom tier: Commits + Lines + Session time (each spans 2 cols).
+ * Collapses to a single column at narrow widths so nothing gets squeezed.
+ */
+.dashboard-bento {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-areas:
+    "sessions sessions sessions work work work"
+    "commits commits lines lines time time";
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .dashboard-bento {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "sessions"
+      "work"
+      "commits"
+      "lines"
+      "time";
+  }
+}
+
+/*
  * Respect `prefers-reduced-motion`: collapse all non-essential motion
  * to near-zero duration. Loading affordances (.shimmer, .spinner) are
  * deliberately exempt — they're how the system tells the user "I'm

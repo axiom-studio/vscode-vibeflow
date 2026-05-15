@@ -706,13 +706,42 @@ function Section({ title, subtitle, actions, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--feed-border)' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--feed-muted)' }}>
-          {title}
-        </span>
-        {subtitle && <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.7, flex: 1 }}>{subtitle}</span>}
-        {actions && <span style={{ marginLeft: 'auto' }}>{actions}</span>}
+    <div style={{ padding: '18px 18px 16px', borderBottom: '1px solid var(--feed-border)' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h3
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--feed-fg)',
+              letterSpacing: '-0.005em',
+              margin: 0,
+            }}
+          >
+            {title}
+          </h3>
+          {subtitle && (
+            <p
+              style={{
+                fontSize: 11.5,
+                color: 'var(--feed-muted)',
+                lineHeight: 1.5,
+                margin: '4px 0 0',
+                maxWidth: '70ch',
+              }}
+            >
+              {subtitle}
+            </p>
+          )}
+        </div>
+        {actions && <div style={{ flexShrink: 0 }}>{actions}</div>}
       </div>
       {children}
     </div>
@@ -728,47 +757,63 @@ function SummaryGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | unde
   const linesDeleted = snapshot.workSummary?.lines_deleted ?? 0;
   const commits = snapshot.workSummary?.total_commits ?? 0;
 
+  /*
+   * Bento layout — replaces the generic 5-equal-cards row. Top tier
+   * gives the two "live + shipped" anchors (Sessions, Work items)
+   * room to breathe at half-width each; bottom tier groups the three
+   * supporting numerics (Commits, Lines, Session time) in a tight
+   * trio. At narrow widths the grid collapses to a single column so
+   * nothing gets squeezed below readable density.
+   */
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: 8,
-    }}>
-      <SummaryCard
-        label="Sessions"
-        value={`${snapshot.sessions.active}/${snapshot.sessions.total}`}
-        sub={snapshot.sessions.stale > 0 ? `${snapshot.sessions.stale} stale` : 'active'}
-      />
+    <div className="dashboard-bento">
+      <div style={{ gridArea: 'sessions' }}>
+        <SummaryCard
+          label="Sessions"
+          value={`${snapshot.sessions.active}/${snapshot.sessions.total}`}
+          sub={snapshot.sessions.stale > 0 ? `${snapshot.sessions.stale} stale` : 'active'}
+          tone="hero"
+        />
+      </div>
       {/* Combined work-item card matches the left panel's grouping
           (todos + issues collapsed by status). The user's audit
           flagged the prior split as misleading: left panel showed
           69 done while this card showed 61 done because issues were
           pulled into a separate card. Merge so the two views agree.
           Sub text breaks out the type split for users who want it. */}
-      <SummaryCard
-        label="Work items"
-        value={`${snapshot.todos.done + snapshot.issues.done} done`}
-        sub={
-          `${snapshot.todos.done} todos · ${snapshot.issues.done} issues · ` +
-          `${snapshot.issues.open} issues open`
-        }
-      />
-      <SummaryCard
-        label="Commits"
-        value={`${commits}`}
-        sub={commits === 0 ? 'no work logged' : 'across all sessions'}
-      />
-      <SummaryCard
-        label="Lines"
-        value={`+${linesAdded} −${linesDeleted}`}
-        sub={'net ' + (linesAdded - linesDeleted >= 0 ? '+' : '') + (linesAdded - linesDeleted)}
-        subColor={linesAdded - linesDeleted >= 0 ? 'var(--feed-success)' : 'var(--feed-error)'}
-      />
-      <SummaryCard
-        label="Session time"
-        value={formatDuration(totalSeconds)}
-        sub="capped at 15min/session"
-      />
+      <div style={{ gridArea: 'work' }}>
+        <SummaryCard
+          label="Work items"
+          value={`${snapshot.todos.done + snapshot.issues.done} done`}
+          sub={
+            `${snapshot.todos.done} todos · ${snapshot.issues.done} issues · ` +
+            `${snapshot.issues.open} issues open`
+          }
+          tone="hero"
+        />
+      </div>
+      <div style={{ gridArea: 'commits' }}>
+        <SummaryCard
+          label="Commits"
+          value={`${commits}`}
+          sub={commits === 0 ? 'no work logged' : 'across all sessions'}
+        />
+      </div>
+      <div style={{ gridArea: 'lines' }}>
+        <SummaryCard
+          label="Lines"
+          value={`+${linesAdded} −${linesDeleted}`}
+          sub={'net ' + (linesAdded - linesDeleted >= 0 ? '+' : '') + (linesAdded - linesDeleted)}
+          subColor={linesAdded - linesDeleted >= 0 ? 'var(--feed-success)' : 'var(--feed-error)'}
+        />
+      </div>
+      <div style={{ gridArea: 'time' }}>
+        <SummaryCard
+          label="Session time"
+          value={formatDuration(totalSeconds)}
+          sub="capped at 15min/session"
+        />
+      </div>
     </div>
   );
 }
@@ -848,23 +893,56 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
   );
 }
 
-function SummaryCard({ label, value, sub, subColor }: { label: string; value: string; sub?: string; subColor?: string }) {
+function SummaryCard({ label, value, sub, subColor, tone }: {
+  label: string;
+  value: string;
+  sub?: string;
+  subColor?: string;
+  /**
+   * 'hero' bumps the value type up for the top-tier bento cells.
+   * Default keeps the supporting numerics calmer. No border / no card
+   * background — body metrics breathe instead of getting boxed.
+   */
+  tone?: 'hero' | 'default';
+}) {
+  const isHero = tone === 'hero';
   return (
-    <div style={{
-      padding: '10px 12px',
-      borderRadius: 6,
-      border: '1px solid var(--feed-border)',
-      background: 'var(--vscode-editor-background)',
-      minWidth: 0,
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--feed-muted)' }}>
+    <div style={{ minWidth: 0, padding: '4px 2px' }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.04em',
+          color: 'var(--feed-muted)',
+        }}
+      >
         {label}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: 'var(--feed-fg)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
+      <div
+        style={{
+          fontSize: isHero ? 26 : 18,
+          fontWeight: 600,
+          marginTop: isHero ? 4 : 2,
+          color: 'var(--feed-fg)',
+          fontVariantNumeric: 'tabular-nums',
+          letterSpacing: isHero ? '-0.018em' : '-0.01em',
+          lineHeight: 1.05,
+        }}
+      >
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 11, color: subColor ?? 'var(--feed-muted)', marginTop: 2, opacity: subColor ? 0.95 : 0.85, fontVariantNumeric: 'tabular-nums' }}>
+        <div
+          style={{
+            fontSize: isHero ? 11.5 : 11,
+            color: subColor ?? 'var(--feed-muted)',
+            marginTop: 4,
+            opacity: subColor ? 0.95 : 0.85,
+            fontVariantNumeric: 'tabular-nums',
+            lineHeight: 1.4,
+          }}
+        >
           {sub}
         </div>
       )}
