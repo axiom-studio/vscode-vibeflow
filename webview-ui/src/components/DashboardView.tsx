@@ -899,15 +899,29 @@ function SummaryCard({ label, value, sub, subColor, tone }: {
   sub?: string;
   subColor?: string;
   /**
-   * 'hero' bumps the value type up for the top-tier bento cells.
-   * Default keeps the supporting numerics calmer. No border / no card
-   * background — body metrics breathe instead of getting boxed.
+   * 'hero' bumps the value type up for the top-tier bento cells AND
+   * paints a heavier border so the hero status reads at a glance.
+   * Default = standard chrome for the supporting numerics.
    */
   tone?: 'hero' | 'default';
 }) {
   const isHero = tone === 'hero';
   return (
-    <div style={{ minWidth: 0, padding: '4px 2px' }}>
+    <div
+      style={{
+        minWidth: 0,
+        height: '100%',
+        padding: isHero ? '14px 16px' : '12px 14px',
+        borderRadius: 8,
+        background: 'var(--vscode-editor-background)',
+        border: isHero
+          ? '1px solid color-mix(in oklab, var(--vscode-foreground) 22%, transparent)'
+          : '1px solid var(--feed-border)',
+        boxShadow: isHero
+          ? 'inset 0 1px 0 color-mix(in oklab, var(--vscode-foreground) 6%, transparent), 0 1px 3px color-mix(in oklab, var(--vscode-foreground) 10%, transparent)'
+          : '0 1px 2px color-mix(in oklab, var(--vscode-foreground) 8%, transparent)',
+      }}
+    >
       <div
         style={{
           fontSize: 10,
@@ -923,7 +937,7 @@ function SummaryCard({ label, value, sub, subColor, tone }: {
         style={{
           fontSize: isHero ? 26 : 18,
           fontWeight: 600,
-          marginTop: isHero ? 4 : 2,
+          marginTop: isHero ? 6 : 3,
           color: 'var(--feed-fg)',
           fontVariantNumeric: 'tabular-nums',
           letterSpacing: isHero ? '-0.018em' : '-0.01em',
