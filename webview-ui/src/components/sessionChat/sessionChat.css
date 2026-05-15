@@ -309,14 +309,62 @@
   font-weight: 600;
 }
 
-.msg-status-pending {
-  background: var(--vscode-editorWarning-foreground, #ffc107);
-  color: var(--vscode-editor-background);
-}
-
 .msg-status-expired {
   background: var(--vscode-disabledForeground, #888);
   color: var(--vscode-editor-background);
+}
+
+/* Animated "Working… {elapsed}" indicator for pending prompts.
+ * Replaces the static `pending` chip — pill-shaped so it reads
+ * differently from the rectangular status chips. Warning-toned
+ * via color-mix so the affordance reads in all themes. */
+.msg-working {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 14%, transparent);
+  color: var(--vscode-editorWarning-foreground, #ffc107);
+  border: 1px solid color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 28%, transparent);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+/* Fixed-width dots container so the time counter to its right
+ * doesn't shift left/right as the dots flicker. Three spans, each
+ * with a staggered phase of the same keyframe — typewriter cascade. */
+.msg-working-dots {
+  display: inline-flex;
+  width: 12px;
+  justify-content: space-between;
+  letter-spacing: 0;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.msg-working-dots > span {
+  opacity: 0.2;
+  animation: msg-working-blink 1.4s ease-in-out infinite;
+}
+
+.msg-working-dots > span:nth-child(1) { animation-delay: 0ms; }
+.msg-working-dots > span:nth-child(2) { animation-delay: 160ms; }
+.msg-working-dots > span:nth-child(3) { animation-delay: 320ms; }
+
+@keyframes msg-working-blink {
+  0%, 60%, 100% { opacity: 0.2; }
+  30% { opacity: 1; }
+}
+
+.msg-working-time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.92;
+  min-width: 22px;
+  text-align: right;
 }
 
 /* Subtle "agent is autonomous" explainer rendered under a user message

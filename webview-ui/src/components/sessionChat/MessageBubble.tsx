@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -63,8 +63,9 @@ export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, on
         <div className="msg-header">
           <span className="msg-author">{author}</span>
           <span className="msg-time">{time}</span>
-          {msg.status && msg.status !== 'acknowledged' && msg.status !== 'responded' && (
-            <span className={`msg-status msg-status-${msg.status}`}>{msg.status}</span>
+          {msg.status === 'pending' && <WorkingIndicator startTime={msg.created_at} />}
+          {msg.status === 'expired' && (
+            <span className="msg-status msg-status-expired">expired</span>
           )}
         </div>
         <div className="msg-content">
@@ -213,6 +214,68 @@ function isStale(iso: string, thresholdMs: number): boolean {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) { return false; }
   return Date.now() - t >= thresholdMs;
+}
+
+/**
+ * Animated "Working… {elapsed}" indicator for pending prompts.
+ *
+ * Replaces the previous static `pending` status chip (which read like
+ * a bug — "the agent ignored me"). Mirrors axiomcloud's chat surface:
+ * three breathing dots + a live tabular-nums time counter so the user
+ * can see both *the agent is alive* AND *how long it has been working*.
+ *
+ * The interval is cleaned up on unmount or `startTime` change, so
+ * rapid prompt churn (transcript replay, message dedupe) doesn't leak
+ * timers. The dots animation is purely CSS — the JS tick only updates
+ * the elapsed display.
+ */
+function WorkingIndicator({ startTime }: { startTime: string }) {
+  const start = Date.parse(startTime);
+  const validStart = Number.isFinite(start);
+  const [elapsedMs, setElapsedMs] = useState(() =>
+    validStart ? Math.max(0, Date.now() - start) : 0,
+  );
+
+  useEffect(() => {
+    if (!validStart) { return; }
+    const tick = () => setElapsedMs(Math.max(0, Date.now() - start));
+    tick(); // sync on mount so a re-rendered pending prompt isn't briefly 0s.
+    const id = window.setInterval(tick, 1000);
+    return () => { window.clearInterval(id); };
+  }, [start, validStart]);
+
+  const elapsedLabel = formatElapsed(elapsedMs);
+  return (
+    <span className="msg-working" aria-label={`Working for ${elapsedLabel}`}>
+      <span className="msg-working-label">Working</span>
+      <span className="msg-working-dots" aria-hidden="true">
+        <span>.</span><span>.</span><span>.</span>
+      </span>
+      <span className="msg-working-time">{elapsedLabel}</span>
+    </span>
+  );
+}
+
+/**
+ * Compact elapsed-time format aligned with axiomcloud's chat counter.
+ *
+ *   0–59s → `12s`
+ *   1–59m → `1m 24s` (or `5m` when seconds === 0)
+ *   ≥ 60m → `1h 12m` (or `2h` when minutes === 0)
+ *
+ * Always uses ASCII to keep tabular-nums width predictable.
+ */
+function formatElapsed(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) { return `${totalSec}s`; }
+  const totalMin = Math.floor(totalSec / 60);
+  const remSec = totalSec % 60;
+  if (totalMin < 60) {
+    return remSec > 0 ? `${totalMin}m ${remSec}s` : `${totalMin}m`;
+  }
+  const hours = Math.floor(totalMin / 60);
+  const remMin = totalMin % 60;
+  return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
 }
 
 function avatarGlyph(isUser: boolean, personaName: string): string {
