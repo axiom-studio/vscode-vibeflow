@@ -5,6 +5,14 @@ import { SideRail } from './sessionChat/SideRail';
 import { PersonaAvatar } from './sessionChat/PersonaAvatar';
 import { MentionPicker } from './sessionChat/MentionPicker';
 import { personaAvatarUrl } from '../personaAvatars';
+import { PERSONA_COLORS } from '../types';
+import {
+  ArrowDownIcon,
+  ChevronIcon,
+  GitBranchIcon,
+  PaperPlaneIcon,
+  XIcon,
+} from './_shared/icons';
 import {
   MENTION_KINDS,
   applyMention,
@@ -58,6 +66,7 @@ export function SessionChatView() {
   // the body by the host on mount; never changes during a panel's life.
   const serverUrl = document.body.dataset.vfServerUrl ?? '';
   const personaAvatar = personaAvatarUrl(meta.personaKey, serverUrl);
+  const personaColor = PERSONA_COLORS[meta.personaKey] ?? 'var(--vscode-textLink-foreground)';
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -260,12 +269,19 @@ export function SessionChatView() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  function queueScrollToBottom() {
-    // Defer a frame so the DOM has the appended node.
+  function queueScrollToBottom(smooth = false) {
+    // Defer a frame so the DOM has the appended node. `smooth` is opt-in
+    // — pass true when the user explicitly clicked the jump-to-bottom
+    // button. First-paint history dumps and live appends stay instant
+    // to avoid animating a 500-entry scroll on every panel open.
     requestAnimationFrame(() => {
       const el = scrollerRef.current;
       if (!el) { return; }
-      el.scrollTop = el.scrollHeight;
+      if (smooth && typeof el.scrollTo === 'function') {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
     });
   }
 
@@ -354,16 +370,22 @@ export function SessionChatView() {
               className="chat-header-avatar"
               src={personaAvatar}
               fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+              fallbackColor={personaColor}
             />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="chat-header-name">{meta.personaName}</div>
               <div className="chat-header-meta">
-                {meta.model}
-                {meta.model && <span className="dot">·</span>}
-                <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>
-                  ⎇ {meta.branch}
+                {meta.model && (
+                  <>
+                    <span>{meta.model}</span>
+                    <span className="divider" aria-hidden />
+                  </>
+                )}
+                <span className="chat-header-branch">
+                  <GitBranchIcon size={11} />
+                  <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>{meta.branch}</span>
                 </span>
-                <span className="dot">·</span>
+                <span className="divider" aria-hidden />
                 <span style={{ textTransform: 'capitalize' }}>{meta.status}</span>
               </div>
             </div>
@@ -373,7 +395,13 @@ export function SessionChatView() {
             onClick={() => setRailOpen(o => !o)}
             aria-label={railOpen ? 'Collapse side rail' : 'Expand side rail'}
           >
-            {railOpen ? 'Hide details ›' : '‹ Show details'}
+            <span>{railOpen ? 'Hide details' : 'Show details'}</span>
+            <span
+              className="chat-header-toggle-chevron"
+              style={{ transform: railOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}
+            >
+              <ChevronIcon size={11} />
+            </span>
           </button>
         </div>
 
@@ -390,12 +418,16 @@ export function SessionChatView() {
         >
           {loading ? (
             <div className="chat-loading">
-              <div className="chat-skeleton" />
-              <div className="chat-skeleton" />
-              <div className="chat-skeleton" />
+              <div className="chat-skeleton shimmer" />
+              <div className="chat-skeleton shimmer" />
+              <div className="chat-skeleton shimmer" />
             </div>
           ) : messages.length === 0 ? (
-            <EmptyState personaName={meta.personaName} personaAvatarUrl={personaAvatar} />
+            <EmptyState
+              personaName={meta.personaName}
+              personaAvatarUrl={personaAvatar}
+              personaColor={personaColor}
+            />
           ) : (
             messages.map(msg => (
               <MessageBubble
@@ -415,56 +447,68 @@ export function SessionChatView() {
             className="chat-scroll-down"
             onClick={() => {
               pinnedToBottomRef.current = true;
-              queueScrollToBottom();
+              queueScrollToBottom(true);
             }}
             aria-label="Scroll to latest message"
           >
-            ↓
+            <ArrowDownIcon size={16} />
           </button>
         )}
 
         {error && (
           <div className="chat-error">
             <span>{error}</span>
-            <button onClick={() => setError(null)} aria-label="Dismiss">✕</button>
+            <button onClick={() => setError(null)} aria-label="Dismiss">
+              <XIcon size={13} />
+            </button>
           </div>
         )}
 
-        <div className="chat-input-row">
-          <div className="chat-textarea-wrap">
-            <MentionPicker
-              state={mentionState}
-              items={mentionItems}
-              selectedIndex={selectedIndex}
-              loading={mentionLoading}
-              onPick={commitMention}
-              onHoverIndex={setSelectedIndex}
-            />
-            <textarea
-              ref={textareaRef}
-              className="chat-textarea"
-              value={draft}
-              onChange={e => {
-                setDraft(e.target.value);
-                // Cursor moves with the change; snapshot after React
-                // applies the new value (selectionStart reflects post-edit).
-                snapshotCursor();
-              }}
-              onKeyUp={snapshotCursor}
-              onClick={snapshotCursor}
-              onSelect={snapshotCursor}
-              onKeyDown={onTextareaKey}
-              placeholder={`Message ${meta.personaName}…   (Enter to send · Shift+Enter for newline · @ to mention)`}
-              rows={2}
-            />
+        <div className="chat-input-area">
+          <div className="chat-input-row">
+            <div className="chat-textarea-wrap">
+              <MentionPicker
+                state={mentionState}
+                items={mentionItems}
+                selectedIndex={selectedIndex}
+                loading={mentionLoading}
+                onPick={commitMention}
+                onHoverIndex={setSelectedIndex}
+              />
+              <textarea
+                ref={textareaRef}
+                className="chat-textarea"
+                value={draft}
+                onChange={e => {
+                  setDraft(e.target.value);
+                  // Cursor moves with the change; snapshot after React
+                  // applies the new value (selectionStart reflects post-edit).
+                  snapshotCursor();
+                }}
+                onKeyUp={snapshotCursor}
+                onClick={snapshotCursor}
+                onSelect={snapshotCursor}
+                onKeyDown={onTextareaKey}
+                placeholder={`Message ${meta.personaName}…`}
+                rows={2}
+              />
+            </div>
+            <button
+              className="chat-send"
+              onClick={send}
+              disabled={!draft.trim()}
+            >
+              <PaperPlaneIcon size={13} />
+              <span>Send</span>
+            </button>
           </div>
-          <button
-            className="chat-send"
-            onClick={send}
-            disabled={!draft.trim()}
-          >
-            Send
-          </button>
+          <div className="chat-input-hints" aria-hidden>
+            <kbd>Enter</kbd> to send
+            <span className="divider" />
+            <kbd>Shift</kbd>+<kbd>Enter</kbd> for newline
+            <span className="divider" />
+            <kbd>@</kbd> to mention
+          </div>
         </div>
       </div>
 
@@ -480,7 +524,11 @@ export function SessionChatView() {
   );
 }
 
-function EmptyState({ personaName, personaAvatarUrl }: { personaName: string; personaAvatarUrl?: string }) {
+function EmptyState({ personaName, personaAvatarUrl, personaColor }: {
+  personaName: string;
+  personaAvatarUrl?: string;
+  personaColor?: string;
+}) {
   const glyph = personaName.trim().charAt(0).toUpperCase() || 'A';
   return (
     <div className="chat-empty">
@@ -488,6 +536,7 @@ function EmptyState({ personaName, personaAvatarUrl }: { personaName: string; pe
         className="chat-empty-avatar"
         src={personaAvatarUrl}
         fallbackGlyph={glyph}
+        fallbackColor={personaColor}
       />
       <div className="chat-empty-title">{personaName}</div>
       <div className="chat-empty-sub">

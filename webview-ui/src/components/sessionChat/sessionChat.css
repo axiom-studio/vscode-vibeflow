@@ -119,6 +119,42 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* Hairline vertical divider — replaces the · glyph separator in the
+ * chat header meta line. Renders consistently across themes; doesn't
+ * rely on font kerning.
+ */
+.chat-header-meta .divider,
+.chat-input-hints .divider {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  margin: 0 8px;
+  vertical-align: middle;
+  background: color-mix(in oklab, var(--vscode-foreground) 18%, transparent);
+}
+
+/* Header branch chip: git-branch icon + branch name in editor font. */
+.chat-header-meta .chat-header-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Toggle button chevron flips direction based on collapsed state.
+ * Inline-flex + small gap keeps the icon optically centered against
+ * the "Show/Hide details" text label.
+ */
+.chat-header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chat-header-toggle-chevron {
+  display: inline-flex;
+  align-items: center;
+  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 .chat-header-toggle {
   background: transparent;
   border: 1px solid var(--vscode-panel-border);
@@ -472,15 +508,20 @@
   color: var(--vscode-descriptionForeground);
 }
 
-.chat-empty-hints kbd {
+.chat-empty-hints kbd,
+.chat-input-hints kbd {
   display: inline-block;
-  padding: 2px 6px;
+  padding: 1px 6px;
   margin: 0 2px;
   font-family: var(--vscode-editor-font-family);
-  font-size: 11px;
-  background: var(--vscode-keybindingLabel-background, rgba(127,127,127,0.15));
-  border: 1px solid var(--vscode-keybindingLabel-border, var(--vscode-panel-border));
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--vscode-foreground);
+  background: var(--vscode-keybindingLabel-background, color-mix(in oklab, var(--vscode-foreground) 10%, transparent));
+  border: 1px solid var(--vscode-keybindingLabel-border, color-mix(in oklab, var(--vscode-foreground) 18%, transparent));
   border-radius: 3px;
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--vscode-foreground) 6%, transparent);
 }
 
 /* ============================== Loading skeleton ============================== */
@@ -491,22 +532,14 @@
   padding: 12px 0;
 }
 
+/* Sizing only — animation comes from the shared `.shimmer` class
+ * (declared in index.css alongside the project-wide shimmer keyframe
+ * introduced in #1657). Compose at the usage site:
+ *   <div className="chat-skeleton shimmer" />
+ */
 .chat-skeleton {
   height: 60px;
   border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    var(--vscode-editor-background) 0%,
-    var(--vscode-list-hoverBackground) 50%,
-    var(--vscode-editor-background) 100%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.6s ease-in-out infinite;
-}
-
-@keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
 /* ============================== Scroll-to-bottom pill ============================== */
@@ -520,18 +553,22 @@
   border: 1px solid var(--vscode-panel-border);
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
-  font-size: 16px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 12px color-mix(in oklab, var(--vscode-foreground) 24%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 4;
+  transition: transform 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out;
 }
 
 .chat-scroll-down:hover {
   background: var(--vscode-list-hoverBackground);
   border-color: var(--vscode-focusBorder);
+}
+
+.chat-scroll-down:active {
+  transform: scale(0.96);
 }
 
 /* ============================== Error toast ============================== */
@@ -560,14 +597,33 @@
 
 .chat-error button:hover { opacity: 1; }
 
-/* ============================== Input row ============================== */
+/* ============================== Input area ============================== */
+/* `.chat-input-area` wraps `.chat-input-row` + the keyboard-hints
+ * footnote so they share the border + padding + background. The row
+ * itself loses the border (moved to the wrapper) so the hints sit
+ * inside the visual chrome without a double-line. */
+.chat-input-area {
+  padding: 14px 28px 10px;
+  border-top: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editor-background);
+}
+
 .chat-input-row {
   display: flex;
   gap: 8px;
   align-items: flex-end;
-  padding: 14px 28px 18px;
-  border-top: 1px solid var(--vscode-panel-border);
-  background: var(--vscode-editor-background);
+}
+
+.chat-input-hints {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  user-select: none;
 }
 
 .chat-textarea {
@@ -589,8 +645,13 @@
 .chat-textarea:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
-  box-shadow: 0 0 0 2px var(--vscode-focusBorder), 0 0 0 4px rgba(0, 122, 204, 0.15);
-  /* The double-ring fakes the VSCode focus halo. Cheap and effective. */
+  box-shadow:
+    0 0 0 2px var(--vscode-focusBorder),
+    0 0 0 4px color-mix(in oklab, var(--vscode-focusBorder) 25%, transparent);
+  /* The double-ring fakes the VSCode focus halo. Outer band tinted off
+   * the focus color so it adapts when users theme `--vscode-focusBorder`
+   * (was hardcoded `rgba(0, 122, 204, 0.15)` — only correct on Default
+   * Dark Modern). */
 }
 
 .chat-textarea::placeholder {
@@ -598,7 +659,7 @@
 }
 
 .chat-send {
-  padding: 10px 18px;
+  padding: 10px 16px;
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: none;
@@ -607,7 +668,10 @@
   font-size: 13px;
   font-weight: 600;
   height: 44px;
-  transition: background 120ms ease, transform 80ms ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: background 150ms ease-out, transform 150ms ease-out;
 }
 
 .chat-send:hover:not(:disabled) {
@@ -615,12 +679,14 @@
 }
 
 .chat-send:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 
 .chat-send:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
 }
 
 /* ============================== Mention picker (todo #1614) ============================== */
