@@ -12,6 +12,8 @@ import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
 import { AVATAR_BY_PERSONA } from '../personaAvatars';
 import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
+import { EmptyState } from './_shared/EmptyState';
+import { GitBranchIcon, InboxIcon, SpinnerIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: DashboardClientMessage) => void };
 
@@ -328,8 +330,11 @@ export function DashboardView() {
     // structure first; the active path is what jumps out. Dashed edges
     // (collaborative handoffs) sit a step below solid (mandatory gates)
     // even when both are inactive, preserving the semantic distinction.
-    const inactiveSolid = 'rgba(127,127,127,0.42)';
-    const inactiveDashed = 'rgba(127,127,127,0.22)';
+    // Theme-token-mixed via `color-mix` so the lines adapt to light /
+    // dark / high-contrast instead of relying on a fixed gray that
+    // disappears on dark themes and fights with light themes.
+    const inactiveSolid = 'color-mix(in oklab, var(--vscode-foreground) 32%, transparent)';
+    const inactiveDashed = 'color-mix(in oklab, var(--vscode-foreground) 16%, transparent)';
     const stroke = isActive
       ? 'var(--feed-link)'
       : (e.dashed ? inactiveDashed : inactiveSolid);
@@ -374,14 +379,16 @@ export function DashboardView() {
           <button
             onClick={onResetLayout}
             title="Discard your dragged layout and restore the default positions."
+            className="transition-all duration-150 ease-out active:scale-[0.97] hover:bg-[var(--vscode-list-hoverBackground)]"
             style={{
-              fontSize: 10,
-              padding: '2px 8px',
+              fontSize: 11,
+              padding: '5px 10px',
               borderRadius: 4,
               border: '1px solid var(--feed-border)',
               background: 'transparent',
               color: 'var(--feed-muted)',
               cursor: 'pointer',
+              fontWeight: 500,
             }}
           >
             Reset layout
@@ -469,10 +476,10 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
             height: 36,
             borderRadius: '50%',
             padding: 2,
-            background: `linear-gradient(135deg, ${ringColor}, ${ringColor}99)`,
+            background: `linear-gradient(135deg, ${ringColor}, color-mix(in oklab, ${ringColor} 60%, transparent))`,
             boxShadow: status === 'active'
-              ? `0 0 0 3px ${ringColor}22, 0 1px 4px rgba(0,0,0,0.25)`
-              : '0 1px 3px rgba(0,0,0,0.25)',
+              ? `0 0 0 3px color-mix(in oklab, ${ringColor} 22%, transparent), 0 1px 4px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)`
+              : '0 1px 3px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)',
           }}>
             <img
               src={avatarUrl}
@@ -559,7 +566,7 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
                 letterSpacing: 0.4,
                 padding: '1px 5px',
                 borderRadius: 3,
-                background: 'rgba(209,134,22,0.16)',
+                background: 'color-mix(in oklab, var(--vscode-charts-orange, #d18616) 18%, transparent)',
                 color: 'var(--vscode-charts-orange, #d18616)',
                 lineHeight: 1.5,
                 textTransform: 'uppercase',
@@ -575,11 +582,12 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
 }
 
 function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProperties {
-  // Inactive nodes used to inherit `var(--feed-muted)` which made them
-  // disappear into the dark background. Use a stronger neutral so the
-  // box outline is always readable; status colors only kick in for
-  // active/stale to draw the eye to live activity.
-  const inactiveBorder = 'rgba(127,127,127,0.45)';
+  // Inactive nodes use a `color-mix`-tinted neutral so the box outline
+  // stays readable across light / dark / high-contrast themes; status
+  // colors only kick in for active/stale to draw the eye to live
+  // activity. Old hardcoded `rgba(127,127,127,0.45)` disappeared on
+  // dark themes and clashed on light.
+  const inactiveBorder = 'color-mix(in oklab, var(--vscode-foreground) 32%, transparent)';
   const color = status === 'inactive' ? inactiveBorder : STATUS_COLOR[status];
   // Soft gradient + per-status accent makes the active state pop without
   // the previous flat orange tint that washed over every code-agent
@@ -587,8 +595,16 @@ function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProper
   // the right edge so the cluster still reads as a group.
   const baseBg = 'var(--vscode-editor-background)';
   const background = isCodeAgent
-    ? `linear-gradient(135deg, ${baseBg} 0%, ${baseBg} 70%, rgba(209,134,22,0.08) 100%)`
+    ? `linear-gradient(135deg, ${baseBg} 0%, ${baseBg} 70%, color-mix(in oklab, var(--vscode-charts-orange, #d18616) 10%, transparent) 100%)`
     : baseBg;
+  // Active state stacks: an inner-edge refraction (1px inset, 6% fg)
+  // + the colored halo + a tinted drop shadow. The inset gives the
+  // node a sense of "raised material" without sliding into glassmorphism.
+  const activeShadow =
+    `inset 0 0 0 1px color-mix(in oklab, var(--vscode-foreground) 6%, transparent),`
+    + ` 0 0 0 1px color-mix(in oklab, ${color} 33%, transparent),`
+    + ` 0 4px 12px color-mix(in oklab, var(--vscode-foreground) 16%, transparent)`;
+  const restingShadow = '0 1px 3px color-mix(in oklab, var(--vscode-foreground) 14%, transparent)';
   return {
     background,
     border: `1px solid ${color}`,
@@ -599,10 +615,8 @@ function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProper
     fontFamily: 'var(--vscode-font-family)',
     opacity: status === 'inactive' ? 0.92 : 1,
     minWidth: 180,
-    boxShadow: status === 'active'
-      ? `0 0 0 1px ${color}55, 0 4px 12px rgba(0,0,0,0.18)`
-      : '0 1px 3px rgba(0,0,0,0.15)',
-    transition: 'box-shadow 120ms ease, transform 120ms ease',
+    boxShadow: status === 'active' ? activeShadow : restingShadow,
+    transition: 'box-shadow 160ms ease-out, transform 160ms ease-out',
   };
 }
 
@@ -623,17 +637,21 @@ function Header({ snapshot, loading, onRefresh }: {
       justifyContent: 'space-between',
       flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)', letterSpacing: '-0.005em' }}>
           VibeFlow Dashboard
         </span>
         {snapshot?.projectName && (
-          <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>
-            · {snapshot.projectName} · {snapshot.branch}
+          <span style={{ fontSize: 12, color: 'var(--feed-muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span>· {snapshot.projectName} ·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--feed-muted)' }}>
+              <GitBranchIcon size={11} />
+              <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>{snapshot.branch}</span>
+            </span>
           </span>
         )}
         {generated && (
-          <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.7 }}>
+          <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>
             updated {generated}
           </span>
         )}
@@ -641,33 +659,37 @@ function Header({ snapshot, loading, onRefresh }: {
       <button
         onClick={onRefresh}
         disabled={loading}
+        className="transition-all duration-150 ease-out active:scale-[0.97]"
         style={{
-          padding: '4px 12px',
+          padding: '5px 12px',
           fontSize: 11,
+          fontWeight: 500,
           background: 'var(--feed-button-bg)',
           color: 'var(--feed-button-fg)',
           border: 'none',
           borderRadius: 4,
           cursor: loading ? 'wait' : 'pointer',
-          opacity: loading ? 0.6 : 1,
+          opacity: loading ? 0.7 : 1,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
         }}
       >
-        {loading ? 'Loading…' : 'Refresh'}
+        {loading && <SpinnerIcon size={11} />}
+        {loading ? 'Loading' : 'Refresh'}
       </button>
     </div>
   );
 }
 
 function Banner({ kind, message }: { kind: 'error' | 'warning'; message: string }) {
-  const colors = kind === 'error'
-    ? { bg: 'rgba(244,71,71,0.1)', fg: 'var(--feed-error)' }
-    : { bg: 'rgba(220,150,80,0.1)', fg: 'var(--feed-warning)' };
+  const fg = kind === 'error' ? 'var(--feed-error)' : 'var(--feed-warning)';
   return (
     <div style={{
       padding: '6px 16px',
       fontSize: 11,
-      background: colors.bg,
-      color: colors.fg,
+      background: `color-mix(in oklab, ${fg} 12%, transparent)`,
+      color: fg,
       borderBottom: '1px solid var(--feed-border)',
     }}>
       {message}
@@ -740,6 +762,7 @@ function SummaryGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | unde
         label="Lines"
         value={`+${linesAdded} −${linesDeleted}`}
         sub={'net ' + (linesAdded - linesDeleted >= 0 ? '+' : '') + (linesAdded - linesDeleted)}
+        subColor={linesAdded - linesDeleted >= 0 ? 'var(--feed-success)' : 'var(--feed-error)'}
       />
       <SummaryCard
         label="Session time"
@@ -795,9 +818,12 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
 
       <Card title={`Branch readiness · ${br?.branch ?? snapshot.branch}`}>
         {!br || br.total_items === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--feed-muted)' }}>
-            {br?.message ?? 'No tracked work items on this branch.'}
-          </div>
+          <EmptyState
+            icon={<InboxIcon size={20} />}
+            headline="No tracked work"
+            subtext={br?.message ?? 'No tracked work items on this branch yet.'}
+            className="flex flex-col items-center justify-center text-center gap-1.5 py-3"
+          />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', gap: 12 }}>
@@ -822,7 +848,7 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
   );
 }
 
-function SummaryCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function SummaryCard({ label, value, sub, subColor }: { label: string; value: string; sub?: string; subColor?: string }) {
   return (
     <div style={{
       padding: '10px 12px',
@@ -834,11 +860,11 @@ function SummaryCard({ label, value, sub }: { label: string; value: string; sub?
       <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--feed-muted)' }}>
         {label}
       </div>
-      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: 'var(--feed-fg)' }}>
+      <div style={{ fontSize: 18, fontWeight: 600, marginTop: 2, color: 'var(--feed-fg)', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
         {value}
       </div>
       {sub && (
-        <div style={{ fontSize: 11, color: 'var(--feed-muted)', marginTop: 2, opacity: 0.85 }}>
+        <div style={{ fontSize: 11, color: subColor ?? 'var(--feed-muted)', marginTop: 2, opacity: subColor ? 0.95 : 0.85, fontVariantNumeric: 'tabular-nums' }}>
           {sub}
         </div>
       )}
@@ -869,9 +895,12 @@ function Pill({ label, count, color, dim }: { label: string; count: number; colo
       fontSize: 11,
       padding: '2px 8px',
       borderRadius: 10,
-      background: 'rgba(127,127,127,0.08)',
+      background: dim
+        ? 'transparent'
+        : `color-mix(in oklab, ${color} 14%, transparent)`,
       color: dim ? 'var(--feed-muted)' : color,
       fontWeight: 600,
+      fontVariantNumeric: 'tabular-nums',
       opacity: dim ? 0.55 : 1,
     }}>
       {count} {label}
@@ -901,11 +930,11 @@ function Skeleton({ rows }: { rows: number }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
       {Array.from({ length: rows * 3 }).map((_, i) => (
-        <div key={i} style={{
-          height: 60,
-          borderRadius: 6,
-          background: 'rgba(127,127,127,0.08)',
-        }} />
+        <div
+          key={i}
+          className="shimmer"
+          style={{ height: 60, borderRadius: 6 }}
+        />
       ))}
     </div>
   );
