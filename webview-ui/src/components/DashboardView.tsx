@@ -279,8 +279,8 @@ export function DashboardView() {
   const personaStatus = state.snapshot?.personaStatus ?? {};
   const personaQueues = state.snapshot?.personaQueues ?? {};
   const serverUrl = state.snapshot?.serverUrl ?? '';
-  const nodes: Node[] = useMemo(
-    () => Object.keys(PERSONA_DISPLAY).map(key => {
+  const nodes: Node[] = useMemo(() => {
+    const personaNodes: Node[] = Object.keys(PERSONA_DISPLAY).map(key => {
       const status = personaStatus[key] ?? 'inactive';
       const isCodeAgent = CODE_AGENT_KEYS.has(key);
       const queue = personaQueues[key];
@@ -300,7 +300,6 @@ export function DashboardView() {
               name={PERSONA_DISPLAY[key]}
               character={CHARACTER_BY_PERSONA[key]}
               status={status}
-              isCodeAgent={isCodeAgent}
               queue={queue === undefined ? null : queue}
               queueTooltip={QUEUE_TOOLTIPS[key]}
               avatarUrl={avatarUrl}
@@ -309,9 +308,28 @@ export function DashboardView() {
         },
         style: nodeStyle(status, isCodeAgent),
       };
-    }),
-    [personaStatus, personaQueues, positions, serverUrl],
-  );
+    });
+
+    // Floating "1 active per branch" chip pinned above the code-agent
+    // cluster. Single shared affordance replaces the old per-node
+    // orange `1/branch` pill. Position derived from the architect's
+    // default position (top of the cluster); the chip stays static
+    // even if the user drags the agents — it's a constraint marker,
+    // not an agent itself.
+    const archPos = PERSONA_POSITIONS.architect;
+    const slotNode: Node = {
+      id: 'slot-code-agent',
+      type: 'slotLabel',
+      position: { x: archPos.x + 8, y: archPos.y - 34 },
+      data: { label: '1 active per branch · code agents' },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      style: { background: 'transparent', border: 'none', padding: 0, width: 'auto' },
+    };
+
+    return [slotNode, ...personaNodes];
+  }, [personaStatus, personaQueues, positions, serverUrl]);
 
   const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => {
     // An edge is "active" only when BOTH endpoints have a live session.
@@ -338,6 +356,11 @@ export function DashboardView() {
     const stroke = isActive
       ? 'var(--feed-link)'
       : (e.dashed ? inactiveDashed : inactiveSolid);
+    // Single label on the Security → QA gate makes the final hand-off
+    // legible without crowding the rest of the graph. Code-agent →
+    // Security edges share a single conceptual "review" step and would
+    // produce 3 redundant labels stacked vertically — left unlabeled.
+    const label = e.id === 'sec-qa' ? 'verify' : undefined;
     return {
       id: e.id,
       source: e.source,
@@ -347,11 +370,38 @@ export function DashboardView() {
       // arc across other nodes.
       type: 'smoothstep',
       animated: isActive,
+      label,
+      labelStyle: label
+        ? {
+            fontSize: 9,
+            fontWeight: 600,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            fill: 'var(--feed-muted)',
+          }
+        : undefined,
+      labelBgStyle: label
+        ? {
+            fill: 'var(--vscode-editor-background)',
+            stroke: 'color-mix(in oklab, var(--vscode-foreground) 14%, transparent)',
+            strokeWidth: 1,
+          }
+        : undefined,
+      labelBgPadding: label ? [6, 3] as [number, number] : undefined,
+      labelBgBorderRadius: label ? 3 : undefined,
       markerEnd: { type: MarkerType.ArrowClosed, color: stroke, width: 12, height: 12 },
       style: {
         stroke,
-        strokeWidth: isActive ? 2.25 : 1.25,
+        strokeWidth: isActive ? 2.5 : 1.25,
         ...(e.dashed ? { strokeDasharray: '4,4' } : {}),
+        // Active edges get a soft glow so the live path reads at a
+        // glance against the muted inactive lines. Tinted via color-mix
+        // off the active color (`--feed-link`) so it stays subtle in HC.
+        ...(isActive
+          ? {
+              filter: 'drop-shadow(0 0 4px color-mix(in oklab, var(--feed-link) 40%, transparent))',
+            }
+          : {}),
       },
     };
   }), [personaStatus]);
@@ -395,14 +445,15 @@ export function DashboardView() {
           </button>
         }
       >
-        <div style={{ height: 460, width: '100%', borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
+        <div style={{ height: 500, width: '100%', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)', overflow: 'hidden' }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
+            nodeTypes={NODE_TYPES}
             onNodeClick={onNodeClick}
             onNodeDragStop={onNodeDragStop}
             fitView
-            fitViewOptions={{ padding: 0.18 }}
+            fitViewOptions={{ padding: 0.2 }}
             proOptions={{ hideAttribution: true }}
             // User feedback (2026-05-08): "can we let the users move the
             // blocks around?" — yes. Free-form drag for personal layout
@@ -418,7 +469,16 @@ export function DashboardView() {
             // touching the box edges.
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
-            <Background variant={BackgroundVariant.Dots} color="var(--feed-border)" gap={18} size={1.2} />
+            {/* Lines variant gives the canvas an architectural plane
+             *  vs the default-Excalidraw dot scatter. Color is heavily
+             *  tinted toward `--vscode-foreground` so the grid sits
+             *  behind the content without competing for attention. */}
+            <Background
+              variant={BackgroundVariant.Lines}
+              color="color-mix(in oklab, var(--vscode-foreground) 5%, transparent)"
+              gap={24}
+              lineWidth={0.7}
+            />
           </ReactFlow>
         </div>
       </Section>
@@ -439,26 +499,47 @@ export function DashboardView() {
 }
 
 /**
- * Persona node body. Designed as an avatar-led card with the role name on
- * the top line and the character name (Alex / Morgan / …) below, plus an
- * optional `1/branch` chip for the code-agent cluster.
+ * Persona node body — character-first reading order.
  *
- * Queue count is shown as a notification dot on the avatar's top-right
- * corner instead of a separate pill — this matches how every chat / mail
- * UI does "unread count," reads as "items waiting for you," and removes
- * the previous blue `↓ N` pill that nobody knew how to interpret.
+ * Hierarchy: the character name (Kai / Morgan / Sophie / …) is the
+ * primary identity; the role label is the supporting line. Personas
+ * feel like collaborators, not org-chart slots. Active personas get
+ * a soft 2s breathing ring on the avatar (gated by prefers-reduced-motion
+ * via the global shield in index.css).
+ *
+ * Queue count stays as a corner notification badge on the avatar
+ * (chat/mail-style "unread count") so it doesn't compete with the
+ * primary text identity. The code-agent shared-slot constraint is now
+ * conveyed by a single visual chip floating above the cluster
+ * (see `SlotLabelNode`) instead of per-node "1/branch" badges.
  */
-function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTooltip, avatarUrl }: {
+function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatarUrl }: {
   name: string;
   character: string | undefined;
   status: PersonaStatus;
-  isCodeAgent: boolean;
   queue: number | null;
   queueTooltip: string | undefined;
   avatarUrl: string | undefined;
 }) {
   const showQueueBadge = queueTooltip !== undefined && queue !== null && queue > 0;
   const ringColor = STATUS_COLOR[status];
+  const restingShadow = `0 1px 3px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)`;
+  // Active personas get the live breathing ring via the .persona-pulse
+  // class (defined in index.css). The CSS custom property pipes the
+  // persona's brand color into the pulse keyframe so each persona
+  // pulses in its own color, not a shared blue.
+  const isActive = status === 'active';
+  const avatarStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    width: 36,
+    height: 36,
+    borderRadius: '50%',
+    padding: 2,
+    background: `linear-gradient(135deg, ${ringColor}, color-mix(in oklab, ${ringColor} 60%, transparent))`,
+    ...(isActive
+      ? { ['--persona-pulse-color' as string]: ringColor }
+      : { boxShadow: restingShadow }),
+  };
   return (
     <div style={{
       display: 'flex',
@@ -470,17 +551,7 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
       {/* Avatar block ----------------------------------------------------- */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         {avatarUrl ? (
-          <span style={{
-            display: 'inline-flex',
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            padding: 2,
-            background: `linear-gradient(135deg, ${ringColor}, color-mix(in oklab, ${ringColor} 60%, transparent))`,
-            boxShadow: status === 'active'
-              ? `0 0 0 3px color-mix(in oklab, ${ringColor} 22%, transparent), 0 1px 4px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)`
-              : '0 1px 3px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)',
-          }}>
+          <span className={isActive ? 'persona-pulse' : undefined} style={avatarStyle}>
             <img
               src={avatarUrl}
               alt=""
@@ -497,14 +568,20 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
         ) : (
           // No avatar: fall back to a status dot inside a 36px slot so
           // the layout doesn't shift between rendered/unrendered states.
-          <span style={{
-            display: 'inline-flex',
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            background: ringColor,
-            opacity: 0.85,
-          }} />
+          <span
+            className={isActive ? 'persona-pulse' : undefined}
+            style={{
+              display: 'inline-flex',
+              width: 36,
+              height: 36,
+              borderRadius: '50%',
+              background: ringColor,
+              opacity: 0.85,
+              ...(isActive
+                ? { ['--persona-pulse-color' as string]: ringColor }
+                : {}),
+            }}
+          />
         )}
         {/* Notification badge — top-right corner of the avatar, scoped
             in size so a 3-digit count still fits without ballooning the
@@ -538,48 +615,63 @@ function PersonaNodeLabel({ name, character, status, isCodeAgent, queue, queueTo
 
       {/* Text block ------------------------------------------------------- */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: 'var(--feed-fg)',
-          whiteSpace: 'nowrap',
-          letterSpacing: 0.1,
-        }}>
-          {name}
-        </div>
+        {character && (
+          <div style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--feed-fg)',
+            whiteSpace: 'nowrap',
+            letterSpacing: '-0.005em',
+          }}>
+            {character}
+          </div>
+        )}
         <div style={{
           fontSize: 10.5,
           color: 'var(--feed-muted)',
-          opacity: 0.85,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
+          opacity: 0.92,
           whiteSpace: 'nowrap',
+          letterSpacing: '0.005em',
         }}>
-          {character && <span>{character}</span>}
-          {isCodeAgent && (
-            <span
-              title="One code agent per branch — Architect, Developer, and Principal Engineer share this slot."
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: 0.4,
-                padding: '1px 5px',
-                borderRadius: 3,
-                background: 'color-mix(in oklab, var(--vscode-charts-orange, #d18616) 18%, transparent)',
-                color: 'var(--vscode-charts-orange, #d18616)',
-                lineHeight: 1.5,
-                textTransform: 'uppercase',
-              }}
-            >
-              1/branch
-            </span>
-          )}
+          {name}
         </div>
       </div>
     </div>
   );
 }
+
+/**
+ * Floating chip rendered as a React Flow node above the code-agent
+ * cluster. Conveys the "one active code agent per branch" constraint
+ * once for the whole cluster instead of duplicating an orange `1/branch`
+ * pill on each of the three agent nodes. Non-draggable, non-clickable.
+ */
+function SlotLabelNode({ data }: { data: { label: string } }) {
+  return (
+    <div
+      style={{
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
+        padding: '3px 9px',
+        borderRadius: 999,
+        background: 'color-mix(in oklab, var(--vscode-charts-orange, #d18616) 14%, transparent)',
+        color: 'var(--vscode-charts-orange, #d18616)',
+        border: '1px solid color-mix(in oklab, var(--vscode-charts-orange, #d18616) 32%, transparent)',
+        whiteSpace: 'nowrap',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    >
+      {data.label}
+    </div>
+  );
+}
+
+const NODE_TYPES = {
+  slotLabel: SlotLabelNode,
+} as const;
 
 function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProperties {
   // Inactive nodes use a `color-mix`-tinted neutral so the box outline
