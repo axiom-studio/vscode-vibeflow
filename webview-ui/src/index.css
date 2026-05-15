@@ -225,6 +225,30 @@ select:focus-visible {
 }
 
 /*
+ * Persona pulse — applied to the avatar wrapper of an active persona
+ * in the Dashboard topology. Single CSS variable `--persona-pulse-color`
+ * lets the consumer paint the breathing halo in the persona's brand
+ * color (set inline on the wrapping span). The prefers-reduced-motion
+ * shield below freezes this to a steady halo for users who opt out of
+ * decorative motion.
+ */
+@keyframes persona-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, var(--persona-pulse-color, currentColor) 28%, transparent),
+      0 1px 4px color-mix(in oklab, var(--vscode-foreground) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 7px color-mix(in oklab, var(--persona-pulse-color, currentColor) 6%, transparent),
+      0 1px 4px color-mix(in oklab, var(--vscode-foreground) 22%, transparent);
+  }
+}
+.persona-pulse {
+  animation: persona-pulse 2.4s ease-in-out infinite;
+}
+
+/*
  * Dashboard SummaryGrid bento layout (introduced #1660).
  * Top tier: Sessions hero + Work items hero (each spans 3 cols).
  * Bottom tier: Commits + Lines + Session time (each spans 2 cols).
