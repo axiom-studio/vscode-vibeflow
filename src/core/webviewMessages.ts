@@ -330,11 +330,13 @@ export type SessionPanelClientMessage =
       };
     }
   // Webview asks the host for a webview-safe URI for an asset id (#1670).
-  // Triggered on render of an `[asset:N]` token. Host ensures the binary
-  // is cached locally (downloads with x-api-key if not), then replies
-  // with `chatAssetUriResolved`. Per-id results are deduped client-side
-  // so multiple references to the same asset share one fetch.
-  | { type: 'chatGetAssetUri'; payload: { id: number } };
+  // Triggered on render of an `[asset:N "name"]` token. Host ensures
+  // the binary is cached locally (downloads with x-api-key if not),
+  // then replies with `chatAssetUriResolved`. `name` is the original
+  // filename from the token — host uses it as the cache-path leaf so
+  // the returned URI preserves the extension (needed for Content-Type
+  // sniffing on SVG and other text-shaped image formats).
+  | { type: 'chatGetAssetUri'; payload: { id: number; name: string } };
 
 // ============================================================
 // Kanban Panel
