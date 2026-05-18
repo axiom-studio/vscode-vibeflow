@@ -11,8 +11,11 @@ import {
   ChevronIcon,
   GitBranchIcon,
   PaperPlaneIcon,
+  PaperclipIcon,
+  SpinnerIcon,
   XIcon,
 } from './_shared/icons';
+import { useChatAttachments, type PendingUpload } from './sessionChat/useChatAttachments';
 import {
   MENTION_KINDS,
   applyMention,
@@ -86,6 +89,13 @@ export function SessionChatView() {
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionLoading, setMentionLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const { pending: pendingUploads, attachFiles, dismiss: dismissUpload } = useChatAttachments({
+    appendToDraft: useCallback((token: string) => {
+      setDraft(prev => prev.length === 0 || /\s$/.test(prev) ? `${prev}${token} ` : `${prev} ${token} `);
+    }, []),
+  });
   const lastQuerySignatureRef = useRef<string>('');
   const requestSeqRef = useRef(0);
   const latestRequestIdRef = useRef(0);
@@ -465,8 +475,33 @@ export function SessionChatView() {
         )}
 
         <div className="chat-input-area">
+          {pendingUploads.length > 0 && (
+            <PendingUploadsStrip uploads={pendingUploads} onDismiss={dismissUpload} />
+          )}
           <div className="chat-input-row">
-            <div className="chat-textarea-wrap">
+            <div
+              className={`chat-textarea-wrap${dragOver ? ' is-drag-over' : ''}`}
+              onDragOver={e => {
+                if (e.dataTransfer?.types?.includes('Files')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!dragOver) { setDragOver(true); }
+                }
+              }}
+              onDragLeave={e => {
+                // Only un-set when leaving the wrap entirely, not when
+                // crossing into a child element.
+                if (e.currentTarget === e.target) { setDragOver(false); }
+              }}
+              onDrop={e => {
+                if (e.dataTransfer?.files?.length) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOver(false);
+                  void attachFiles(e.dataTransfer.files);
+                }
+              }}
+            >
               <MentionPicker
                 state={mentionState}
                 items={mentionItems}
@@ -489,14 +524,55 @@ export function SessionChatView() {
                 onClick={snapshotCursor}
                 onSelect={snapshotCursor}
                 onKeyDown={onTextareaKey}
+                onPaste={e => {
+                  // Pull image / file items off the clipboard. Plain
+                  // text paste goes through the default behavior (we
+                  // only `preventDefault` if we actually found files).
+                  const items = e.clipboardData?.items;
+                  if (!items) { return; }
+                  const files: File[] = [];
+                  for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.kind === 'file') {
+                      const f = item.getAsFile();
+                      if (f) { files.push(f); }
+                    }
+                  }
+                  if (files.length > 0) {
+                    e.preventDefault();
+                    void attachFiles(files);
+                  }
+                }}
                 placeholder={`Message ${meta.personaName}…`}
                 rows={2}
               />
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={e => {
+                const files = e.target.files;
+                if (files && files.length > 0) { void attachFiles(files); }
+                // Reset so picking the same file twice in a row still fires onChange.
+                e.target.value = '';
+              }}
+            />
+            <button
+              className="chat-attach"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              title="Attach files (or paste / drag onto the input)"
+            >
+              <PaperclipIcon size={13} />
+            </button>
             <button
               className="chat-send"
               onClick={send}
-              disabled={!draft.trim()}
+              disabled={!draft.trim() || pendingUploads.some(p => p.status === 'uploading')}
+              title={pendingUploads.some(p => p.status === 'uploading') ? 'Wait for uploads to finish' : undefined}
             >
               <PaperPlaneIcon size={13} />
               <span>Send</span>
@@ -508,6 +584,8 @@ export function SessionChatView() {
             <kbd>Shift</kbd>+<kbd>Enter</kbd> for newline
             <span className="divider" />
             <kbd>@</kbd> to mention
+            <span className="divider" />
+            <kbd>Paste</kbd> / drag / <kbd>+</kbd> to attach
           </div>
         </div>
       </div>
@@ -522,6 +600,50 @@ export function SessionChatView() {
       />
     </div>
   );
+}
+
+/**
+ * Pending-upload chips strip (#1670). Sits above the textarea while
+ * uploads are in flight. Each chip is a thumbnail/icon + filename +
+ * size + a status indicator (spinner or error text) + a dismiss `×`.
+ * Successful uploads disappear from the strip (the token is appended
+ * to the draft instead).
+ */
+function PendingUploadsStrip({ uploads, onDismiss }: {
+  uploads: PendingUpload[];
+  onDismiss: (clientId: string) => void;
+}) {
+  return (
+    <div className="chat-attachment-strip" role="status">
+      {uploads.map(upload => (
+        <div
+          key={upload.clientId}
+          className={`chat-attachment-chip${upload.status === 'error' ? ' is-error' : ''}`}
+          title={upload.errorMessage ?? upload.name}
+        >
+          {upload.status === 'uploading' && <SpinnerIcon size={12} />}
+          {upload.status === 'error' && <span className="chat-attachment-error-icon" aria-hidden>!</span>}
+          <span className="chat-attachment-name">{upload.name}</span>
+          <span className="chat-attachment-size">{formatBytes(upload.size)}</span>
+          <button
+            type="button"
+            className="chat-attachment-dismiss"
+            onClick={() => onDismiss(upload.clientId)}
+            aria-label={`Dismiss ${upload.name}`}
+          >
+            <XIcon size={10} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Compact size formatter for the attachment chip. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) { return `${bytes} B`; }
+  if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function EmptyState({ personaName, personaAvatarUrl, personaColor }: {

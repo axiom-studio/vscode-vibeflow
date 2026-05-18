@@ -117,6 +117,31 @@ export function PaperPlaneIcon({ size = 14, ...rest }: IconProps = {}) {
 }
 
 /**
+ * Paperclip — chat attachment affordance (#1670). Simple curve outline
+ * matching the visual weight of the other 14-px icons in this set.
+ */
+export function PaperclipIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M21.44 11.05L12.25 20.24a6 6 0 0 1-8.49-8.49l8.49-8.49a4 4 0 0 1 5.66 5.66l-8.49 8.49a2 2 0 0 1-2.83-2.83l7.07-7.07" />
+    </Svg>
+  );
+}
+
+/**
+ * Generic file icon for non-image attachment chips (#1670). Folded-corner
+ * rectangle matching standard "document" semantics.
+ */
+export function FileIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </Svg>
+  );
+}
+
+/**
  * Spinner. Pure CSS rotation — no JS animation loop. Stroke uses
  * `currentColor` with a transparent gap so the spinner reads as a
  * partial arc tracing around the circle.
