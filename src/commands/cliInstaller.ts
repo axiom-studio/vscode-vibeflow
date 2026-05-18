@@ -33,15 +33,23 @@ const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024; // 100MB sanity cap
  * Hostname allowlist for the GitHub release flow:
  * - api.github.com hosts the manifest call
  * - github.com hosts the release page redirects
- * - objects.githubusercontent.com is where release assets actually live
- *   (GitHub returns a 302 from /releases/download/... to this host)
+ * - GitHub's content CDN lives under *.githubusercontent.com — the
+ *   specific subdomain has rotated over time (`objects.`, `codeload.`,
+ *   and as of 2025 release assets redirect via `release-assets.`).
+ *   We allow any `.githubusercontent.com` host rather than chase
+ *   subdomain churn, while still rejecting impostors like
+ *   `evil-githubusercontent.com.attacker.tld` (suffix match against
+ *   the actual `.githubusercontent.com` parent, not substring).
  */
-const ALLOWED_HOSTS = new Set([
+const EXACT_HOSTS = new Set([
   'api.github.com',
   'github.com',
-  'objects.githubusercontent.com',
-  'codeload.github.com',
 ]);
+
+function isAllowedHost(hostname: string): boolean {
+  if (EXACT_HOSTS.has(hostname)) { return true; }
+  return hostname === 'githubusercontent.com' || hostname.endsWith('.githubusercontent.com');
+}
 
 interface ReleaseAsset {
   name: string;
@@ -90,7 +98,7 @@ function assertAllowedHost(url: string): URL {
   if (parsed.protocol !== 'https:') {
     throw new Error(`Refusing to download over non-HTTPS URL: ${url}`);
   }
-  if (!ALLOWED_HOSTS.has(parsed.hostname)) {
+  if (!isAllowedHost(parsed.hostname)) {
     throw new Error(`Refusing to download from non-allowlisted host: ${parsed.hostname}`);
   }
   return parsed;

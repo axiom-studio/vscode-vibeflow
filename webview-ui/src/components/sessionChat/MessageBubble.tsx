@@ -176,6 +176,11 @@ function markdownComponents(diffView: 'unified' | 'split'): Components {
     // `<code>` / `<pre>` are handled above and their inner text
     // never re-enters this path (React elements pass through
     // `enhanceLeafText` untouched). #2084 / #1613.
+    //
+    // Includes inline emphasis wrappers (strong/em/del/ins/sub/sup)
+    // because react-markdown wraps `**hash**` / `*hash*` in those —
+    // without an override there, the inner text would be a child of
+    // a React element and our walker would skip it.
     p({ children, ...props }) {
       return <p {...props}>{enhanceLeafText(children, chatTokenDispatch)}</p>;
     },
@@ -208,6 +213,15 @@ function markdownComponents(diffView: 'unified' | 'split'): Components {
     },
     h6({ children, ...props }) {
       return <h6 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h6>;
+    },
+    strong({ children, ...props }) {
+      return <strong {...props}>{enhanceLeafText(children, chatTokenDispatch)}</strong>;
+    },
+    em({ children, ...props }) {
+      return <em {...props}>{enhanceLeafText(children, chatTokenDispatch)}</em>;
+    },
+    del({ children, ...props }) {
+      return <del {...props}>{enhanceLeafText(children, chatTokenDispatch)}</del>;
     },
   };
 }
