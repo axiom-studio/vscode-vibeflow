@@ -36,6 +36,7 @@ import { KanbanPanel } from './views/kanban/KanbanPanel.js';
 import { CompliancePanel } from './views/compliance/CompliancePanel.js';
 import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
+import { AssetCache } from './assets/AssetCache.js';
 import { composeSelectionPrompt } from './views/sessions/chatRenderer.js';
 import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js';
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
@@ -277,7 +278,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // sessions (todo #1620) — tool_use events for prompt_user /
   // respond_to_prompt route into the chat panel sub-millisecond,
   // replacing the 5s REST polling for sessions with a live stream.
-  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry);
+  // Chat-attachment binary cache (#1670) — bytes for uploaded /
+  // downloaded chat assets live under globalStorageUri so they survive
+  // extension restarts. Wired into SessionPanelManager so the chat
+  // webview can `<img src>` them via webview.asWebviewUri().
+  const assetCache = new AssetCache(
+    client,
+    vscode.Uri.joinPath(context.globalStorageUri, 'asset-cache'),
+  );
+  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry, assetCache);
   const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider);
 
   // --- Activity poller (started when connected) ---
@@ -649,6 +658,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await client.disconnectMcp();
       await authService.logout();
       await detector.clearCache();
+      // Cached chat-attachment binaries are tied to the authenticated
+      // identity; clear them so a different user signing in on the
+      // same machine doesn't see the previous user's assets.
+      await assetCache.clearAll();
       disconnect();
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),

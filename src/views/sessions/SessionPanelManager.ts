@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { AssetCache } from '../../assets/AssetCache.js';
+import { categorize, isAllowedMime, verifyDeclaredMime, MAX_ATTACHMENT_BYTES } from '../../assets/mimeAllowlist.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml } from '../../utils/html.js';
@@ -136,6 +138,12 @@ export class SessionPanelManager implements vscode.Disposable {
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
     private readonly streamRegistry?: SessionStreamRegistry,
+    /**
+     * Local binary cache for chat attachments (#1670). Optional so
+     * existing call sites work during the rollout; once Stage 1 lands
+     * the wiring in extension.ts always passes one in.
+     */
+    private readonly assetCache?: AssetCache,
   ) {
     if (this.streamRegistry) {
       this.streamSubscriptions.push(
@@ -162,6 +170,12 @@ export class SessionPanelManager implements vscode.Disposable {
       return;
     }
 
+    // Local-resource roots: the extension bundle root + the
+    // assetCache root if wired (chat attachments — #1670). The cache
+    // entry is what lets `webview.asWebviewUri(cachedAsset)` resolve
+    // to a `vscode-cdn://` URL the React side can `<img src>`.
+    const localRoots = [this.extensionUri];
+    if (this.assetCache) { localRoots.push(this.assetCache.localResourceRoot); }
     const panel = vscode.window.createWebviewPanel(
       'vibeflow.sessionPanel',
       `${session.persona_name ?? session.persona_key}`,
@@ -169,7 +183,7 @@ export class SessionPanelManager implements vscode.Disposable {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [this.extensionUri],
+        localResourceRoots: localRoots,
       },
     );
 
@@ -298,6 +312,12 @@ export class SessionPanelManager implements vscode.Disposable {
           break;
         case 'refresh':
           this.refreshPanel(session, panel);
+          break;
+        case 'chatUploadAsset':
+          await this.handleChatUploadAsset(panel, msg.payload);
+          break;
+        case 'chatGetAssetUri':
+          await this.handleChatGetAssetUri(panel, msg.payload.id);
           break;
         default:
           assertNever(msg);
@@ -497,6 +517,163 @@ export class SessionPanelManager implements vscode.Disposable {
   /** Typed wrapper so a future drift in SessionPanelHostMessage fails the compile. */
   private postToWebview(panel: vscode.WebviewPanel, msg: SessionPanelHostMessage): void {
     panel.webview.postMessage(msg);
+  }
+
+  /**
+   * Chat attachment upload handler (#1670). Authority on:
+   *  - size cap (32MB, mirrors axiomcloud)
+   *  - declared-MIME allowlist (`isAllowedMime`)
+   *  - magic-byte re-validation (`verifyDeclaredMime`) — rejects a
+   *    `.exe` declared as `image/png`
+   *  - filename sanitization via Node's path.basename + a conservative
+   *    whitelist (no path separators, no leading dots, no null bytes)
+   *
+   * Uploads with `entity_type='project'` per the postmortem doc
+   * (#1670). On success, ALSO caches the bytes locally so the very
+   * next render doesn't re-hit the network.
+   */
+  private async handleChatUploadAsset(
+    panel: vscode.WebviewPanel,
+    payload: {
+      clientId: string;
+      name: string;
+      mimeType: string;
+      size: number;
+      dataUrl: string;
+    },
+  ): Promise<void> {
+    const fail = (message: string): void => {
+      this.postToWebview(panel, {
+        type: 'chatUploadProgress',
+        payload: { clientId: payload.clientId, status: 'error', message },
+      });
+    };
+
+    if (!this.assetCache) {
+      fail('Attachment cache is not initialized.');
+      return;
+    }
+    if (this.projectId === undefined) {
+      fail('Connect to a project before uploading attachments.');
+      return;
+    }
+    if (!isAllowedMime(payload.mimeType)) {
+      fail(`File type "${payload.mimeType}" is not allowed.`);
+      return;
+    }
+    if (!Number.isFinite(payload.size) || payload.size <= 0 || payload.size > MAX_ATTACHMENT_BYTES) {
+      fail(`File size out of range (0 < size ≤ ${MAX_ATTACHMENT_BYTES} bytes).`);
+      return;
+    }
+
+    // Decode base64 payload. The dataUrl shape is `data:<mime>;base64,<b64>`.
+    // We ignore the prefix MIME (re-validating via magic bytes below) and
+    // only use it as a sanity check.
+    const commaIdx = payload.dataUrl.indexOf(',');
+    if (commaIdx < 0 || !payload.dataUrl.startsWith('data:')) {
+      fail('Invalid attachment payload.');
+      return;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = new Uint8Array(Buffer.from(payload.dataUrl.slice(commaIdx + 1), 'base64'));
+    } catch {
+      fail('Could not decode attachment bytes.');
+      return;
+    }
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      fail('Decoded size exceeds the 32MB cap.');
+      return;
+    }
+    if (!verifyDeclaredMime(bytes, payload.mimeType)) {
+      fail(`The file content does not match its declared type (${payload.mimeType}).`);
+      return;
+    }
+
+    // Filename sanitization — strip path components, reject control
+    // chars + null bytes, cap length. We never use the name as a path
+    // (cache filenames are just the asset id), but axiomcloud stores
+    // it as the original_name and it shows up in the UI elsewhere.
+    const safeName = sanitizeFilename(payload.name);
+    if (!safeName) { fail('Invalid filename.'); return; }
+
+    this.postToWebview(panel, {
+      type: 'chatUploadProgress',
+      payload: { clientId: payload.clientId, status: 'uploading' },
+    });
+
+    try {
+      const attachment = await this.client.uploadAttachment(
+        'project',
+        this.projectId,
+        bytes,
+        safeName,
+        payload.mimeType,
+        'chat_attachment',
+      );
+      const assetId = attachment.asset?.id;
+      if (!Number.isInteger(assetId) || (assetId as number) <= 0) {
+        fail('Upload succeeded but the server did not return an asset id.');
+        return;
+      }
+      // We already have the bytes in memory — write them to the cache
+      // so the immediate render doesn't trigger a download round-trip.
+      await this.assetCache.storeKnownBytes(assetId as number, bytes);
+      this.postToWebview(panel, {
+        type: 'chatUploadProgress',
+        payload: {
+          clientId: payload.clientId,
+          status: 'done',
+          asset: {
+            id: assetId as number,
+            name: safeName,
+            mimeType: payload.mimeType,
+            size: bytes.byteLength,
+            category: categorize(payload.mimeType) ?? 'other',
+          },
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      fail(`Upload failed: ${message}`);
+    }
+  }
+
+  /**
+   * On-demand resolver for an `[asset:N]` token rendered in the
+   * transcript. Webview asks → host ensures cached → host returns
+   * webview-safe URI. Concurrent calls for the same id share the
+   * fetch via `AssetCache.inFlight`.
+   */
+  private async handleChatGetAssetUri(panel: vscode.WebviewPanel, assetId: number): Promise<void> {
+    if (!this.assetCache) {
+      this.postToWebview(panel, {
+        type: 'chatAssetUriResolved',
+        payload: { id: assetId, error: 'Attachment cache is not initialized.' },
+      });
+      return;
+    }
+    if (!Number.isInteger(assetId) || assetId <= 0) {
+      this.postToWebview(panel, {
+        type: 'chatAssetUriResolved',
+        payload: { id: assetId, error: 'Invalid asset id.' },
+      });
+      return;
+    }
+    try {
+      const localUri = await this.assetCache.getLocalUri(assetId);
+      const webviewUri = panel.webview.asWebviewUri(localUri);
+      this.postToWebview(panel, {
+        type: 'chatAssetUriResolved',
+        payload: { id: assetId, uri: webviewUri.toString() },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.postToWebview(panel, {
+        type: 'chatAssetUriResolved',
+        payload: { id: assetId, error: message },
+      });
+    }
   }
 
   /**
@@ -1025,4 +1202,28 @@ function toReactUpdatePayload(
     })),
     chatDiffView,
   };
+}
+
+/**
+ * Conservative filename sanitization (#1670). Strips path separators
+ * (`/`, `\`), control bytes, leading dots, and caps length at 200.
+ * We never use the result as a path — cache filenames are the asset
+ * id — but axiomcloud stores this as `original_name` and it shows up
+ * in UIs elsewhere. Returns null on irrecoverable input.
+ */
+function sanitizeFilename(raw: string): string | null {
+  if (typeof raw !== 'string') { return null; }
+  // Trim, drop everything before the last separator (basename
+  // semantics without trusting Node's `path.basename` cross-platform
+  // quirks on Windows-style separators).
+  const noSeparators = raw.replace(/^.*[\\/]/, '').trim();
+  if (!noSeparators) { return null; }
+  // Strip control bytes + null and the leading-dot vector that
+  // would let `..attack` through.
+  const cleaned = noSeparators
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    .replace(/^\.+/, '');
+  if (!cleaned) { return null; }
+  return cleaned.slice(0, 200);
 }

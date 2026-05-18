@@ -401,12 +401,15 @@ export class VibeFlowClient {
 
   /**
    * Two-step upload: POST /assets/upload as multipart, then POST
-   * /attachments to link the new asset to the work item. Returns the
+   * /attachments to link the new asset to a parent entity. Returns the
    * created attachment row. Backend caps at 32 MB per file
    * (handlers/vibeflow_assets.go ParseMultipartForm).
+   *
+   * entityType is the full axiomcloud allowlist; chat attachments
+   * (#1670) parent to `project` because `prompt` isn't in the schema.
    */
   async uploadAttachment(
-    entityType: 'todo' | 'issue',
+    entityType: 'todo' | 'issue' | 'feature' | 'project',
     entityId: number,
     fileBuffer: Uint8Array,
     fileName: string,
@@ -457,9 +460,37 @@ export class VibeFlowClient {
    * Returns a Webview-safe URL for downloading an asset. The download
    * endpoint streams the file with the original content-type so an
    * `<img src="...">` will render an image attachment inline.
+   *
+   * **Auth note**: this URL alone is NOT enough to fetch the bytes —
+   * the download endpoint requires a Bearer / x-api-key header, which
+   * a raw `<img>` tag can't carry. Use `downloadAsset` host-side and
+   * the AssetCache pattern to serve images into webviews (#1670).
    */
   assetDownloadUrl(assetId: number): string {
     return `${this.baseUrl}/rest/v1/vibeflow/assets/${assetId}/download`;
+  }
+
+  /**
+   * Fetch raw bytes for an asset using the host-side auth token.
+   * Returns the binary content; callers cache it locally so subsequent
+   * renders use the on-disk copy instead of re-hitting the network.
+   *
+   * Backs the AssetCache module (#1670). Not exposed to webviews —
+   * the auth header lives only on the host side.
+   */
+  async downloadAsset(assetId: number): Promise<Uint8Array> {
+    if (!Number.isInteger(assetId) || assetId <= 0) {
+      throw new Error(`Invalid asset id: ${assetId}`);
+    }
+    const token = this.auth.getToken();
+    if (!token) { throw new Error('Not authenticated'); }
+    const res = await fetch(`${this.baseUrl}/rest/v1/vibeflow/assets/${assetId}/download`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      throw new Error(`Asset download failed: ${res.status} ${res.statusText}`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
   }
 
   /**
