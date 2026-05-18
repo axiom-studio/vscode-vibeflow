@@ -299,14 +299,29 @@ export interface VibeFlowComplianceFinding {
   updated_at: string;
   project_id: number;
   feature_id?: number;
+  /**
+   * The work item carrying this finding — where it shows up as a tag
+   * in the studio UI. Renders as "Source Item" in axiomcloud's
+   * compliance table (per the studio mirror).
+   */
   work_item_type: string;
   work_item_id: number;
+  /**
+   * Optional originating context — the implementation todo / issue
+   * that introduced the bug, when this finding was filed as a follow-up.
+   * Renders as "Addressed By" in axiomcloud's compliance table for the
+   * "fixed in #N" cross-reference chain (e.g. #1745 → fixed by #1947).
+   */
+  source_item_type?: string;
+  source_item_id?: number;
   finding_type: string;
   severity: 'critical' | 'high' | 'medium' | 'low' | 'informational';
   status: 'open' | 'in_progress' | 'resolved' | 'accepted_risk';
   effective_status?: string;
   description?: string;
   resolved_at?: string;
+  resolved_by?: string;
+  resolution_commit?: string;
   remediation_notes?: string;
   backward_compatible?: boolean;
   compliance_tags?: VibeFlowComplianceTag[];

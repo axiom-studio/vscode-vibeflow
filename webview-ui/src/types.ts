@@ -72,3 +72,38 @@ export const MESSAGE_ICONS: Record<ActivityMessageType, string> = {
   error: '❌',
   summary: '📋',
 };
+
+// ===========================================================================
+// Compliance — mirror of src/api/types.ts. Wire shape per
+// axiomcloud/database/vibeflow_models.go.
+// ===========================================================================
+export interface VibeFlowComplianceTag {
+  id: number;
+  finding_id: number;
+  framework: string;
+  section_reference?: string;
+  notes?: string;
+}
+
+export interface VibeFlowComplianceFinding {
+  id: number;
+  created_at: string;
+  updated_at: string;
+  project_id: number;
+  feature_id?: number;
+  work_item_type: string;
+  work_item_id: number;
+  source_item_type?: string;
+  source_item_id?: number;
+  finding_type: string;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'informational';
+  status: 'open' | 'in_progress' | 'resolved' | 'accepted_risk';
+  effective_status?: string;
+  description?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  resolution_commit?: string;
+  remediation_notes?: string;
+  backward_compatible?: boolean;
+  compliance_tags?: VibeFlowComplianceTag[];
+}

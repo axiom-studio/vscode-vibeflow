@@ -31,6 +31,7 @@ import { manageWorktrees, deleteWorktree } from './commands/worktreeCommands.js'
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
 import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
 import { KanbanPanel } from './views/kanban/KanbanPanel.js';
+import { CompliancePanel } from './views/compliance/CompliancePanel.js';
 import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
 import { composeSelectionPrompt } from './views/sessions/chatRenderer.js';
@@ -918,6 +919,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
+    }),
+    vscode.commands.registerCommand('vibeflow.openCompliance', () => {
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      CompliancePanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
     vscode.commands.registerCommand('vibeflow.manageWorktrees', () => {
       manageWorktrees();
