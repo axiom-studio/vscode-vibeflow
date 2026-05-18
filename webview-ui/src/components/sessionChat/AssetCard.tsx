@@ -53,9 +53,9 @@ export function AssetCard({ id, name }: AssetCardProps) {
       }
     }
     window.addEventListener('message', handle);
-    vscode.postMessage({ type: 'chatGetAssetUri', payload: { id } });
+    vscode.postMessage({ type: 'chatGetAssetUri', payload: { id, name } });
     return () => { window.removeEventListener('message', handle); };
-  }, [id]);
+  }, [id, name]);
 
   const ext = (name.split('.').pop() ?? '').toLowerCase();
   const looksLikeImage = IMAGE_EXTS.has(ext);

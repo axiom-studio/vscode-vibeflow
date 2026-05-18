@@ -317,7 +317,7 @@ export class SessionPanelManager implements vscode.Disposable {
           await this.handleChatUploadAsset(panel, msg.payload);
           break;
         case 'chatGetAssetUri':
-          await this.handleChatGetAssetUri(panel, msg.payload.id);
+          await this.handleChatGetAssetUri(panel, msg.payload.id, msg.payload.name);
           break;
         default:
           assertNever(msg);
@@ -618,7 +618,9 @@ export class SessionPanelManager implements vscode.Disposable {
       }
       // We already have the bytes in memory — write them to the cache
       // so the immediate render doesn't trigger a download round-trip.
-      await this.assetCache.storeKnownBytes(assetId as number, bytes);
+      // safeName is the same name the token will carry, so the cache
+      // path matches what `chatGetAssetUri` will look up.
+      await this.assetCache.storeKnownBytes(assetId as number, safeName, bytes);
       this.postToWebview(panel, {
         type: 'chatUploadProgress',
         payload: {
@@ -640,12 +642,17 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   /**
-   * On-demand resolver for an `[asset:N]` token rendered in the
+   * On-demand resolver for an `[asset:N "name"]` token rendered in the
    * transcript. Webview asks → host ensures cached → host returns
    * webview-safe URI. Concurrent calls for the same id share the
    * fetch via `AssetCache.inFlight`.
+   *
+   * `name` is the token's filename — used so the cache path retains
+   * the extension (Content-Type sniffing for SVG etc.). The host
+   * re-sanitizes via `safePathSegment` inside AssetCache, so an
+   * adversarial webview can't escape the cache root.
    */
-  private async handleChatGetAssetUri(panel: vscode.WebviewPanel, assetId: number): Promise<void> {
+  private async handleChatGetAssetUri(panel: vscode.WebviewPanel, assetId: number, name: string): Promise<void> {
     if (!this.assetCache) {
       this.postToWebview(panel, {
         type: 'chatAssetUriResolved',
@@ -661,7 +668,7 @@ export class SessionPanelManager implements vscode.Disposable {
       return;
     }
     try {
-      const localUri = await this.assetCache.getLocalUri(assetId);
+      const localUri = await this.assetCache.getLocalUri(assetId, name);
       const webviewUri = panel.webview.asWebviewUri(localUri);
       this.postToWebview(panel, {
         type: 'chatAssetUriResolved',

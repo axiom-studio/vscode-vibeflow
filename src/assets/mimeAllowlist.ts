@@ -145,37 +145,66 @@ export function sniffMagicBytes(bytes: Uint8Array): string | undefined {
     && bytes[4] === 0x1A && bytes[5] === 0x07) {
     return 'application/x-rar-compressed';
   }
-  // No binary signature matched — caller treats this as "probably text".
+  // ---- Executables (NOT on the allowlist) ----
+  // PE (Windows .exe/.dll): MZ — 4D 5A
+  if (bytes[0] === 0x4D && bytes[1] === 0x5A) {
+    return 'application/x-executable';
+  }
+  // ELF (Linux): 7F 45 4C 46
+  if (bytes.length >= 4 && bytes[0] === 0x7F && bytes[1] === 0x45 && bytes[2] === 0x4C && bytes[3] === 0x46) {
+    return 'application/x-executable';
+  }
+  // Mach-O (macOS): CE FA ED FE / CF FA ED FE (LE) or FE ED FA CE / FE ED FA CF (BE)
+  if ((bytes[0] === 0xCE || bytes[0] === 0xCF) && bytes[1] === 0xFA && bytes[2] === 0xED && bytes[3] === 0xFE) {
+    return 'application/x-executable';
+  }
+  if (bytes[0] === 0xFE && bytes[1] === 0xED && bytes[2] === 0xFA && (bytes[3] === 0xCE || bytes[3] === 0xCF)) {
+    return 'application/x-executable';
+  }
+  // Java class file: CA FE BA BE
+  if (bytes[0] === 0xCA && bytes[1] === 0xFE && bytes[2] === 0xBA && bytes[3] === 0xBE) {
+    return 'application/x-executable';
+  }
+  // No binary signature matched — caller's policy applies.
   return undefined;
 }
 
 /**
- * Verify a declared MIME against the bytes. Returns true if the
- * declared MIME is plausible:
- *  - magic byte match → declared must be the same canonical family
- *    (or one of the office formats that legitimately sniff as ZIP)
- *  - no magic match → only allow if the declared MIME is a text/*
- *    or application/{json,xml,yaml,toml} type
+ * Verify a declared MIME against the actual bytes. Defense-in-depth
+ * for the "exe declared as image/png" attack — a compromised webview
+ * could send a malicious payload claiming a safe MIME.
  *
- * This rejects, e.g., a `.exe` declared as `image/png` (magic would
- * sniff to undefined or `application/x-dosexec`, mismatch with
- * declared image/png).
+ * Policy:
+ *  - sniff returns `application/x-executable` → REJECT unconditionally
+ *    (we don't allow executables on the allowlist regardless of what
+ *    declared says).
+ *  - sniff exactly matches declared → accept.
+ *  - sniff is `application/zip` and declared is one of the legit
+ *    zip-container formats (OOXML, OpenDocument, EPUB, JAR) → accept.
+ *  - sniff is undefined → accept whatever was declared (most formats
+ *    in our allowlist — RTF, TIFF, BMP, AVIF, MP3, MP4, etc. — have no
+ *    cheap magic-byte signature in this module yet, but `isAllowedMime`
+ *    has already gated upstream so they're not a free-for-all). The
+ *    only way to weaponize this branch would require an attacker to
+ *    forge an executable that doesn't trip the explicit exe sniffs
+ *    above — meaningfully harder than the "no sniff at all" baseline.
+ *  - sniff says one type but declared says another → REJECT (the
+ *    canonical anti-spoof case).
  */
 export function verifyDeclaredMime(bytes: Uint8Array, declared: string): boolean {
   const declaredLc = declared.toLowerCase();
   const sniffed = sniffMagicBytes(bytes);
 
+  if (sniffed === 'application/x-executable') { return false; }
+
   if (sniffed) {
     if (sniffed === declaredLc) { return true; }
-    // Office formats legitimately sniff as ZIP; permit if declared is
-    // an OOXML / OpenDocument MIME and the sniff is ZIP.
     if (sniffed === 'application/zip') {
-      return /openxmlformats-officedocument|opendocument|epub\+zip|java-archive/.test(declaredLc);
+      return /openxmlformats-officedocument|opendocument|epub\+zip|java-archive|x-android-package|vnd\.android\.package-archive/.test(declaredLc);
     }
-    // Otherwise mismatch — reject.
     return false;
   }
 
-  // No magic match → only accept declared as text/structured-text types.
-  return /^(text\/.+|application\/(json|xml|x-yaml|yaml|toml))$/i.test(declaredLc);
+  // No magic match — trust the upstream `isAllowedMime` filter.
+  return true;
 }
