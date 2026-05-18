@@ -8,8 +8,8 @@ import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.j
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import {
-  createSessionStatusBar, createWorkSummaryStatusBar,
-  type StatusBarItemWithUpdate, type WorkSummaryBarItem,
+  createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar,
+  type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem,
 } from './statusBar/sessionStatus.js';
 import { createBranchReviewStatusBar } from './statusBar/branchReview.js';
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
@@ -18,6 +18,7 @@ import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
 import { openCli } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
+import { pickProject as runProjectPickerCommand } from './commands/projectCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
 import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
@@ -56,6 +57,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const sessionStatusBar = createSessionStatusBar(authService, promptNotifier) as StatusBarItemWithUpdate;
   const workSummaryStatusBar = createWorkSummaryStatusBar() as WorkSummaryBarItem;
   const branchReviewStatusBar = createBranchReviewStatusBar();
+  // Project switcher (priority 99 = sits just right of sessionStatusBar at 100).
+  // Hidden until connectToProject() fires; #1702.
+  const projectStatusBar: ProjectStatusBarItem = createProjectStatusBar();
 
   // --- API Client (needs auth) ---
   const client = new VibeFlowClient(authService);
@@ -319,6 +323,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Update status bars
     sessionStatusBar.updateProject(project);
+    projectStatusBar.updateProject(project);
     refreshWorkSummary();
     branchReviewStatusBar.start(client, detector);
 
@@ -353,6 +358,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     activityPoller?.stop();
     activityPoller = undefined;
     sessionStatusBar.updateProject(undefined);
+    projectStatusBar.updateProject(undefined);
     workSummaryStatusBar.setDisconnected();
     branchReviewStatusBar.stop();
     // Flip the activity feed to its unauthenticated empty state. Auth
@@ -935,6 +941,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
+    vscode.commands.registerCommand('vibeflow.pickProject', () => {
+      void runProjectPickerCommand({ client, detector, onSwitched: connectToProject });
+    }),
     vscode.commands.registerCommand('vibeflow.openCompliance', () => {
       const project = detector.getCachedProject();
       if (!project) {
@@ -1023,6 +1032,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,
+    projectStatusBar,
     branchReviewStatusBar,
     { dispose: () => activityPoller?.stop() },
   );

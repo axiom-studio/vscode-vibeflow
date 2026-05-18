@@ -147,3 +147,41 @@ export interface WorkSummaryBarItem extends vscode.StatusBarItem {
   updateCounts(agents: number, ready: number): void;
   setDisconnected(): void;
 }
+
+/**
+ * Left status bar item — shows the active project name. Click opens
+ * the project picker Quick Pick (`vibeflow.pickProject`).
+ *
+ * Sits just to the right of the session indicator (priority 99 < 100).
+ * Hidden when there is no active project (covers unauthenticated +
+ * fresh-install states) so it doesn't shout an empty label.
+ */
+export function createProjectStatusBar(): ProjectStatusBarItem {
+  const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99) as ProjectStatusBarItem;
+  item.command = 'vibeflow.pickProject';
+  item.hide();
+
+  // Truncate long project names so the status bar doesn't bloat. 24
+  // chars is enough for most well-named projects and short enough to
+  // keep the rest of the status bar usable on narrow editor widths.
+  const MAX_LABEL = 24;
+
+  item.updateProject = (project: DetectedProject | undefined): void => {
+    if (!project) {
+      item.hide();
+      return;
+    }
+    const label = project.projectName.length > MAX_LABEL
+      ? project.projectName.slice(0, MAX_LABEL - 1) + '…'
+      : project.projectName;
+    item.text = `$(folder) ${label}`;
+    item.tooltip = `Active VibeFlow project: ${project.projectName} (#${project.projectId})\nClick to switch projects.`;
+    item.show();
+  };
+
+  return item;
+}
+
+export interface ProjectStatusBarItem extends vscode.StatusBarItem {
+  updateProject(project: DetectedProject | undefined): void;
+}
