@@ -478,6 +478,44 @@
   margin: 16px 0;
 }
 
+/*
+ * Click-to-open affordances inside chat text (#2084 / #1613).
+ * Commit hash → opens VS Code's native Commit Details view.
+ * Path → opens the file at the referenced line/column.
+ * Styled to read as "interactive reference", not a full button —
+ * monospace + tinted bg so they sit in prose without shouting.
+ */
+.chat-commit-hash,
+.chat-path-ref {
+  display: inline;
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in oklab, var(--vscode-textLink-foreground) 30%, transparent);
+  background: color-mix(in oklab, var(--vscode-textLink-foreground) 10%, transparent);
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  text-decoration: none;
+  line-height: inherit;
+  vertical-align: baseline;
+  transition: background 120ms ease-out, border-color 120ms ease-out;
+}
+.chat-commit-hash:hover,
+.chat-path-ref:hover {
+  background: color-mix(in oklab, var(--vscode-textLink-foreground) 18%, transparent);
+  border-color: color-mix(in oklab, var(--vscode-textLink-foreground) 50%, transparent);
+}
+.chat-commit-hash:active,
+.chat-path-ref:active {
+  transform: translateY(0.5px);
+}
+.chat-commit-hash:focus-visible,
+.chat-path-ref:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
 /* Reply form for pending agent prompts */
 .msg-reply-form {
   display: flex;
