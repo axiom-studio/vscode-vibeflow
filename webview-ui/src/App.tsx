@@ -7,8 +7,9 @@ import { DashboardView } from './components/DashboardView';
 import { KanbanView } from './components/KanbanView';
 import { WorkItemView } from './components/WorkItemView';
 import { SessionChatView } from './components/SessionChatView';
+import { ComplianceView } from './components/ComplianceView';
 
-type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem' | 'session-chat';
+type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem' | 'session-chat' | 'compliance';
 
 /**
  * `entityType` covers the three things this shell can render as a markdown
@@ -47,6 +48,8 @@ export function App() {
       setView('workitem');
     } else if (initialMode === 'session-chat') {
       setView('session-chat');
+    } else if (initialMode === 'compliance') {
+      setView('compliance');
     } else if (initialMode === 'document') {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
@@ -88,6 +91,7 @@ export function App() {
   if (view === 'kanban') { return <KanbanView />; }
   if (view === 'workitem') { return <WorkItemView />; }
   if (view === 'session-chat') { return <SessionChatView />; }
+  if (view === 'compliance') { return <ComplianceView />; }
   if (view === 'document' && doc) {
     // References render read-only — the canonical page lives in Confluence
     // and the host doesn't wire comment routes for them, so route through
