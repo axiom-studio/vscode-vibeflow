@@ -3,6 +3,14 @@ import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessage, type FeedState, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
+import { openCommitDiff, openWorkspaceRelativePath } from '../sessions/chatActions.js';
+
+/**
+ * Hard cap on the host-side replay buffer. Matches the webview's
+ * MAX_ENTRIES (in useMessages.ts) so a remount delivers exactly what
+ * the React side would have held in memory anyway.
+ */
+const REPLAY_BUFFER_LIMIT = 500;
 
 /**
  * Activity Feed WebviewView — serves the React app from webview-ui/dist
@@ -10,7 +18,19 @@ import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessa
  */
 export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private pendingEntries: ActivityEntry[] = [];
+  /**
+   * Replay buffer of every entry delivered (or buffered for delivery)
+   * in this extension session. Capped at REPLAY_BUFFER_LIMIT — oldest
+   * entries evict.
+   *
+   * Why this exists: WebviewView's React tree is disposed on sidebar
+   * collapse and recreated on expand. Without a host-side history, the
+   * remount comes up empty until new activity arrives, because the
+   * poller's `seenEventIds` blocks it from re-fetching what it already
+   * delivered (#feed-doesnt-persist). On every `ready` message we
+   * replay this buffer so the webview comes up with full history.
+   */
+  private replayBuffer: ActivityEntry[] = [];
   /**
    * Latest progress payload buffered for delivery on `ready`. Replaced (not
    * appended) so a late-arriving webview only ever sees the freshest snapshot.
@@ -45,15 +65,23 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
         vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'dist'),
       ],
     };
+    // Context retention for the sidebar pane is set via the `views`
+    // contribution in package.json (`retainContextWhenHidden: true` on
+    // the view definition). The host-side replayBuffer below is the
+    // belt-and-suspenders fallback that also covers cold-start scenarios
+    // the package.json flag can't help with (extension reload, IDE
+    // restart, full webview disposal on uninstall/upgrade).
 
     webviewView.webview.html = this.getHtml(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((message: ActivityFeedClientMessage) => {
       switch (message.type) {
         case 'ready':
-          if (this.pendingEntries.length > 0) {
-            this.postMessage({ type: 'activityEntries', payload: this.pendingEntries });
-            this.pendingEntries = [];
+          // Replay everything we've seen this session — covers the
+          // collapse/expand cycle where React state was lost. The
+          // buffer is bounded so this is O(REPLAY_BUFFER_LIMIT).
+          if (this.replayBuffer.length > 0) {
+            this.postMessage({ type: 'activityEntries', payload: this.replayBuffer });
           }
           if (this.pendingProgress) {
             this.postMessage({ type: 'progressIndicator', payload: this.pendingProgress });
@@ -83,6 +111,16 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
           // Dispatched by the noSessions empty-state CTA.
           void vscode.commands.executeCommand('vibeflow.launchSession');
           break;
+        case 'chatOpenCommit':
+          void openCommitDiff(message.payload.hash);
+          break;
+        case 'chatOpenPath':
+          void openWorkspaceRelativePath(
+            message.payload.path,
+            message.payload.line,
+            message.payload.column,
+          );
+          break;
         case 'getSetting':
         case 'updateSetting':
         case 'validateServerUrl':
@@ -106,25 +144,37 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Push a single activity entry to the webview.
-   * If the webview isn't ready yet, buffer the entry.
+   * Push a single activity entry to the webview. Also recorded in
+   * the bounded replay buffer so a webview remount can rehydrate.
    */
   pushEntry(entry: ActivityEntry): void {
-    if (this.view) {
-      this.postMessage({ type: 'activityEntry', payload: entry });
-    } else {
-      this.pendingEntries.push(entry);
-    }
+    this.recordEntries([entry]);
+    this.postMessage({ type: 'activityEntry', payload: entry });
   }
 
   /**
    * Push multiple entries at once (e.g., initial load).
    */
   pushEntries(entries: ActivityEntry[]): void {
-    if (this.view) {
-      this.postMessage({ type: 'activityEntries', payload: entries });
-    } else {
-      this.pendingEntries.push(...entries);
+    if (entries.length === 0) { return; }
+    this.recordEntries(entries);
+    this.postMessage({ type: 'activityEntries', payload: entries });
+  }
+
+  /**
+   * Append to the host-side replay buffer with the REPLAY_BUFFER_LIMIT
+   * cap. The buffer is the single source of truth for "what should the
+   * webview show on remount?" — pendingEntries used to serve that
+   * role partially but cleared after the first `ready`, which is what
+   * caused the post-collapse blank feed.
+   *
+   * Note: `postMessage` to an un-resolved view silently no-ops (VSCode
+   * handles it), so we don't need a view-presence guard here.
+   */
+  private recordEntries(entries: ActivityEntry[]): void {
+    this.replayBuffer.push(...entries);
+    if (this.replayBuffer.length > REPLAY_BUFFER_LIMIT) {
+      this.replayBuffer.splice(0, this.replayBuffer.length - REPLAY_BUFFER_LIMIT);
     }
   }
 
@@ -160,12 +210,13 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
    * Clear all activity entries from the feed (UI-only). The poller keeps
    * its `seenEventIds` set so only NEW events appear after a clear — the
    * intuitive semantic for a "clear feed" button.
+   *
+   * Also clears the replay buffer, so a post-clear remount doesn't
+   * resurrect what the user explicitly cleared.
    */
   clearFeed(): void {
-    this.pendingEntries = [];
-    if (this.view) {
-      this.postMessage({ type: 'clearActivity' });
-    }
+    this.replayBuffer = [];
+    this.postMessage({ type: 'clearActivity' });
   }
 
   /**

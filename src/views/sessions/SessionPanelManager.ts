@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
@@ -7,7 +6,7 @@ import { escapeHtml } from '../../utils/html.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
-import { parsePathReference, isValidCommitHash } from './chatRenderer.js';
+import { openCommitDiff, openWorkspaceRelativePath } from './chatActions.js';
 import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
 
@@ -260,18 +259,13 @@ export class SessionPanelManager implements vscode.Disposable {
           break;
         }
         case 'chatOpenPath': {
-          // Defensive re-validation: the webview tokenizer emitted this,
-          // but treat the message payload as untrusted and re-parse via
-          // the same pure function before resolving (todo #1613, #4-2).
-          const parsed = parsePathReference(`${msg.payload.path}${msg.payload.line ? `:${msg.payload.line}${msg.payload.column ? `:${msg.payload.column}` : ''}` : ''}`);
-          if (!parsed) { break; }
-          await this.openWorkspaceRelativePath(parsed.path, parsed.line, parsed.column);
+          // The shared handler re-parses + re-validates the payload —
+          // we treat anything coming off the webview as untrusted.
+          await openWorkspaceRelativePath(msg.payload.path, msg.payload.line, msg.payload.column);
           break;
         }
         case 'chatOpenCommit': {
-          // Defensive re-validation (todo #1613, #4-5).
-          if (!isValidCommitHash(msg.payload.hash)) { break; }
-          await this.openCommitDiff(msg.payload.hash);
+          await openCommitDiff(msg.payload.hash);
           break;
         }
         case 'openDiff': {
@@ -530,57 +524,6 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   /**
-   * Resolve a workspace-relative path against the active workspace
-   * folder and open it at the given line/column (1-indexed in the
-   * payload, converted to 0-indexed `Position` for VS Code). If no
-   * workspace is open, falls back to opening as an absolute path
-   * only if it resolves cleanly inside the editor's known roots
-   * (defense-in-depth — never let a chat message open `/etc/passwd`).
-   *
-   * Failures surface as a notification, NOT a thrown exception, so
-   * a malformed agent message doesn't break the panel.
-   */
-  private async openWorkspaceRelativePath(rel: string, line?: number, column?: number): Promise<void> {
-    if (rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) {
-      // Absolute path — reject. Only workspace-relative is allowed.
-      // (A real path inside `/Users/...` could still be opened via
-      // the user's own File → Open; we just don't follow links to
-      // arbitrary disk locations from chat messages.)
-      vscode.window.showWarningMessage(`Chat link rejected (absolute path): ${rel}`);
-      return;
-    }
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      vscode.window.showWarningMessage('Open a folder to follow chat links.');
-      return;
-    }
-    const absolute = path.join(folder.uri.fsPath, rel);
-    // Containment check: the joined path must still be inside the
-    // workspace folder. `path.relative` of an escape attempt
-    // (e.g. `../../etc/passwd`) returns a path starting with `..`.
-    const relCheck = path.relative(folder.uri.fsPath, absolute);
-    if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
-      vscode.window.showWarningMessage(`Chat link rejected (escapes workspace): ${rel}`);
-      return;
-    }
-    const uri = vscode.Uri.file(absolute);
-    try {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      const editor = await vscode.window.showTextDocument(doc);
-      if (line && line > 0) {
-        const zeroLine = Math.max(0, line - 1);
-        const zeroCol = column && column > 0 ? Math.max(0, column - 1) : 0;
-        const pos = new vscode.Position(zeroLine, zeroCol);
-        editor.selection = new vscode.Selection(pos, pos);
-        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      vscode.window.showWarningMessage(`Could not open ${rel}: ${msg}`);
-    }
-  }
-
-  /**
    * Resolve a @mention picker query into a list of MentionItems
    * (todo #1614). Routes by kind: vibeflow entities use the
    * existing REST list endpoints + client-side filter (lists are
@@ -671,52 +614,6 @@ export class SessionPanelManager implements vscode.Disposable {
     const file = folder ? vscode.workspace.asRelativePath(s.location.uri, false) : s.location.uri.fsPath;
     const line = s.location.range.start.line + 1;
     return `${file}:${line}`;
-  }
-
-  /**
-   * Open a git commit diff via VS Code's built-in `git.viewChange`
-   * command (the Source Control extension registers it). Falls back
-   * to showing the commit details in a Quick Pick + offering a
-   * terminal command if the git extension isn't available.
-   *
-   * Hash is validated upstream via `isValidCommitHash` — we still
-   * pass it as an arg (never interpolated into a shell command).
-   */
-  private async openCommitDiff(hash: string): Promise<void> {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder) {
-      vscode.window.showWarningMessage('Open a folder to view commit diffs.');
-      return;
-    }
-    // Try VS Code git extension API first.
-    const gitExt = vscode.extensions.getExtension('vscode.git');
-    if (gitExt) {
-      try {
-        const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate())?.getAPI?.(1);
-        const repo = api?.repositories?.find((r: { rootUri: { fsPath: string } }) => r.rootUri.fsPath === folder.uri.fsPath);
-        if (repo) {
-          // The built-in `git.viewCommit` command renders a commit's
-          // tree of changed files. Args shape: (repository, hash).
-          await vscode.commands.executeCommand('git.viewCommit', repo, hash);
-          return;
-        }
-      } catch {
-        // Fall through to the terminal fallback.
-      }
-    }
-    // Fallback: surface a Quick Pick with the diff command.
-    const pick = await vscode.window.showInformationMessage(
-      `Show diff for commit ${hash.slice(0, 8)}?`,
-      'Open in terminal',
-      'Cancel',
-    );
-    if (pick === 'Open in terminal') {
-      const term = vscode.window.createTerminal({ name: `git show ${hash.slice(0, 8)}`, cwd: folder.uri.fsPath });
-      // Hash is validated; still pass via shell-quoting discipline
-      // (no interpolation of arbitrary user input).
-      term.sendText(`git show --stat ${hash}`, true);
-      term.show();
-    }
   }
 
   // ─────────────────────────────────────────────────────────────────────

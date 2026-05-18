@@ -82,7 +82,12 @@ export type ActivityFeedClientMessage =
   | { type: 'setProviderToken'; payload: { provider: string } }
   | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
-  | { type: 'refreshProjects' };
+  | { type: 'refreshProjects' }
+  // Click-to-open from inside an activity entry's content text — same
+  // shapes the Session Chat uses; routed through the shared
+  // chatActions handlers host-side. #2084 / #1613.
+  | { type: 'chatOpenPath'; payload: { path: string; line?: number; column?: number } }
+  | { type: 'chatOpenCommit'; payload: { hash: string } };
 
 // ============================================================
 // Settings Panel (editor-area webview)

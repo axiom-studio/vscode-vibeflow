@@ -74,7 +74,8 @@
         {
           "id": "vibeflow.activityFeed",
           "name": "Activity Feed",
-          "type": "webview"
+          "type": "webview",
+          "retainContextWhenHidden": true
         }
       ]
     },
