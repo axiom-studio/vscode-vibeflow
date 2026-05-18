@@ -2,6 +2,23 @@ import type { CSSProperties } from 'react';
 import type { ActivityEntry } from '../types';
 import { PERSONA_COLORS, MESSAGE_ICONS } from '../types';
 import { StatusPill } from './_shared/StatusPill';
+import { enhanceLeafText, type ChatTokenDispatch } from './sessionChat/chatTokens';
+import { getVsCodeApi } from '../vscodeApi';
+
+/**
+ * Dispatch for the click-to-open buttons emitted by `enhanceLeafText`.
+ * Singleton — no instance state. The Activity Feed host registers the
+ * matching `chatOpenCommit` / `chatOpenPath` handlers in
+ * ActivityFeedProvider, routing through the shared chatActions module.
+ */
+const activityTokenDispatch: ChatTokenDispatch = {
+  openCommit(hash) {
+    getVsCodeApi().postMessage({ type: 'chatOpenCommit', payload: { hash } });
+  },
+  openPath(path, line, column) {
+    getVsCodeApi().postMessage({ type: 'chatOpenPath', payload: { path, line, column } });
+  },
+};
 
 interface ActivityItemProps {
   entry: ActivityEntry;
@@ -183,7 +200,7 @@ function ContentBody({ entry }: { entry: ActivityEntry }) {
       return (
         <div style={baseStyle}>
           <span style={{ color: 'var(--feed-success)', fontWeight: 600 }}>committed</span>{' '}
-          <span style={{ opacity: 0.9 }}>{entry.content}</span>
+          <span style={{ opacity: 0.9 }}>{enhanceLeafText(entry.content, activityTokenDispatch)}</span>
           {Array.isArray(entry.metadata?.files) && (
             <div
               style={{
@@ -201,12 +218,12 @@ function ContentBody({ entry }: { entry: ActivityEntry }) {
       );
 
     case 'error':
-      return <div style={{ ...baseStyle, color: 'var(--feed-error)' }}>{entry.content}</div>;
+      return <div style={{ ...baseStyle, color: 'var(--feed-error)' }}>{enhanceLeafText(entry.content, activityTokenDispatch)}</div>;
 
     case 'completion':
       return (
         <div style={{ ...baseStyle, color: 'var(--feed-success)', fontWeight: 600 }}>
-          {entry.content}
+          {enhanceLeafText(entry.content, activityTokenDispatch)}
         </div>
       );
 
@@ -221,7 +238,7 @@ function ContentBody({ entry }: { entry: ActivityEntry }) {
             background: 'var(--feed-input-bg)',
           }}
         >
-          {entry.content}
+          {enhanceLeafText(entry.content, activityTokenDispatch)}
         </div>
       );
 
@@ -236,11 +253,11 @@ function ContentBody({ entry }: { entry: ActivityEntry }) {
             borderLeft: '2px solid var(--feed-link)',
           }}
         >
-          {entry.content}
+          {enhanceLeafText(entry.content, activityTokenDispatch)}
         </div>
       );
 
     default:
-      return <div style={{ ...baseStyle, opacity: 0.88 }}>{entry.content}</div>;
+      return <div style={{ ...baseStyle, opacity: 0.88 }}>{enhanceLeafText(entry.content, activityTokenDispatch)}</div>;
   }
 }
