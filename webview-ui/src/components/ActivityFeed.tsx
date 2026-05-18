@@ -10,14 +10,42 @@ import { BoltIcon, InboxIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as {
   postMessage: (msg: { type: string; payload?: unknown }) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
 };
 
+/**
+ * Shape of the persisted state we round-trip through `vscode.setState`.
+ * Survives extension reload, window reload, and full webview disposal
+ * — the host's replay buffer covers in-process collapse/expand, this
+ * covers cold start. (Both pathways converge via `applyEntries`'
+ * merge-by-id semantic, so an overlap between the rehydrated entries
+ * and the host replay doesn't duplicate.)
+ */
+interface PersistedFeedState {
+  entries?: ActivityEntry[];
+}
+
+function loadPersistedEntries(): ActivityEntry[] {
+  const raw = vscode.getState() as PersistedFeedState | undefined;
+  if (!raw || !Array.isArray(raw.entries)) { return []; }
+  return raw.entries;
+}
+
 export function ActivityFeed() {
-  const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const [entries, setEntries] = useState<ActivityEntry[]>(loadPersistedEntries);
   const [atBottom, setAtBottom] = useState(true);
   const [progress, setProgress] = useState<PinnedProgressData | null>(null);
   const [feedState, setFeedState] = useState<FeedState | undefined>(undefined);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
+
+  // Persist entries on every change. `vscode.setState` is synchronous
+  // and small (we cap to MAX_ENTRIES = 500 ≈ 250KB serialized), so a
+  // per-render write is fine — no debounce needed. React batches state
+  // updates so this only fires when entries actually change.
+  useEffect(() => {
+    vscode.setState({ entries });
+  }, [entries]);
 
   // Subscribe to host-pushed progress + feed-state snapshots. Both are
   // host-driven and replace-on-write, so a single listener with a switch
