@@ -169,6 +169,11 @@
         "icon": "$(shield)"
       },
       {
+        "command": "vibeflow.installCli",
+        "title": "VibeFlow: Install Latest CLI",
+        "icon": "$(cloud-download)"
+      },
+      {
         "command": "vibeflow.manageWorktrees",
         "title": "VibeFlow: Manage Worktrees"
       },

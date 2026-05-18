@@ -36,10 +36,15 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         />
         {data.cliEnabled && !installed && (
           <Banner kind="warning">
-            <strong>vibeflow binary not found.</strong> The CLI must be on PATH (or set its absolute
-            location below) for this mode to work. Install a prebuilt binary from GitHub releases.
+            <strong>vibeflow binary not found.</strong> Install the latest prebuilt binary in one
+            click — we download the matching asset from GitHub Releases into the extension's
+            local storage and wire its path into <code>vibeflow.cli.binaryPath</code> for you.
             <ButtonRow>
-              <LinkBtn href={RELEASES_URL} label="Download Release" />
+              <Btn
+                label="Install Latest"
+                onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.installCli' })}
+              />
+              <LinkBtn href={RELEASES_URL} label="Download Manually" secondary />
               <LinkBtn href={INSTALL_DOCS_URL} label="Install Instructions" secondary />
             </ButtonRow>
           </Banner>
@@ -60,6 +65,17 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           ) : (
             <span style={{ color: 'var(--feed-error)' }}>● not found</span>
           )}
+        </div>
+        <ButtonRow>
+          <Btn
+            label="Install Latest"
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.installCli' })}
+          />
+        </ButtonRow>
+        <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
+          Downloads the matching prebuilt asset from GitHub Releases, extracts it into the
+          extension's local storage, and points the path above at the result. Re-run any time
+          to upgrade.
         </div>
       </Card>
 

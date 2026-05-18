@@ -17,6 +17,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionCommands.js';
 import { openCli } from './commands/cliCommands.js';
+import { installCli } from './commands/cliInstaller.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
 import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
@@ -648,6 +649,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.openCli', () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       void openCli(root);
+    }),
+    vscode.commands.registerCommand('vibeflow.installCli', async () => {
+      try {
+        await installCli(context);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const choice = await vscode.window.showErrorMessage(
+          `VibeFlow CLI install failed: ${message}`,
+          'View Install Instructions',
+        );
+        if (choice === 'View Install Instructions') {
+          vscode.env.openExternal(vscode.Uri.parse('https://github.com/axiom-studio/vibeflow-cli#installation'));
+        }
+      }
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', () => {
       // CLI mode owns session management — short-circuit and route to
