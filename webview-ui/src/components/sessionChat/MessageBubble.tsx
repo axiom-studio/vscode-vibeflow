@@ -9,6 +9,7 @@ import type { ChatPrompt } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
 import { PersonaAvatar } from './PersonaAvatar';
 import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
+import { AssetCard } from './AssetCard';
 import { getVsCodeApi } from '../../vscodeApi';
 
 interface Props {
@@ -241,6 +242,9 @@ const chatTokenDispatch: ChatTokenDispatch = {
   },
   openPath(path, line, column) {
     getVsCodeApi().postMessage({ type: 'chatOpenPath', payload: { path, line, column } });
+  },
+  renderAsset(assetId, name) {
+    return <AssetCard id={assetId} name={name} />;
   },
 };
 
