@@ -63,12 +63,15 @@ export async function openCli(workspaceRoot: string | undefined): Promise<void> 
   const binary = resolveBinary();
   if (!binary) {
     const choice = await vscode.window.showWarningMessage(
-      'VibeFlow CLI is not installed or not on PATH. Install a prebuilt binary from GitHub releases.',
+      'VibeFlow CLI is not installed or not on PATH.',
+      'Install Latest',
       'Download Release',
       'View Install Instructions',
       'Cancel',
     );
-    if (choice === 'Download Release') {
+    if (choice === 'Install Latest') {
+      await vscode.commands.executeCommand('vibeflow.installCli');
+    } else if (choice === 'Download Release') {
       vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL));
     } else if (choice === 'View Install Instructions') {
       vscode.env.openExternal(vscode.Uri.parse(INSTALL_DOCS_URL));
