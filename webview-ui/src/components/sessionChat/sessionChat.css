@@ -804,6 +804,116 @@
   color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
 }
 
+/* ============================== Attachments (#1670) ============================== */
+
+.chat-attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: background 150ms ease-out, opacity 150ms ease-out, transform 150ms ease-out;
+}
+.chat-attach:hover {
+  background: color-mix(in oklab, var(--vscode-foreground) 8%, transparent);
+  opacity: 1;
+}
+.chat-attach:active {
+  transform: scale(0.96);
+}
+.chat-attach:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+.chat-textarea-wrap.is-drag-over {
+  outline: 2px dashed color-mix(in oklab, var(--vscode-textLink-foreground) 60%, transparent);
+  outline-offset: -2px;
+  background: color-mix(in oklab, var(--vscode-textLink-foreground) 8%, transparent);
+  border-radius: 8px;
+}
+
+.chat-attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0 0;
+  margin-bottom: 4px;
+}
+
+.chat-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  background: color-mix(in oklab, var(--vscode-foreground) 6%, transparent);
+  border: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+  border-radius: 14px;
+  max-width: 280px;
+  color: var(--vscode-foreground);
+}
+.chat-attachment-chip.is-error {
+  border-color: color-mix(in oklab, var(--vscode-errorForeground, #f48771) 50%, transparent);
+  background: color-mix(in oklab, var(--vscode-errorForeground, #f48771) 14%, transparent);
+}
+
+.chat-attachment-error-icon {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-errorForeground, #f48771);
+  color: var(--vscode-editor-background);
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.chat-attachment-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.chat-attachment-size {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+}
+
+.chat-attachment-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: opacity 120ms ease-out, background 120ms ease-out;
+}
+.chat-attachment-dismiss:hover {
+  opacity: 1;
+  background: color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+}
+
 /* ============================== Mention picker (todo #1614) ============================== */
 .chat-textarea-wrap {
   flex: 1;
