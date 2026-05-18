@@ -317,6 +317,26 @@ export type DashboardClientMessage =
   | { type: 'dashboardResetNodePositions' };
 
 // ============================================================
+// Compliance Panel
+// ============================================================
+
+export type ComplianceHostMessage =
+  // Snapshot payload is `unknown` here because the rich shape lives in
+  // CompliancePanel.ts (kept colocated with the server-side composer).
+  // The webview-side types.ts mirrors it; both ends know the shape.
+  | { type: 'complianceData'; payload: unknown }
+  | { type: 'complianceError'; payload: { message: string } };
+
+export type ComplianceClientMessage =
+  | { type: 'complianceLoad' }
+  | { type: 'complianceRefresh' }
+  // User clicked a finding row's source/addressed-by link — open the work item.
+  | { type: 'complianceOpenWorkItem'; payload: { workItemType: string; workItemId: number } }
+  // Export current filtered findings as CSV. Host shows a save dialog
+  // and writes the file — keeps the webview free of disk-write paths.
+  | { type: 'complianceExportCsv'; payload: { rows: string[][]; defaultName: string } };
+
+// ============================================================
 // Comments (used by document/context viewers)
 // ============================================================
 
