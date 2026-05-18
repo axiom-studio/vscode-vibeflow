@@ -443,9 +443,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "vibeflow.refresh",
+          "command": "vibeflow.openCompliance",
           "when": "view == vibeflow.workItems",
           "group": "navigation@3"
+        },
+        {
+          "command": "vibeflow.refresh",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation@4"
         },
         {
           "command": "vibeflow.openSettings",
