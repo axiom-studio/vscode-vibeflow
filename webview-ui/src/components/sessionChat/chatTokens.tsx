@@ -40,6 +40,16 @@ import { Fragment, type ReactNode, type MouseEvent } from 'react';
  */
 const RE_COMMIT = /(?<![#A-Za-z0-9])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9])/g;
 const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
+/**
+ * Chat attachment token (#1670): `[asset:123 "filename.ext"]`.
+ *
+ * The filename can contain `\\` and `\"` escapes (mirrors the host's
+ * `buildAssetToken` output in useChatAttachments.ts). We unescape
+ * before passing to the renderer. Capture groups:
+ *   1: asset id (positive integer)
+ *   2: escaped filename
+ */
+const RE_ASSET = /\[asset:(\d+)\s+"((?:[^"\\]|\\[\\"])*)"\]/g;
 
 /**
  * Validators that re-assert the regex output before we emit a
@@ -54,6 +64,17 @@ function isValidCommitHash(s: string): boolean {
 export interface ChatTokenDispatch {
   openCommit(hash: string): void;
   openPath(path: string, line?: number, column?: number): void;
+  /**
+   * Render a chat-attachment token as JSX (#1670). When omitted, the
+   * token falls through to plain text — that's the case for surfaces
+   * like the Activity Feed where assets don't apply.
+   */
+  renderAsset?: (assetId: number, name: string) => ReactNode;
+}
+
+/** Reverse the escapes that `useChatAttachments.buildAssetToken` applies. */
+function unescapeAssetName(escaped: string): string {
+  return escaped.replace(/\\([\\"])/g, '$1');
 }
 
 /**
@@ -139,6 +160,28 @@ function scanString(text: string, dispatch: ChatTokenDispatch): ReactNode {
         />
       ),
     });
+  }
+
+  // Chat attachment tokens — `[asset:N "name"]` (#1670). Only emit when
+  // the dispatch supplies a renderer; otherwise leave the literal in
+  // place (Activity Feed case).
+  if (dispatch.renderAsset) {
+    const assetRe = new RegExp(RE_ASSET.source, RE_ASSET.flags);
+    while ((m = assetRe.exec(text)) !== null) {
+      if (m[0].length === 0) { assetRe.lastIndex++; continue; }
+      const assetId = Number(m[1]);
+      if (!Number.isFinite(assetId) || assetId <= 0) { continue; }
+      const name = unescapeAssetName(m[2]);
+      hits.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        node: (
+          <span key={`a-${m.index}`} className="asset-token">
+            {dispatch.renderAsset(assetId, name)}
+          </span>
+        ),
+      });
+    }
   }
 
   if (hits.length === 0) { return text; }
