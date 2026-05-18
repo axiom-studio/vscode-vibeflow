@@ -8,6 +8,8 @@ import 'highlight.js/styles/github-dark.css';
 import type { ChatPrompt } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
 import { PersonaAvatar } from './PersonaAvatar';
+import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
+import { getVsCodeApi } from '../../vscodeApi';
 
 interface Props {
   msg: ChatPrompt;
@@ -168,8 +170,65 @@ function markdownComponents(diffView: 'unified' | 'split'): Components {
       }
       return <pre {...props}>{children}</pre>;
     },
+    // Walk leaf text inside text-bearing markdown containers and
+    // promote commit hashes / file paths to clickable buttons. We
+    // only override containers whose children are plain prose;
+    // `<code>` / `<pre>` are handled above and their inner text
+    // never re-enters this path (React elements pass through
+    // `enhanceLeafText` untouched). #2084 / #1613.
+    p({ children, ...props }) {
+      return <p {...props}>{enhanceLeafText(children, chatTokenDispatch)}</p>;
+    },
+    li({ children, ...props }) {
+      return <li {...props}>{enhanceLeafText(children, chatTokenDispatch)}</li>;
+    },
+    td({ children, ...props }) {
+      return <td {...props}>{enhanceLeafText(children, chatTokenDispatch)}</td>;
+    },
+    th({ children, ...props }) {
+      return <th {...props}>{enhanceLeafText(children, chatTokenDispatch)}</th>;
+    },
+    blockquote({ children, ...props }) {
+      return <blockquote {...props}>{enhanceLeafText(children, chatTokenDispatch)}</blockquote>;
+    },
+    h1({ children, ...props }) {
+      return <h1 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h1>;
+    },
+    h2({ children, ...props }) {
+      return <h2 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h2>;
+    },
+    h3({ children, ...props }) {
+      return <h3 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h3>;
+    },
+    h4({ children, ...props }) {
+      return <h4 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h4>;
+    },
+    h5({ children, ...props }) {
+      return <h5 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h5>;
+    },
+    h6({ children, ...props }) {
+      return <h6 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h6>;
+    },
   };
 }
+
+/**
+ * Dispatch closure for the click-to-open buttons emitted by
+ * `enhanceLeafText`. Singleton — no instance state — so we don't
+ * thread props through every markdown render.
+ *
+ * Both messages have host-side handlers in
+ * `src/views/sessions/SessionPanelManager.ts` (`chatOpenCommit`,
+ * `chatOpenPath`). The host re-validates payloads on receipt.
+ */
+const chatTokenDispatch: ChatTokenDispatch = {
+  openCommit(hash) {
+    getVsCodeApi().postMessage({ type: 'chatOpenCommit', payload: { hash } });
+  },
+  openPath(path, line, column) {
+    getVsCodeApi().postMessage({ type: 'chatOpenPath', payload: { path, line, column } });
+  },
+};
 
 function childrenToString(children: ReactNode): string {
   if (typeof children === 'string') { return children; }
