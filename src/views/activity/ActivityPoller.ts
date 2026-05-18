@@ -121,8 +121,23 @@ function resolveWorkspacePath(workspaceRoot: string, candidate: string): string 
  * parallel, drives the file-decoration provider so the Explorer shows which
  * agent is touching which file.
  */
+/**
+ * Hard cap on the `seenEventIds` set. Each entry is ~60 chars so 5000
+ * is ~300 KB of bookkeeping — well below anything that'd matter, but
+ * past which growth was effectively unbounded across long sessions.
+ * FIFO eviction (Set preserves insertion order in JS, so we drop from
+ * the front when over cap).
+ */
+const MAX_SEEN_EVENT_IDS = 5000;
+
 export class ActivityPoller {
   private timer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Dedupe set for session-level events (one entry per session per
+   * `last_message_at` value). Capped via `recordSeenEvent`. Per-log
+   * dedup happens via `lastLogLengths` below — this set is NOT the
+   * source of truth there.
+   */
   private seenEventIds = new Set<string>();
   private entryCounter = 0;
   /** Per work item, the count of log entries we've already processed. */
@@ -160,6 +175,24 @@ export class ActivityPoller {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = undefined;
+    }
+  }
+
+  /**
+   * Add an event id to the dedupe set with FIFO eviction at the cap.
+   * JS Set preserves insertion order, so the first iterator value is
+   * the oldest. We drop a batch at a time (20% headroom) rather than
+   * one-at-a-time to amortize the iterator walk.
+   */
+  private recordSeenEvent(id: string): void {
+    this.seenEventIds.add(id);
+    if (this.seenEventIds.size <= MAX_SEEN_EVENT_IDS) { return; }
+    const dropCount = Math.max(1, Math.floor(MAX_SEEN_EVENT_IDS * 0.2));
+    const iter = this.seenEventIds.values();
+    for (let i = 0; i < dropCount; i++) {
+      const next = iter.next();
+      if (next.done) { break; }
+      this.seenEventIds.delete(next.value);
     }
   }
 
@@ -237,7 +270,7 @@ export class ActivityPoller {
 
       const eventId = `session-${session.session_id}-${session.last_message_at}`;
       if (this.seenEventIds.has(eventId)) { continue; }
-      this.seenEventIds.add(eventId);
+      this.recordSeenEvent(eventId);
 
       this.feedProvider.pushEntry({
         id: eventId,
@@ -354,9 +387,13 @@ export class ActivityPoller {
     const activeFiles: Array<{ filePath: string; persona: string; action: FileAction }> = [];
 
     for (const log of newLogs) {
+      // Per-work-item dedup happens via `lastLogLengths` above (we
+      // only slice the suffix beyond the last processed length), so
+      // the `seenEventIds` check used to live here was strictly
+      // redundant — every id is fresh because `entryCounter++`. We
+      // keep entryCounter so each entry has a stable unique key for
+      // React's reconciler, but no Set membership probe.
       const eventId = `log-${type}-${id}-${log.created_at}-${this.entryCounter++}`;
-      if (this.seenEventIds.has(eventId)) { continue; }
-      this.seenEventIds.add(eventId);
 
       const logType = log.message_type ?? '';
       const messageType = LOG_TYPE_MAP[logType] ?? detectMessageType(log.content);
