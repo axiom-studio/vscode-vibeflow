@@ -227,7 +227,33 @@ export type SessionPanelHostMessage =
   // Results are filtered server-side resolution-ready entities;
   // the picker just renders them. `requestId` matches the client's
   // query so stale results from older queries are dropped.
-  | { type: 'chatMentionResults'; payload: { requestId: number; kind: string; items: MentionItem[] } };
+  | { type: 'chatMentionResults'; payload: { requestId: number; kind: string; items: MentionItem[] } }
+  // Reports the lifecycle of an upload kicked off by `chatUploadAsset`
+  // (#1670). `clientId` is the webview-supplied local identifier that
+  // keys the pending-upload chip; the host echoes it back so the chip
+  // can be updated / replaced / dropped. On 'done' the payload carries
+  // the canonical asset metadata; on 'error' the message field carries
+  // a user-presentable string.
+  | {
+      type: 'chatUploadProgress';
+      payload:
+        | { clientId: string; status: 'uploading' }
+        | {
+            clientId: string;
+            status: 'done';
+            asset: { id: number; name: string; mimeType: string; size: number; category: string };
+          }
+        | { clientId: string; status: 'error'; message: string };
+    }
+  // Response to a `chatGetAssetUri` query (#1670). Carries the
+  // webview-safe URI for a cached binary, or an error string if the
+  // download/cache step failed. `id` matches the requested asset id.
+  | {
+      type: 'chatAssetUriResolved';
+      payload:
+        | { id: number; uri: string }
+        | { id: number; error: string };
+    };
 
 /**
  * One entry in the @mention picker (todo #1614). Shared host↔webview
@@ -285,7 +311,30 @@ export type SessionPanelClientMessage =
       };
     }
   | { type: 'stop' }
-  | { type: 'refresh' };
+  | { type: 'refresh' }
+  // User pasted / dropped / picked a file in the chat input (#1670).
+  // dataUrl is `data:<mime>;base64,<bytes>` — host re-validates the
+  // declared mimeType against the actual bytes via magic-byte sniff
+  // before forwarding to /assets/upload. `clientId` is a
+  // webview-local id keyed to the pending-upload chip; host echoes
+  // it in every `chatUploadProgress` so the UI can update the right
+  // chip even across overlapping uploads.
+  | {
+      type: 'chatUploadAsset';
+      payload: {
+        clientId: string;
+        name: string;
+        mimeType: string;
+        size: number;
+        dataUrl: string;
+      };
+    }
+  // Webview asks the host for a webview-safe URI for an asset id (#1670).
+  // Triggered on render of an `[asset:N]` token. Host ensures the binary
+  // is cached locally (downloads with x-api-key if not), then replies
+  // with `chatAssetUriResolved`. Per-id results are deduped client-side
+  // so multiple references to the same asset share one fetch.
+  | { type: 'chatGetAssetUri'; payload: { id: number } };
 
 // ============================================================
 // Kanban Panel
