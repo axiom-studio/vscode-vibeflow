@@ -1,13 +1,13 @@
 {
   "name": "vscode-vibeflow",
   "displayName": "VibeFlow",
-  "description": "AI agent orchestration, project management, and governance for VSCode",
-  "version": "1.0.0",
-  "publisher": "axiom-studio",
+  "description": "A full AI engineering team — developer, architect, PM, QA, security, principal, DevOps — inside VSCode. Shared context, persistent decisions, autonomous shipping.",
+  "version": "1.1.0",
+  "publisher": "AxiomStudio",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://bitbucket.org/axiom-studio/vscode-vibeflow.git"
+    "url": "https://github.com/axiom-studio/vscode-vibeflow.git"
   },
   "engines": {
     "vscode": "^1.93.0"
@@ -25,13 +25,28 @@
   "keywords": [
     "ai",
     "agent",
+    "agents",
     "vibeflow",
     "orchestration",
     "multi-agent",
-    "project-management"
+    "project-management",
+    "claude",
+    "codex",
+    "cursor",
+    "gemini",
+    "kanban",
+    "compliance",
+    "pair-programming",
+    "autonomous"
   ],
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
+  "qna": false,
   "bugs": {
-    "url": "https://bitbucket.org/axiom-studio/vscode-vibeflow/issues"
+    "url": "https://github.com/axiom-studio/vscode-vibeflow/issues",
+    "email": "support@axiomstudio.ai"
   },
   "homepage": "https://cloud.axiomstudio.ai",
   "contributes": {
@@ -184,6 +199,11 @@
         "command": "vibeflow.pickProject",
         "title": "VibeFlow: Switch Project…",
         "icon": "$(folder)"
+      },
+      {
+        "command": "vibeflow.reportIssue",
+        "title": "VibeFlow: Report an Issue…",
+        "icon": "$(bug)"
       },
       {
         "command": "vibeflow.manageWorktrees",
