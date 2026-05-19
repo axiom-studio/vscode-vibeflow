@@ -83,6 +83,30 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
     return this.todos.filter(t => ready(t.status)).length
       + this.issues.filter(i => ready(i.status)).length;
   }
+
+  /**
+   * Fired after every successful poll. Lets sibling tree providers
+   * (e.g. ProjectItemsTreeProvider) consume the same fetched data
+   * without polling independently. Keeps the network footprint flat
+   * regardless of how many trees read this data.
+   */
+  private _onDidRefresh = new vscode.EventEmitter<void>();
+  readonly onDidRefresh = this._onDidRefresh.event;
+
+  /** Snapshots for sibling consumers. Read-only by convention. */
+  getFeatures(): readonly VibeFlowFeature[] { return this.features; }
+  getTodos(): readonly VibeFlowTodo[] { return this.todos; }
+  getIssues(): readonly VibeFlowIssue[] { return this.issues; }
+  /**
+   * session_id → persona display name, surfaces under sibling
+   * providers' "claimed by" rendering so they don't have to re-derive
+   * the map.
+   */
+  getPersonaForSession(sessionId: string | undefined): string | undefined {
+    if (!sessionId) { return undefined; }
+    const key = this.sessionPersonaMap.get(sessionId);
+    return key ? personaDisplayName(key) : undefined;
+  }
   /**
    * session_id → persona_key, refreshed each poll cycle. Used to render
    * the "claimed by" tag on tree nodes — `claimed_by` on a work item is
@@ -155,6 +179,10 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       // the baseline silently — items that were already done before the
       // window opened don't get spurious notifications.
       this.notifyCompletions();
+      // Tell sibling tree providers (ProjectItemsTreeProvider) that
+      // fresh data is available. Fires only on successful polls so
+      // consumers don't refresh on transient errors.
+      this._onDidRefresh.fire();
     } catch {
       // Keep stale data on error — and skip the diff so a transient
       // failure doesn't drop transitions on the floor (next successful
@@ -345,5 +373,6 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   dispose(): void {
     this.stopPolling();
     this._onDidChangeTreeData.dispose();
+    this._onDidRefresh.dispose();
   }
 }
