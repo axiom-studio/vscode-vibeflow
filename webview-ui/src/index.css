@@ -33,6 +33,20 @@ body {
   overflow: hidden;
 }
 
+/*
+ * Document viewer layout. The scroll container is the full-width
+ * outer wrapper (`.vf-commentable-document` for editable docs with
+ * comments; `.vf-doc-scroll` for read-only references). The scrollbar
+ * then lives at the panel's right edge instead of floating mid-panel
+ * along the 820px content container's edge. `.prose-vf` itself stays
+ * centered + capped at 820px but doesn't scroll independently.
+ */
+.vf-commentable-document,
+.vf-doc-scroll {
+  height: 100vh;
+  overflow-y: auto;
+}
+
 /* Markdown viewer styling — mirrors axiomcloud DocumentPopoutModal */
 .prose-vf {
   padding: 20px 28px;
@@ -41,8 +55,6 @@ body {
   font-size: 14px;
   line-height: 1.7;
   color: var(--feed-fg);
-  overflow-y: auto;
-  height: 100vh;
 }
 .prose-vf h1 { font-size: 1.8em; font-weight: 700; margin: 1.2em 0 0.5em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.3em; }
 .prose-vf h2 { font-size: 1.4em; font-weight: 600; margin: 1.2em 0 0.5em; border-bottom: 1px solid var(--feed-border); padding-bottom: 0.2em; }
