@@ -60,6 +60,10 @@ export function AssetCard({ id, name }: AssetCardProps) {
   const ext = (name.split('.').pop() ?? '').toLowerCase();
   const looksLikeImage = IMAGE_EXTS.has(ext);
 
+  const openInVSCode = (): void => {
+    vscode.postMessage({ type: 'chatOpenAsset', payload: { id, name } });
+  };
+
   if (error) {
     return (
       <span className="asset-card is-error" title={error}>
@@ -86,23 +90,26 @@ export function AssetCard({ id, name }: AssetCardProps) {
         alt={name}
         className="asset-image"
         onError={() => setImageBroken(true)}
-        title={name}
+        onClick={openInVSCode}
+        title={`${name} — click to open`}
       />
     );
   }
 
-  // File card — anchor with `download` attr triggers a save dialog
-  // on click. The href is a webview://localhost URL; the browser
-  // already knows how to download from it.
+  // File card — clicking fires `chatOpenAsset`, host routes through
+  // `vscode.open` which picks the right viewer (built-in PDF / text
+  // editor / external app prompt for unknown binaries). More reliable
+  // than the previous `<a download>` approach, which VSCode can
+  // intercept in unpredictable ways.
   return (
-    <a
-      href={uri}
-      download={name}
+    <button
+      type="button"
+      onClick={openInVSCode}
       className="asset-card is-file"
-      title={`Download ${name}`}
+      title={`Open ${name}`}
     >
       <FileIcon size={12} />
       <span className="asset-card-name">{name}</span>
-    </a>
+    </button>
   );
 }

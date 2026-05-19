@@ -336,7 +336,13 @@ export type SessionPanelClientMessage =
   // filename from the token — host uses it as the cache-path leaf so
   // the returned URI preserves the extension (needed for Content-Type
   // sniffing on SVG and other text-shaped image formats).
-  | { type: 'chatGetAssetUri'; payload: { id: number; name: string } };
+  | { type: 'chatGetAssetUri'; payload: { id: number; name: string } }
+  // User clicked a rendered asset (image preview or file card) to
+  // open it (#1670). Host ensures the binary is cached then routes
+  // to VSCode's `vscode.open` command, which picks the right editor
+  // for the file type (built-in image preview, text editor, or
+  // external app prompt for unknown binaries).
+  | { type: 'chatOpenAsset'; payload: { id: number; name: string } };
 
 // ============================================================
 // Kanban Panel
