@@ -1,12 +1,12 @@
-# VibeFlow for VSCode
+# VibeFlow for VS Code
 
-A full AI engineering team — **Developer**, **Architect**, **PM**, **QA**, **Security**, **Principal Engineer**, **DevOps** — inside VSCode. Shared context, persistent decisions, autonomous shipping. Not autocomplete. An AI team that knows your codebase.
+A full AI engineering team — **Developer**, **Architect**, **PM**, **QA**, **Security**, **Principal Engineer**, **DevOps** — inside VS Code. Shared context, persistent decisions, autonomous shipping. Not autocomplete. An AI team that knows your codebase.
 
 Backed by the VibeFlow platform: features, todos, issues, governance, attachments, and compliance all live on a real backend that the agents read + write to. The IDE extension is the live cockpit.
 
 ## Quick start
 
-1. **Install** from the VSCode Marketplace, or `code --install-extension vscode-vibeflow-1.1.0.vsix`
+1. **Install** from the VS Code Marketplace, or `code --install-extension vscode-vibeflow-1.1.0.vsix`
 2. **Sign in** — run `VibeFlow: Setup` from the command palette and paste your API key from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)
 3. **Launch a session** — `VibeFlow: Launch Session` → pick personas, provider, branch. The agent fleet starts working.
 
@@ -21,7 +21,7 @@ Live tree of running agent sessions, grouped by branch. Status icons surface hea
 A dedicated chat panel per agent with markdown rendering, syntax-highlighted code blocks, inline-unified or split-view diffs, and clickable **commit hashes** + **file paths** that open in the right viewer. The transcript renders agent activity sub-millisecond after the agent emits it via a provider-agnostic stream-json transport (Claude Code, Codex, Gemini, Cursor, Qwen). Working indicator with a live time counter while the agent is thinking.
 
 ### Chat attachments
-Paste a screenshot, drag-drop files, or pick via the paperclip button. Files upload to the project's asset storage, get cached locally for instant rerender, and embed inline in the transcript — images preview at full size (click to open in VSCode's image viewer), other formats become file cards that open in the appropriate editor on click. Supports images, PDFs, Office docs, archives, code/text, audio, video — anything the platform stores. Attachments include a machine-readable footer so agents can discover and fetch them via the standard MCP tools.
+Paste a screenshot, drag-drop files, or pick via the paperclip button. Files upload to the project's asset storage, get cached locally for instant rerender, and embed inline in the transcript — images preview at full size (click to open in VS Code's image viewer), other formats become file cards that open in the appropriate editor on click. Supports images, PDFs, Office docs, archives, code/text, audio, video — anything the platform stores. Attachments include a machine-readable footer so agents can discover and fetch them via the standard MCP tools.
 
 ### @mention autocomplete
 Type `@` in any chat input to surface the picker — `@document`, `@context`, `@todo`, `@issue`, `@feature`, or `@symbol` (LSP workspace-symbol). Mentions embed as `[type:id "name"]` tokens that the platform resolves server-side.
@@ -81,7 +81,7 @@ Natural-language commands in Copilot Chat: `/status`, `/create`, `/review`, `/su
 | `vibeflow.defaultPersona` | `developer` | Default persona for new sessions |
 | `vibeflow.defaultProvider` | `claude` | Default AI provider |
 | `vibeflow.session.terminalMode` | `hybrid` | Terminal visibility: `hybrid` / `all` / `none` |
-| `vibeflow.session.headlessBacking` | `auto` | Chat-first session backing: `auto` (VSCode terminal) / `tmux` (Unix only; survives IDE restart) / `vscode` |
+| `vibeflow.session.headlessBacking` | `auto` | Chat-first session backing: `auto` (VS Code terminal) / `tmux` (Unix only; survives IDE restart) / `vscode` |
 | `vibeflow.polling.interval` | `30` | UI refresh interval (seconds) |
 | `vibeflow.autoDetectProject` | `true` | Auto-match git remote to project on activate + on workspace folder change |
 | `vibeflow.worktree.baseDir` | `.claude/worktrees` | Subdirectory for cross-branch worktrees |
@@ -91,13 +91,13 @@ Natural-language commands in Copilot Chat: `/status`, `/create`, `/review`, `/su
 
 ## Requirements
 
-- VSCode **1.93+**
+- VS Code **1.93+**
 - One of: `claude`, `codex`, `gemini`, or `cursor agent` on PATH
 - A VibeFlow account at [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai) with an API key
 
 ## Security
 
-- API key stored in VSCode Secrets API (encrypted, per-machine)
+- API key stored in VS Code Secrets API (encrypted, per-machine)
 - Provider tokens (`MCP_TOKEN`, `GEMINI_API_KEY`) stored in Secrets API; launch wizard pre-fills from there
 - HTTPS required for `vibeflow.serverUrl` (HTTP allowed only for `localhost` / `127.0.0.1` / `[::1]`); validated at activation, every REST request, and MCP transport construction (regression-guarded by `scripts/check-security-guards.mjs`)
 - `.mcp.json` (which embeds the bearer token) is only written when `git check-ignore` confirms the workspace will exclude it; supports negation patterns
