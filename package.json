@@ -1,9 +1,9 @@
 {
   "name": "vscode-vibeflow",
   "displayName": "VibeFlow for VS Code",
-  "description": "A full AI engineering team — developer, architect, PM, QA, security, principal, DevOps — inside VSCode. Shared context, persistent decisions, autonomous shipping.",
+  "description": "VibeFlow for VS Code: A full AI engineering team — developer, architect, PM, QA, security — that knows your codebase. Not autocomplete.",
   "author": {
-    "name": "AxiomStudio",
+    "name": "Axiom Studio AI",
     "url": "https://axiomstudio.ai"
   },
   "version": "1.1.0",
