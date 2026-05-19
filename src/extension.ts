@@ -5,6 +5,7 @@ import { validateServerUrl } from './auth/serverUrl.js';
 import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
+import { ProjectItemsTreeProvider } from './views/projectItems/ProjectItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import {
@@ -80,6 +81,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
+  // "Project Items" tree — hierarchical (Features → Todos + Issues)
+  // companion to Work Items' status/kanban view. Reads the same data
+  // off the WorkItemsTreeProvider via its onDidRefresh event, so no
+  // duplicate polling.
+  const projectItemsProvider = new ProjectItemsTreeProvider(workItemsProvider);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
 
@@ -428,6 +434,68 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   }
 
   /**
+   * Run when the workspace folder changes (`File → Open` to a different
+   * directory, or first folder added to an empty workspace). Re-runs
+   * the silent git-remote → project match. If the new folder maps to a
+   * different vibeflow project than the cached one, prompts the user
+   * to switch. Otherwise leaves state untouched.
+   *
+   * Closes the "open VSCode → switch to a different repo → still on
+   * the old project" gap that sokryptk flagged. Auto-connect at
+   * activation already handles the initial case; this handles the
+   * mid-session case.
+   */
+  async function trySwitchOnFolderChange(): Promise<void> {
+    if (!client.isAuthenticated()) { return; }
+    let remoteUrl: string | undefined;
+    try {
+      remoteUrl = await detector.getGitRemoteUrl();
+    } catch {
+      return;
+    }
+    if (!remoteUrl) { return; }
+
+    let projects;
+    try {
+      projects = await client.listProjects();
+    } catch {
+      return;
+    }
+    const matched = projects.find(p => p.git_remote_url === remoteUrl);
+    if (!matched) { return; }
+
+    const cached = detector.getCachedProject();
+    if (cached && cached.projectId === matched.id) {
+      // Already on the right project — re-cache the remote URL in case
+      // the workspace's git remote was a stale cache from the previous
+      // folder, then no-op.
+      return;
+    }
+
+    // Different project — prompt rather than silent-switch. Silent
+    // switching mid-session would be jarring (open panels suddenly
+    // talking to a different backend).
+    const cachedName = cached?.projectName ?? 'none';
+    const choice = await vscode.window.showInformationMessage(
+      `This folder belongs to VibeFlow project "${matched.name}". You're currently on "${cachedName}". Switch?`,
+      'Switch',
+      'Stay',
+    );
+    if (choice !== 'Switch') { return; }
+
+    const branch = await detector.getGitBranch();
+    const detected: DetectedProject = {
+      projectId: matched.id,
+      projectName: matched.name,
+      gitRemoteUrl: remoteUrl,
+      gitBranch: branch,
+    };
+    await detector.cacheProject(detected);
+    connectToProject(detected);
+    vscode.window.showInformationMessage(`VibeFlow: Switched to "${matched.name}"`);
+  }
+
+  /**
    * The Setup command — 3-step wizard: Server URL → API Key → Select Project.
    */
   async function runSetup() {
@@ -635,6 +703,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const workItemsView = vscode.window.createTreeView('vibeflow.workItems', {
     treeDataProvider: workItemsProvider,
+    showCollapseAll: true,
+  });
+
+  const projectItemsView = vscode.window.createTreeView('vibeflow.projectItems', {
+    treeDataProvider: projectItemsProvider,
     showCollapseAll: true,
   });
 
@@ -1037,11 +1110,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     promptNotifier,
     sessionsProvider,
     workItemsProvider,
+    projectItemsProvider,
     documentsProvider,
     sessionPanelManager,
     workItemPanelManager,
     sessionsView,
     workItemsView,
+    projectItemsView,
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,
@@ -1201,6 +1276,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   } else {
     await tryAutoConnect();
   }
+
+  // Re-run the silent git-remote → project match whenever the
+  // workspace folder set changes (File → Open, drag-drop folder, etc.).
+  // If the new folder maps to a different vibeflow project than
+  // currently cached, prompts the user to switch.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void trySwitchOnFolderChange();
+    }),
+  );
 
   // --- Session Reattachment ---
   // Detect .vibeflow-session-* files from a previous VSCode window
