@@ -47,7 +47,14 @@ export function MarkdownRenderer({ content, inline }: MarkdownRendererProps & { 
   );
 
   if (inline) { return rendered; }
-  return <div className="prose-vf">{rendered}</div>;
+  // Standalone (reference) path. The outer .vf-doc-scroll provides the
+  // full-width scroll container so the scrollbar lives at the panel's
+  // right edge; .prose-vf stays the centered + max-width content well.
+  return (
+    <div className="vf-doc-scroll">
+      <div className="prose-vf">{rendered}</div>
+    </div>
+  );
 }
 
 function slugify(text: string): string {
