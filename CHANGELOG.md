@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-05-19)
+
+First update since the 1.0.0 marketplace release. Substantial new surface area (chat-first mode, attachments, compliance, project switcher, project items pane) + a sweep of bug fixes from the post-1.0 customer feedback round.
+
+### Highlights since 1.0.0
+
+- **Compliance view** — dedicated `VibeFlow: Open Compliance` page mirroring axiomcloud's compliance dashboard: top-stat tiles, framework rollups, filterable findings table with expandable rows, CSV export with OWASP injection guard. Sidebar discoverability button on the Work Items tree.
+- **Project Items sidebar** — new 4th sidebar pane, Jira-Backlog-style hierarchical view (Features → Todos nested, Issues separate). Complements the existing Work Items pane's kanban/status view.
+- **Project switcher in the status bar** — `$(folder) <project-name>` pill at priority 99, click for Quick Pick of all projects. `Cmd+Shift+V P` keybinding. Auto-switch prompt when opening a folder mapped to a different project than the cached one.
+- **Chat attachments** end-to-end: paste / drag / picker → host validates MIME + size + magic bytes → uploads to `/assets/upload` with the host's auth header → local binary cache → renders inline as `<img>` or as a click-to-open file card. Agent-readable footer appended so the receiving agent can find + fetch attachments via the standard `list_attachments` MCP tool.
+- **Chat-first stream-json transport** — provider-agnostic agent runtime (Claude / Codex / Gemini / Cursor / Qwen) with sub-millisecond event streaming into the chat panel. Optional tmux backing on Unix so the agent survives IDE restart.
+- **@mention autocomplete in chat** — `@document/context/todo/issue/feature/symbol` picker; mentions embed as `[type:id "name"]` tokens.
+- **IDE superpowers in chat** — clickable commit hashes (open in native Commit Details view), clickable workspace paths (open at line/col), right-click "Ask Agent About Selection" composes a fenced-code-block prompt with the editor selection.
+- **CLI auto-install** — Settings → CLI Interface → **Install Latest** downloads the matching binary from GitHub Releases, verifies checksums, writes the binary to extension globalStorage, wires `vibeflow.cli.binaryPath` automatically. Handles GitHub's `release-assets.githubusercontent.com` CDN.
+- **Activity Feed persistence** — sidebar collapse + window reload + extension restart no longer wipe history. Three-tier durability: `retainContextWhenHidden`, host-side replay buffer (cap 500), `vscode.setState` round-trip.
+- **Animated "Working… 0:42" indicator** in chat replaces the static `PENDING` status chip — matches the platform's chat UI.
 
 ### Added — Chat-First Mode realtime (todo #1620, doc #285)
 - **Provider-agnostic stream-json transport** for chat-first sessions: spawn the agent CLI in line-delimited JSONL mode, parse native events through pure-function adapters, normalize to a single `NormalizedAgentEvent` discriminated union. Supported providers: Claude Code (`claude --print --input-format stream-json --output-format stream-json --verbose`), OpenAI Codex (`codex exec --json --yolo`), Gemini CLI / Qwen Code (`gemini|qwen -p "<init>" --output-format stream-json --yolo`), Cursor Agent (`cursor-agent -p "<init>" --output-format stream-json --yolo --approve-mcps`).
@@ -32,6 +47,39 @@
 - **Clickable commit hashes**: `[a-f0-9]{7,40}` patterns become links rendered as the 8-char short form. Click → invokes the built-in `git.viewCommit` if the git extension is available, otherwise offers a terminal fallback with `git show --stat <hash>`. Hash is regex-validated before any git invocation.
 - **Right-click "Ask Agent About Selection"** (`vibeflow.chat.askSelection`): editor-context menu entry on any editor with a non-empty selection. Composes a fenced-code-block prompt with a workspace-relative `path:startLine-endLine` header, picks the open chat panel (Quick Pick if multiple), and seeds the textarea via the new `chatPrefill` host→webview message.
 - **Drag-to-attach**: drop files from the VS Code Explorer onto the chat input bar → inserts `[filename](workspace-relative-path)` at the cursor. The agent reads via its own filesystem tools — no server roundtrip.
+
+### Added — post-1.0 customer feedback round (2026-05-15 → 2026-05-19)
+
+- **Compliance view** (todo #1671) — `vibeflow.openCompliance` + `Cmd+Shift+V C` + sidebar discoverability button on the Work Items tree. Top-stats / framework cards / findings table / CSV export with OWASP CSV-injection guard.
+- **Project Items sidebar** — new tree provider sharing data with WorkItemsTreeProvider via `onDidRefresh` event (no duplicate polling). Features expand to their todos; Issues separate; "(No Feature)" group for orphans.
+- **Project switcher in status bar** (todo #1702) — `createProjectStatusBar()` at priority 99, Quick Pick for switching, `Cmd+Shift+V P` keybinding, `vibeflow.pickProject` command.
+- **Auto-switch on workspace folder change** — `onDidChangeWorkspaceFolders` handler re-runs the silent git-remote → project match and prompts the user before switching mid-session.
+- **CLI auto-install** (todo #1701) — `vibeflow.installCli` command + Settings → CLI Interface "Install Latest" button + replacement for the no-binary toast docs link. Downloads from GitHub Releases with hostname allowlist (`*.githubusercontent.com`), 100MB sanity cap, optional SHA-256 verification, stage-then-swap atomic install.
+- **Chat attachments** (todo #1670) — full pipeline: paste / drag / picker → host MIME + magic-byte validation → `/assets/upload` with Bearer auth (key stays host-side) → cache to `globalStorageUri/asset-cache/<id>/<name>` → inline `<img>` or click-to-open file card → agent-readable markdown footer with attachment metadata so receiving agents discover via `list_attachments` MCP tool.
+- **Animated "Working… {elapsed}" indicator** in chat (todo #1665) — three breathing dots + tabular-nums elapsed time, replaces the static `PENDING` chip.
+- **`vibeflow.reportIssue` command** — opens the GitHub issues page with environment info (extension version, VSCode version, OS, server URL) pre-filled in the body.
+
+### Fixed — post-1.0 customer feedback round
+
+- **#2084** — git-hash + path click handlers were unreachable from the React-rewritten Session Chat panel; host substrate from #1613 was intact but the webview never imported the tokenizer or emitted `chatOpenCommit/Path` postMessages (same shape as #1614 mention picker regression). New `chatTokens.tsx` tokenizer + handlers in `ActivityFeedProvider` so commit hashes + paths in BOTH the chat transcript AND the Activity Feed sidebar are clickable. Also catches hashes inside markdown emphasis (`**hash**`, `*hash*`, `~~hash~~`) via additional ReactMarkdown component overrides.
+- **Activity Feed didn't populate / didn't persist** — root cause was a triple-miss: no `retainContextWhenHidden`, no host-side replay buffer (`pendingEntries` drained after first `ready`), no client-side `vscode.setState` persistence, plus the poller's `seenEventIds` blocked re-fetching what it had already delivered. Fixed across three layers — `retainContextWhenHidden: true` in the view contribution, new `replayBuffer` (cap 500) replayed on every `ready`, `vscode.setState({ entries })` persistence. Also capped the poller's previously-unbounded `seenEventIds` at 5000 with FIFO eviction, and removed a dead `seenEventIds.has()` check in the log path that was guarded redundantly by `lastLogLengths`.
+- **#1670 first-attempt architectural defects** — chat-attachment design that uploaded directly to `/assets` and embedded markdown `<img>` URLs was discarded after the self-review showed five compounding failures (auth headers can't ride `<img src>`, CSP can't allow `http://localhost`, `entity_type` allowlist lacks `prompt`, dataUrl validation gaps, closure-on-cursor bug). Rebuilt around a logical-token + host-cache + `webview.asWebviewUri` architecture (see postmortem doc 299 in the vibeflow project for the full breakdown).
+- **CLI installer host allowlist** — GitHub migrated release-asset hosts to `release-assets.githubusercontent.com`; the original exact-match Set rejected those. Switched to a suffix predicate accepting any `*.githubusercontent.com` (still rejects impostors like `evil-githubusercontent.com.attacker.tld`).
+- **Chat attachment MIME verification** falsely rejected ~half the allowlist (SVG, RTF, TIFF, BMP, AVIF, HEIC, MP3, MP4, WebM, MOV, FLAC, .doc/.xls/.ppt, ODT/ODS/ODP) because their magic-byte signatures weren't in the sniffer. Reversed the policy to accept-when-no-sniff (allowlist is the upstream gate) + added PE/ELF/Mach-O/Java-class detection to keep the "exe declared as image/png" attack path closed.
+- **Chat attachment cache files** had no extension → SVG wouldn't render via `<img>` because the webview asset server couldn't pick a Content-Type and Chromium refuses to image-sniff text-shaped bytes without an explicit type. Changed cache layout to `<cacheRoot>/<id>/<safeName>` so the URL preserves the extension.
+- **Chat attachment `clearAll()` race** — logout firing mid-write could leak previous-user bytes into the next session's cache. Added a generation counter; in-flight downloads check it before committing.
+- **Chat attachment file-card "Open" via `<a download>`** is unreliable in VSCode webviews (intercepted unpredictably). Replaced with a `chatOpenAsset` postMessage routing through `vscode.open` which picks the right viewer based on file type. Images also bind click-to-open so a screenshot click opens the built-in image viewer at full size.
+- **`fix #2042`** — surfaced `session.headlessBacking` in Settings UI + corrected the description for the `auto` value.
+- **`fix #2034`** — removed hardcoded `--folder-uri` from `launch.json` (was breaking F5 dev launches).
+- **Session Chat Stop button** passed wrong tree-item id; killSession lookup silently no-op'd. Now passes `session-<session_id>` directly.
+- **Session Chat Activity rail** — kept recent done items + clarified Refresh button.
+
+### Changed — post-1.0 customer feedback round
+
+- **`uploadAttachment` entity_type** widened from `todo | issue` to `todo | issue | feature | project` (axiomcloud's full allowlist). Chat attachments parent to `project` since `prompt` isn't a valid entity type.
+- **`SessionPanelManager.openCommitDiff` + `openWorkspaceRelativePath`** extracted from private methods into a shared `src/views/sessions/chatActions.ts` module so both Session Chat AND Activity Feed click handlers share one implementation (and one set of security checks).
+- **Activity Feed entry-merge semantic** in `applyEntries` — `replace: true` with non-empty incoming now merges by id and sorts by timestamp (was: hard replace). Necessary to compose the new client-side `setState` rehydration with the host's replay buffer without duplicate-or-discard pathologies. Empty + `replace: true` still clears (semantics required by `clearActivity`).
+- **Per-persona avatar fallback color** added to chat header to match the dashboard.
 
 ## 1.0.0 (2026-05-08)
 

@@ -1030,6 +1030,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.pickProject', () => {
       void runProjectPickerCommand({ client, detector, onSwitched: connectToProject });
     }),
+    vscode.commands.registerCommand('vibeflow.reportIssue', () => {
+      // Open the public issue tracker with environment info pre-filled
+      // in the body — bug reports without repro context are useless,
+      // so we encode the basics directly into the URL. The user can
+      // still edit before submitting.
+      const ext = vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow');
+      const extVersion = (ext?.packageJSON as { version?: string } | undefined)?.version ?? 'unknown';
+      const lines = [
+        '<!-- The "Environment" block was filled in automatically. Please describe the bug below. -->',
+        '',
+        '## What happened',
+        '',
+        '',
+        '## Steps to reproduce',
+        '',
+        '1. ',
+        '2. ',
+        '3. ',
+        '',
+        '## Environment',
+        '',
+        `- **Extension version**: ${extVersion}`,
+        `- **VSCode version**: ${vscode.version}`,
+        `- **OS**: ${process.platform} ${process.arch}`,
+        `- **Connected to**: ${vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', '(unset)')}`,
+        '',
+      ];
+      const body = encodeURIComponent(lines.join('\n'));
+      const url = `https://github.com/axiom-studio/vscode-vibeflow/issues/new?template=bug.md&body=${body}`;
+      void vscode.env.openExternal(vscode.Uri.parse(url));
+    }),
     vscode.commands.registerCommand('vibeflow.openCompliance', () => {
       const project = detector.getCachedProject();
       if (!project) {
