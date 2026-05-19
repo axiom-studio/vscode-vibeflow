@@ -134,6 +134,15 @@ export class SessionPanelManager implements vscode.Disposable {
    */
   private projectId: number | undefined;
 
+  /**
+   * Metadata for assets uploaded this session (#1670). Used by
+   * `annotateChatTextForAgent` to expand `[asset:N "name"]` tokens
+   * into a human + agent readable footer before sending. Bounded by
+   * the natural ceiling of "uploads per session" — no eviction needed
+   * unless this grows beyond practical use.
+   */
+  private recentAssets = new Map<number, { name: string; mime: string; size: number }>();
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
@@ -207,8 +216,14 @@ export class SessionPanelManager implements vscode.Disposable {
             this.postToWebview(panel, { type: 'chatError', payload: { message: 'Not connected to a project' } });
             break;
           }
-          const text = msg.payload.text.trim();
-          if (!text) { break; }
+          const rawText = msg.payload.text.trim();
+          if (!rawText) { break; }
+          // Annotate `[asset:N "name"]` tokens with an agent-readable
+          // footer so the recipient can find + fetch the attachments
+          // via the existing `list_attachments` MCP tool. Side effect
+          // is the same footer shows up in the chat UI — small cost
+          // for keeping host and agent views in sync.
+          const text = this.annotateChatTextForAgent(rawText);
           try {
             const created = await this.client.createPrompt(this.projectId, session.session_id, text);
             this.postToWebview(panel, { type: 'chatAppend', payload: { messages: [created] } });
@@ -318,6 +333,9 @@ export class SessionPanelManager implements vscode.Disposable {
           break;
         case 'chatGetAssetUri':
           await this.handleChatGetAssetUri(panel, msg.payload.id, msg.payload.name);
+          break;
+        case 'chatOpenAsset':
+          await this.handleChatOpenAsset(msg.payload.id, msg.payload.name);
           break;
         default:
           assertNever(msg);
@@ -520,6 +538,36 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   /**
+   * Open a chat-attached asset (#1670) via VSCode's `vscode.open`
+   * command. The command picks the right viewer based on file type:
+   * built-in image preview for images, text editor for text/code,
+   * native PDF viewer if installed, or an external-app prompt for
+   * unknown binaries.
+   *
+   * We `getLocalUri` first to ensure the binary is cached on disk —
+   * `vscode.open` needs a real file path, not a `webview://` URL.
+   * Cache misses trigger a transparent host-side fetch with the
+   * x-api-key, same as the AssetCard render path.
+   */
+  private async handleChatOpenAsset(assetId: number, name: string): Promise<void> {
+    if (!this.assetCache) {
+      vscode.window.showWarningMessage('VibeFlow: attachment cache is not initialized.');
+      return;
+    }
+    if (!Number.isInteger(assetId) || assetId <= 0) {
+      vscode.window.showWarningMessage(`VibeFlow: invalid attachment id ${assetId}.`);
+      return;
+    }
+    try {
+      const localUri = await this.assetCache.getLocalUri(assetId, name);
+      await vscode.commands.executeCommand('vscode.open', localUri);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(`VibeFlow: could not open attachment — ${message}`);
+    }
+  }
+
+  /**
    * Chat attachment upload handler (#1670). Authority on:
    *  - size cap (32MB, mirrors axiomcloud)
    *  - declared-MIME allowlist (`isAllowedMime`)
@@ -621,6 +669,13 @@ export class SessionPanelManager implements vscode.Disposable {
       // safeName is the same name the token will carry, so the cache
       // path matches what `chatGetAssetUri` will look up.
       await this.assetCache.storeKnownBytes(assetId as number, safeName, bytes);
+      // Track metadata so the next chatSend can annotate its tokens
+      // with an agent-readable footer (#1670 follow-up).
+      this.recentAssets.set(assetId as number, {
+        name: safeName,
+        mime: payload.mimeType,
+        size: bytes.byteLength,
+      });
       this.postToWebview(panel, {
         type: 'chatUploadProgress',
         payload: {
@@ -639,6 +694,41 @@ export class SessionPanelManager implements vscode.Disposable {
       const message = err instanceof Error ? err.message : String(err);
       fail(`Upload failed: ${message}`);
     }
+  }
+
+  /**
+   * Append a machine-readable footer to chat text that contains asset
+   * tokens (#1670 follow-up). Without this, the agent on the other
+   * end of `createPrompt` just sees `[asset:N "name"]` as opaque text
+   * and has no idea there's a file to fetch. The footer is plain
+   * markdown so it renders unobtrusively in the chat UI and is
+   * trivially parseable by an LLM agent.
+   *
+   * No-op if there are no tokens. Uses `recentAssets` for metadata
+   * when available; falls back to "(metadata unavailable)" otherwise
+   * (e.g., a token referencing an asset uploaded in a different
+   * session of the extension).
+   */
+  private annotateChatTextForAgent(text: string): string {
+    const re = /\[asset:(\d+)\s+"((?:[^"\\]|\\[\\"])*)"\]/g;
+    const seen = new Set<number>();
+    const lines: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const id = Number(m[1]);
+      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) { continue; }
+      seen.add(id);
+      const tokenName = m[2].replace(/\\([\\"])/g, '$1');
+      const meta = this.recentAssets.get(id);
+      const detail = meta
+        ? `${meta.name} (${meta.mime}, ${formatBytesForFooter(meta.size)}, asset_id=${id})`
+        : `${tokenName} (metadata unavailable, asset_id=${id})`;
+      lines.push(`- ${detail}`);
+    }
+    if (lines.length === 0) { return text; }
+    const heading = lines.length === 1 ? '📎 1 attachment:' : `📎 ${lines.length} attachments:`;
+    const guide = `Agents: fetch via the \`list_attachments\` MCP tool with entity_type='project' and filter category='chat_attachment', or directly via /rest/v1/vibeflow/assets/<id>/download with the project's auth.`;
+    return `${text}\n\n---\n${heading}\n${lines.join('\n')}\n\n_${guide}_`;
   }
 
   /**
@@ -1209,6 +1299,13 @@ function toReactUpdatePayload(
     })),
     chatDiffView,
   };
+}
+
+/** Compact size formatter for the agent-readable attachment footer (#1670). */
+function formatBytesForFooter(bytes: number): string {
+  if (bytes < 1024) { return `${bytes}B`; }
+  if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)}KB`; }
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
 /**

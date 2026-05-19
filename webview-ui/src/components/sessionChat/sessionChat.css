@@ -949,7 +949,16 @@
   text-decoration: none;
   max-width: 320px;
   vertical-align: middle;
+  cursor: pointer;
+  font-family: inherit;
   transition: background 120ms ease-out, border-color 120ms ease-out;
+}
+button.asset-card { /* reset native button styling */
+  appearance: none;
+}
+.asset-card:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 .asset-card.is-file:hover {
   background: color-mix(in oklab, var(--vscode-textLink-foreground) 12%, transparent);
