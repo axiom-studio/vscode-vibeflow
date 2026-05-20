@@ -629,7 +629,7 @@
           {
             "id": "welcome",
             "title": "Welcome to VibeFlow",
-            "description": "VibeFlow brings multi-persona AI agent orchestration into your IDE. Run Developer, Architect, QA, Security, and PM agents — all from VSCode.\n\n[Learn more](https://cloud.axiomstudio.ai)",
+            "description": "VibeFlow brings multi-persona AI agent orchestration into your IDE. Run Developer, Architect, QA, Security, and PM agents — all from VSCode.\n\n[Learn more](https://axiomstudio.ai/vibeflow)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "VibeFlow logo"
