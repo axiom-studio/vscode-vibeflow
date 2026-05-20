@@ -12,22 +12,15 @@ import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
 import { AVATAR_BY_PERSONA } from '../personaAvatars';
 import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
-import { EmptyState } from './_shared/EmptyState';
-import { GitBranchIcon, InboxIcon, SpinnerIcon } from './_shared/icons';
+import { GitBranchIcon, SpinnerIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: DashboardClientMessage) => void };
 
 type PersonaStatus = 'active' | 'stale' | 'inactive';
 
-interface BranchReviewItem {
-  type: 'todo' | 'issue';
-  id: number;
-  title: string;
-  security: 'PASS' | 'PENDING';
-  qa: 'PASS' | 'PENDING';
-  open_findings: number;
-}
-
+// Branch readiness card is hidden in v1.1; the host still sends this
+// data so the card can return without a wire change. Kept as a partial
+// model (no `items[]` until the card is back) to satisfy noUnusedLocals.
 interface BranchReview {
   branch: string;
   total_items: number;
@@ -39,7 +32,6 @@ interface BranchReview {
   open_findings?: number;
   total_commits?: number;
   total_lines?: string;
-  items?: BranchReviewItem[];
 }
 
 interface DashboardSnapshot {
@@ -56,7 +48,7 @@ interface DashboardSnapshot {
   // null = no status-driven intake (project_manager tracker, customer input);
   // numbers are item counts pending action by that persona.
   personaQueues: Record<string, number | null>;
-  sessions: { active: number; stale: number; total: number };
+  sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
   workSummary: { total_commits: number; lines_added: number; lines_deleted: number; total_seconds: number } | undefined;
@@ -193,7 +185,7 @@ const QUEUE_TOOLTIPS: Record<string, string> = {
   developer:          'Shared code-agent queue: `planning` + `ready_to_implement` + `architecture_review_complete`. Only one of Architect/Developer/Principal Engineer runs per branch.',
   principal_engineer: 'Shared code-agent queue: `planning` + `ready_to_implement` + `architecture_review_complete`. Only one of Architect/Developer/Principal Engineer runs per branch.',
   security_lead:      'Items in `done` where security_reviewed=false.',
-  qa_lead:            'Items in `done` where security_reviewed=true. Upper bound — swimlane wire shape doesn\'t expose qa_verified yet, so already-verified items are still counted.',
+  qa_lead:            'Items in `done` where security_reviewed=true and qa_verified=false.',
   ux_designer:        'Items in `needs_ux_input`.',
 };
 
@@ -312,11 +304,10 @@ export function DashboardView() {
 
     // Floating "1 active per branch" chip pinned above the code-agent
     // cluster. Single shared affordance replaces the old per-node
-    // orange `1/branch` pill. Position derived from the architect's
-    // default position (top of the cluster); the chip stays static
-    // even if the user drags the agents — it's a constraint marker,
-    // not an agent itself.
-    const archPos = PERSONA_POSITIONS.architect;
+    // orange `1/branch` pill. Anchored to the architect node's CURRENT
+    // position (drag-aware) rather than the static default — otherwise
+    // dragging the cluster strands the chip at its original spot.
+    const archPos = positions.architect ?? PERSONA_POSITIONS.architect;
     const slotNode: Node = {
       id: 'slot-code-agent',
       type: 'slotLabel',
@@ -862,8 +853,14 @@ function SummaryGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | unde
       <div style={{ gridArea: 'sessions' }}>
         <SummaryCard
           label="Sessions"
-          value={`${snapshot.sessions.active}/${snapshot.sessions.total}`}
-          sub={snapshot.sessions.stale > 0 ? `${snapshot.sessions.stale} stale` : 'active'}
+          value={`${snapshot.sessions.active}`}
+          sub={
+            snapshot.sessions.stale > 0
+              ? `${snapshot.sessions.stale} stale`
+              : snapshot.sessions.active > 0
+                ? `${snapshot.sessions.active === 1 ? 'session' : 'sessions'} active`
+                : 'no sessions running'
+          }
           tone="hero"
         />
       </div>
@@ -911,29 +908,16 @@ function SummaryGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | unde
 }
 
 function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | undefined; loading: boolean }) {
-  if (!snapshot && loading) { return <Skeleton rows={2} />; }
+  if (!snapshot && loading) { return <Skeleton rows={1} />; }
   if (!snapshot) { return null; }
 
   const f = snapshot.findings;
-  const br = snapshot.branchReview;
 
-  // The two governance cards report DIFFERENT things and the labels need
-  // to make that obvious — the user audit (2026-05-08) flagged that
-  // "Compliance findings: 2 open" sat next to "Branch — main: 10 open
-  // findings" with no indication of why the numbers disagreed:
-  //
-  //   - LEFT card: PROJECT-WIDE findings, filtered by `effective_status`
-  //     which honours SLA grace windows (a finding that's overdue in raw
-  //     status but inside its grace period drops out). Source:
-  //     `client.listComplianceFindings(projectId, {status:'open'})` →
-  //     `tallyFindings` (DashboardPanel.ts).
-  //   - RIGHT card: BRANCH-SCOPED metrics from
-  //     `check_branch_review_status` (MCP) — security/QA pass counts and
-  //     a raw `open_findings` count limited to items on this branch.
-  //     Doesn't apply effective_status filtering.
-  //
-  // Labels now lead with scope ("Project" vs "Branch") and the
-  // sub-copy spells out the filter.
+  // Branch readiness card is hidden for v1.1 — the
+  // `check_branch_review_status` data source needs a second pass before
+  // its semantics fully agree with the rest of the dashboard. The host
+  // still fetches `branchReview` so we have ready data when the card
+  // returns; see GovernanceGrid history for the full render code.
   return (
     <div style={{
       display: 'grid',
@@ -949,37 +933,8 @@ function GovernanceGrid({ snapshot, loading }: { snapshot: DashboardSnapshot | u
           <Pill label="info" count={f.informational} color="var(--feed-muted)" dim={f.informational === 0} />
         </div>
         <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginTop: 6, opacity: 0.85 }}>
-          All projects' open findings, after SLA grace windows
+          This project's open findings, after SLA grace windows
         </div>
-      </Card>
-
-      <Card title={`Branch readiness · ${br?.branch ?? snapshot.branch}`}>
-        {!br || br.total_items === 0 ? (
-          <EmptyState
-            icon={<InboxIcon size={20} />}
-            headline="No tracked work"
-            subtext={br?.message ?? 'No tracked work items on this branch yet.'}
-            className="flex flex-col items-center justify-center text-center gap-1.5 py-3"
-          />
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <ReadyBadge label="Security" verdict={br.overall_security} done={br.security_passed ?? 0} total={br.total_items} />
-              <ReadyBadge label="QA" verdict={br.overall_qa} done={br.qa_passed ?? 0} total={br.total_items} />
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--feed-muted)' }}>
-              {br.total_items} item(s) · {br.total_commits ?? 0} commits · {br.total_lines ?? '+0 -0'}
-              {(br.open_findings ?? 0) > 0 && (
-                <span style={{ color: 'var(--feed-error)', marginLeft: 6 }}>
-                  · {br.open_findings} open finding{br.open_findings === 1 ? '' : 's'} on branch
-                </span>
-              )}
-            </div>
-            <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginTop: 2, opacity: 0.85 }}>
-              Items on this branch only; raw open count
-            </div>
-          </div>
-        )}
       </Card>
     </div>
   );
@@ -1089,24 +1044,6 @@ function Pill({ label, count, color, dim }: { label: string; count: number; colo
     }}>
       {count} {label}
     </span>
-  );
-}
-
-function ReadyBadge({ label, verdict, done, total }: {
-  label: string;
-  verdict: 'PASS' | 'PENDING' | undefined;
-  done: number;
-  total: number;
-}) {
-  const isPass = verdict === 'PASS';
-  const color = isPass ? 'var(--feed-success)' : 'var(--feed-warning)';
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
-      <span style={{ fontWeight: 600 }}>{label}:</span>
-      <span style={{ color }}>{verdict ?? 'UNKNOWN'}</span>
-      <span style={{ color: 'var(--feed-muted)' }}>{done}/{total}</span>
-    </div>
   );
 }
 

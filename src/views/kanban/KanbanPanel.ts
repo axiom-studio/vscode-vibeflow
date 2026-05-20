@@ -58,6 +58,9 @@ export class KanbanPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  // Throttle the mount-time `kanbanLoad` against the "became visible"
+  // event so we don't fan out two consecutive swimlane fetches on open.
+  private lastFetchAt = 0;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -100,6 +103,11 @@ export class KanbanPanel {
 
   private attach(): void {
     this.panel.webview.onDidReceiveMessage((msg: KanbanClientMessage) => this.handleMessage(msg));
+    this.panel.onDidChangeViewState(e => {
+      if (!e.webviewPanel.visible) { return; }
+      if (Date.now() - this.lastFetchAt < 1000) { return; }
+      void this.sendData();
+    });
     this.panel.onDidDispose(() => this.dispose());
     // Initial load is triggered by the webview sending `kanbanLoad` on mount.
   }
@@ -171,6 +179,7 @@ export class KanbanPanel {
   }
 
   private async sendData(): Promise<void> {
+    this.lastFetchAt = Date.now();
     try {
       const swimlane = await this.client.getSwimlane();
       const cards = flattenForProject(swimlane, this.projectId);

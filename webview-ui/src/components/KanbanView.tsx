@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import type { KanbanClientMessage, KanbanHostMessage } from '../../../src/core/webviewMessages';
+import { BugIcon, CheckSquareIcon, LockIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: KanbanClientMessage) => void };
 
@@ -102,10 +103,24 @@ export function KanbanView() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
+  // Safety: drop the spinner if the host doesn't respond within 5s
+  // (network hung, swimlane composition stuck). The next snapshot push
+  // will clear `error` and resume normal rendering.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(() => {
+    if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); }
     setState(s => ({ ...s, loading: true, error: undefined }));
     vscode.postMessage({ type: 'kanbanRefresh' });
+    refreshTimerRef.current = setTimeout(() => {
+      setState(s => (s.loading ? { ...s, loading: false } : s));
+    }, 5000);
   }, []);
+  useEffect(() => {
+    if (!state.loading && refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }, [state.loading]);
 
   const onDragStart = useCallback((card: KanbanCard) => {
     setDraggedCard(card);
@@ -162,14 +177,22 @@ export function KanbanView() {
       if (col) { map[col.key].push(card); }
     }
     // Stable sort: priority desc, then updatedAt desc.
-    const PR = { high: 0, medium: 1, low: 2 } as Record<string, number>;
+    // `critical`/`urgent` are not in the documented priority set but we
+    // bucket them with `high` defensively (and warn so we notice if the
+    // backend grows new priority levels we should officially support).
+    const PR: Record<string, number> = { critical: 0, urgent: 0, high: 1, medium: 2, low: 3 };
+    const warned = new Set<string>();
     for (const k of Object.keys(map)) {
       map[k].sort((a, b) => {
-        const pa = PR[a.priority] ?? 9;
-        const pb = PR[b.priority] ?? 9;
+        const pa = PR[a.priority] ?? (warned.add(a.priority), 1);
+        const pb = PR[b.priority] ?? (warned.add(b.priority), 1);
         if (pa !== pb) { return pa - pb; }
         return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
       });
+    }
+    if (warned.size > 0) {
+      // Best-effort surfacing for unknown priorities; harmless in prod.
+      console.warn('Kanban: unknown priority value(s) sorted as `high`:', [...warned]);
     }
     return map;
   }, [state.cards]);
@@ -280,7 +303,7 @@ export function KanbanView() {
                     textAlign: 'center',
                     opacity: 0.6,
                   }}>
-                    —
+                    No items
                   </div>
                 )}
                 {columnCards.map(card => (
@@ -333,14 +356,31 @@ function Card({
         alignItems: 'flex-start',
         gap: 6,
       }}>
-        <div style={{ fontWeight: 500, lineHeight: 1.3, flex: 1 }}>
-          <span style={{ color: 'var(--feed-muted)', marginRight: 4 }}>
-            {card.type === 'issue' ? '🐛' : '✓'}#{card.id}
+        <div style={{ fontWeight: 500, lineHeight: 1.3, flex: 1, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+          <span
+            title={card.type === 'issue' ? 'Issue' : 'Todo'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: card.type === 'issue' ? 'var(--feed-error)' : 'var(--feed-muted)',
+              flexShrink: 0,
+              paddingTop: 1,
+            }}
+          >
+            {card.type === 'issue' ? <BugIcon size={11} /> : <CheckSquareIcon size={11} />}
           </span>
-          {card.title}
+          <span style={{ color: 'var(--feed-muted)', fontFamily: 'var(--vscode-editor-font-family)', fontSize: 10 }}>
+            #{card.id}
+          </span>
+          <span>{card.title}</span>
         </div>
         {card.securityReviewed && (
-          <span title="Security reviewed" style={{ fontSize: 10, opacity: 0.7 }}>🔒</span>
+          <span
+            title="Security reviewed"
+            style={{ display: 'inline-flex', color: 'var(--feed-success)', opacity: 0.75, flexShrink: 0 }}
+          >
+            <LockIcon size={11} />
+          </span>
         )}
       </div>
       <div style={{

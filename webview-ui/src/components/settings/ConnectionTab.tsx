@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { SettingsData, SettingsCommand } from './settingsTypes';
 
 interface Props {
@@ -7,6 +8,40 @@ interface Props {
 }
 
 export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
+  // Refresh-list feedback: track when we asked, and clear once data
+  // changes (projects list or last-snapshot identity flips). Without
+  // this, "Refresh List" looks dead — the host re-pushes a snapshot
+  // silently and the user has no idea anything happened.
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
+  const lastProjectsRef = useRef(data.projects);
+  useEffect(() => {
+    if (refreshing && data.projects !== lastProjectsRef.current) {
+      setRefreshing(false);
+      setRefreshedAt(Date.now());
+    }
+    lastProjectsRef.current = data.projects;
+  }, [data.projects, refreshing]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    onCommand({ type: 'refreshProjects' });
+    // Safety: if the host doesn't push a new projects array (e.g. same
+    // list came back), still drop the spinner after a short delay so
+    // the button isn't stuck spinning.
+    window.setTimeout(() => {
+      setRefreshing(prev => {
+        if (prev) { setRefreshedAt(Date.now()); }
+        return false;
+      });
+    }, 1500);
+  };
+
+  const copyProjectId = async () => {
+    if (data.projectId == null) { return; }
+    try { await navigator.clipboard.writeText(String(data.projectId)); } catch { /* clipboard unavailable */ }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Card
@@ -29,7 +64,7 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
 
       <Card
         title="API Key"
-        description="Your authentication token. Generate one from the VibeFlow web UI at Account > API Keys. The key is stored securely in your OS keychain — never in plaintext files."
+        description="Your authentication token. Stored securely in your OS keychain — never in plaintext files."
       >
         <div style={{
           fontFamily: 'var(--vscode-editor-font-family)',
@@ -38,9 +73,67 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         }}>
           {data.apiKeySet ? '●●●●●●●●●●●● (configured)' : 'Not configured'}
         </div>
+
+        {!data.apiKeySet && (
+          // No key yet — most users land here on first install. Lead with
+          // the account-creation step (since most won't have one) and
+          // make the destination URL the affordance, not buried in prose.
+          <div style={{
+            marginTop: 10,
+            padding: '10px 12px',
+            borderRadius: 6,
+            background: 'color-mix(in oklab, var(--feed-link) 8%, transparent)',
+            border: '1px solid color-mix(in oklab, var(--feed-link) 22%, transparent)',
+            fontSize: 12,
+            lineHeight: 1.55,
+            color: 'var(--feed-fg)',
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 4 }}>Don't have an account yet?</div>
+            <div style={{ color: 'var(--feed-muted)', marginBottom: 8 }}>
+              Sign up free, then generate an API key under <em>Account → API Keys</em> and paste it here.
+            </div>
+            <a
+              href={data.serverUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                background: 'var(--feed-button-bg)',
+                color: 'var(--feed-button-fg)',
+                borderRadius: 4,
+                textDecoration: 'none',
+              }}
+            >
+              Sign up at {prettyHost(data.serverUrl)} ↗
+            </a>
+          </div>
+        )}
+
         <ActionRow>
-          <Btn label={data.apiKeySet ? 'Change Key' : 'Set API Key'} onClick={() => onCommand({ type: 'setApiKey', payload: '' })} />
+          <Btn label={data.apiKeySet ? 'Change Key' : 'Paste API Key'} onClick={() => onCommand({ type: 'setApiKey', payload: '' })} />
           {data.apiKeySet && <Btn label="Test Key" secondary onClick={() => onCommand({ type: 'validateApiKey', payload: '' })} />}
+          {data.apiKeySet && (
+            <a
+              href={data.serverUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                alignSelf: 'center',
+                marginLeft: 4,
+                fontSize: 11,
+                color: 'var(--feed-link)',
+                textDecoration: 'none',
+              }}
+              title={`Manage API keys at ${data.serverUrl}`}
+            >
+              Manage in dashboard ↗
+            </a>
+          )}
         </ActionRow>
       </Card>
 
@@ -51,7 +144,22 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         {data.projectName ? (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600 }}>{data.projectName}</span>
-            <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>ID: {data.projectId}</span>
+            <button
+              onClick={copyProjectId}
+              title="Copy project ID"
+              style={{
+                fontSize: 11,
+                fontFamily: 'var(--vscode-editor-font-family)',
+                color: 'var(--feed-muted)',
+                background: 'transparent',
+                border: 'none',
+                padding: '1px 4px',
+                borderRadius: 3,
+                cursor: 'pointer',
+              }}
+            >
+              ID: {data.projectId}
+            </button>
           </div>
         ) : (
           <span style={{ fontSize: 13, color: 'var(--feed-muted)' }}>No project selected</span>
@@ -59,7 +167,7 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         <select
           value={data.projectId ?? ''}
           onChange={e => {
-            const id = parseInt(e.target.value);
+            const id = parseInt(e.target.value, 10);
             if (!isNaN(id)) { onCommand({ type: 'selectProject', payload: id }); }
           }}
           style={{ ...selectStyle, marginTop: 8 }}
@@ -70,7 +178,17 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
           ))}
         </select>
         <ActionRow>
-          <Btn label="Refresh List" secondary onClick={() => onCommand({ type: 'refreshProjects' })} />
+          <Btn
+            label={refreshing ? 'Refreshing…' : 'Refresh List'}
+            secondary
+            onClick={onRefresh}
+            disabled={refreshing}
+          />
+          {refreshedAt && !refreshing && (
+            <span style={{ alignSelf: 'center', fontSize: 11, color: 'var(--feed-muted)' }}>
+              Refreshed · {data.projects.length} project{data.projects.length === 1 ? '' : 's'}
+            </span>
+          )}
         </ActionRow>
       </Card>
     </div>
@@ -98,15 +216,26 @@ function ActionRow({ children }: { children: React.ReactNode }) {
   return <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>{children}</div>;
 }
 
-function Btn({ label, onClick, secondary }: { label: string; onClick: () => void; secondary?: boolean }) {
+function Btn({ label, onClick, secondary, disabled }: { label: string; onClick: () => void; secondary?: boolean; disabled?: boolean }) {
   return (
-    <button onClick={onClick} style={{
-      padding: '5px 12px', fontSize: 11, fontWeight: 500, borderRadius: 4, cursor: 'pointer',
+    <button onClick={onClick} disabled={disabled} style={{
+      padding: '5px 12px', fontSize: 11, fontWeight: 500, borderRadius: 4,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
       background: secondary ? 'transparent' : 'var(--feed-button-bg)',
       color: secondary ? 'var(--feed-muted)' : 'var(--feed-button-fg)',
       border: secondary ? '1px solid var(--feed-border)' : 'none',
     }}>{label}</button>
   );
+}
+
+/**
+ * Render the server URL as a friendly host-only label for CTA text
+ * (e.g. `https://cloud.axiomstudio.ai/` → `cloud.axiomstudio.ai`). Falls
+ * back to the raw string if the URL doesn't parse cleanly.
+ */
+function prettyHost(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
 }
 
 function StatusDot({ status }: { status: boolean | null }) {

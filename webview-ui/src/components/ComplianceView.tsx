@@ -1,34 +1,22 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import type { VibeFlowComplianceFinding } from '../types';
 import { EmptyState } from './_shared/EmptyState';
 import { StatusPill } from './_shared/StatusPill';
-import { ChevronIcon, InboxIcon, SpinnerIcon } from './_shared/icons';
-
-interface ComplianceClientMessage {
-  type: 'complianceLoad' | 'complianceRefresh' | 'complianceOpenWorkItem' | 'complianceExportCsv';
-  payload?: unknown;
-}
+import { ChevronIcon, InboxIcon, SpinnerIcon, CheckIcon, XIcon } from './_shared/icons';
+import type { ComplianceClientMessage, ComplianceHostMessage } from '../../../src/core/webviewMessages';
+// Single source of truth for the framework allowlist + display labels.
+// Lives in a `vscode`-free module so the webview bundle can pull it.
+import {
+  COMPLIANCE_FRAMEWORKS,
+  FRAMEWORK_LABEL,
+  type ComplianceFramework as Framework,
+} from '../../../src/views/compliance/complianceFrameworks';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: ComplianceClientMessage) => void };
 
-// ============================================================
-// Framework allowlist — mirrors axiomcloud's
-// `VibeflowComplianceFramework.IsValid`. Display labels use the
-// industry-standard casing.
-// ============================================================
-const FRAMEWORKS = ['hipaa', 'pcidss', 'soc2', 'iso27001', 'gdpr', 'cmmc', 'fedramp'] as const;
-type Framework = typeof FRAMEWORKS[number];
-const FRAMEWORK_LABEL: Record<Framework, string> = {
-  hipaa: 'HIPAA',
-  pcidss: 'PCI-DSS',
-  soc2: 'SOC 2',
-  iso27001: 'ISO 27001',
-  gdpr: 'GDPR',
-  cmmc: 'CMMC',
-  fedramp: 'FedRAMP',
-};
+const FRAMEWORKS = COMPLIANCE_FRAMEWORKS;
 
 type Severity = VibeFlowComplianceFinding['severity'];
 type Status = VibeFlowComplianceFinding['status'];
@@ -54,6 +42,13 @@ const STATUS_LABEL: Record<Status, string> = {
   in_progress: 'In Progress',
   resolved: 'Resolved',
   accepted_risk: 'Accepted',
+};
+const SEVERITY_LABEL: Record<Severity, string> = {
+  critical: 'Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  informational: 'Info',
 };
 
 // ============================================================
@@ -109,23 +104,37 @@ export function ComplianceView() {
   }, []);
 
   useEffect(() => {
-    function onMessage(event: MessageEvent<{ type: string; payload: unknown }>) {
+    function onMessage(event: MessageEvent<ComplianceHostMessage>) {
       const msg = event.data;
       if (msg?.type === 'complianceData' && msg.payload) {
         setState({ snapshot: msg.payload as ComplianceSnapshot, loading: false, error: undefined });
       } else if (msg?.type === 'complianceError') {
-        const payload = msg.payload as { message: string };
-        setState(s => ({ ...s, loading: false, error: payload.message }));
+        setState(s => ({ ...s, loading: false, error: msg.payload.message }));
       }
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  // Safety: drop the spinner if the host doesn't respond within 5s
+  // (network hung, snapshot composition stuck). The next snapshot push
+  // will clear `error` and resume normal rendering.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(() => {
+    if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); }
     setState(s => ({ ...s, loading: true }));
     vscode.postMessage({ type: 'complianceRefresh' });
+    refreshTimerRef.current = setTimeout(() => {
+      setState(s => (s.loading ? { ...s, loading: false } : s));
+    }, 5000);
   }, []);
+  useEffect(() => {
+    // Clear the safety timer when a snapshot lands.
+    if (!state.loading && refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+    }
+  }, [state.loading]);
 
   const openWorkItem = useCallback((workItemType: string, workItemId: number) => {
     vscode.postMessage({
@@ -835,8 +844,8 @@ function FindingRow({ finding, gridTemplate, isExpanded, onToggle, onOpenWorkIte
           </span>
         </div>
         <div style={cellStyle}>
-          <StatusPill color={SEVERITY_COLOR[finding.severity]} size="md">
-            {finding.severity}
+          <StatusPill color={SEVERITY_COLOR[finding.severity] ?? 'var(--feed-muted)'} size="md">
+            {SEVERITY_LABEL[finding.severity] ?? finding.severity}
           </StatusPill>
         </div>
         <div style={cellStyle}>
@@ -875,9 +884,9 @@ function FindingRow({ finding, gridTemplate, isExpanded, onToggle, onOpenWorkIte
         </div>
         <div style={{ ...cellStyle, justifyContent: 'center', color: 'var(--feed-muted)' }}>
           {finding.backward_compatible === true
-            ? <span style={{ color: 'var(--feed-success)', fontWeight: 600 }} title="Backward compatible">✓</span>
+            ? <span style={{ display: 'inline-flex', color: 'var(--feed-success)' }} title="Backward compatible"><CheckIcon size={13} /></span>
             : finding.backward_compatible === false
-              ? <span style={{ color: 'var(--feed-warning)', fontWeight: 600 }} title="Not backward compatible">✗</span>
+              ? <span style={{ display: 'inline-flex', color: 'var(--feed-warning)' }} title="Not backward compatible"><XIcon size={13} /></span>
               : <span style={{ opacity: 0.5 }}>—</span>}
         </div>
         <div style={cellStyle}>
@@ -896,7 +905,9 @@ function FindingRow({ finding, gridTemplate, isExpanded, onToggle, onOpenWorkIte
 function ExpandedDetails({ finding }: { finding: VibeFlowComplianceFinding }) {
   return (
     <div
-      role="row"
+      // No role="row" — this is a full-width detail region that doesn't
+      // share the table's column grid. The parent row's aria-expanded
+      // (driven by the expand button) signals the relationship instead.
       style={{
         padding: '14px 18px 16px 50px',
         borderBottom: '1px solid color-mix(in oklab, var(--feed-border) 60%, transparent)',

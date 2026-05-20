@@ -159,3 +159,110 @@ export function SpinnerIcon({ size = 14, ...rest }: IconProps = {}) {
     </Svg>
   );
 }
+
+export function PlugIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M9 2v6" />
+      <path d="M15 2v6" />
+      <path d="M6 8h12v3a6 6 0 0 1-12 0z" />
+      <path d="M12 17v5" />
+    </Svg>
+  );
+}
+
+export function CpuIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <rect x="9" y="9" width="6" height="6" />
+      <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3" />
+    </Svg>
+  );
+}
+
+export function SlidersIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <line x1="4" y1="6" x2="20" y2="6" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="18" x2="20" y2="18" />
+      <circle cx="9" cy="6" r="2" />
+      <circle cx="15" cy="12" r="2" />
+      <circle cx="7" cy="18" r="2" />
+    </Svg>
+  );
+}
+
+export function BrainIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M9.5 3a3 3 0 0 0-3 3 3 3 0 0 0-3 3 3 3 0 0 0 1 5.5 3 3 0 0 0 1 4.5 3 3 0 0 0 4 0V3z" />
+      <path d="M14.5 3a3 3 0 0 1 3 3 3 3 0 0 1 3 3 3 3 0 0 1-1 5.5 3 3 0 0 1-1 4.5 3 3 0 0 1-4 0V3z" />
+    </Svg>
+  );
+}
+
+export function BellIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    </Svg>
+  );
+}
+
+export function TerminalIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <polyline points="4 7 9 12 4 17" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </Svg>
+  );
+}
+
+export function InfoIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16" />
+      <circle cx="12" cy="8" r="0.5" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function BugIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <rect x="8" y="6" width="8" height="14" rx="4" />
+      <path d="M9 4l2 2M15 4l-2 2" />
+      <path d="M3 13h5M16 13h5M5 8l3 2M19 8l-3 2M5 18l3-2M19 18l-3-2" />
+    </Svg>
+  );
+}
+
+export function CheckSquareIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <polyline points="8 12 11 15 16 9" />
+    </Svg>
+  );
+}
+
+export function LockIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+    </Svg>
+  );
+}
+
+export function CheckIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <polyline points="5 12 10 17 19 7" />
+    </Svg>
+  );
+}
