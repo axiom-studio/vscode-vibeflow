@@ -850,21 +850,43 @@ async function waitForAgentSessionThenOpenPanel(
  * workspace is a git repo and we cannot ensure the file will be ignored, we
  * refuse to write rather than risk leaking the token in a future commit.
  */
-function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowClient): void {
+function ensureMcpConfig(workDir: string, serverUrl: string, client: VibeFlowClient): void {
   const mcpPath = path.join(workDir, '.mcp.json');
 
-  // Read token from CLI config (same source as extension auto-login)
+  // Token resolution: extension's own secret store first (Setup wizard /
+  // Settings → Connection), then CLI config as fallback. Reading from the
+  // CLI was the legacy single source — but extension users who never
+  // installed the CLI had no token and got a silent skip → no .mcp.json
+  // → spawned agent had zero VibeFlow MCP tools available. Preferring the
+  // extension's own token also fixes the auth-identity hijack: if CLI and
+  // extension are signed in as different users, the agent now boots with
+  // the extension's identity (the one the user actually sees in Agent
+  // Fleet) instead of silently inheriting the CLI's.
   let token: string | undefined;
-  try {
-    const cliConfigPath = path.join(os.homedir(), '.vibeflow-cli', 'config.yaml');
-    const cliContent = fs.readFileSync(cliConfigPath, 'utf-8');
-    const match = cliContent.match(/^api_token:\s*(.+)$/m);
-    if (match) { token = match[1].trim(); }
-  } catch {
-    // No CLI config — can't write .mcp.json without a token
+  let tokenSource: 'extension' | 'cli-config' | undefined;
+  token = client.getToken();
+  if (token) {
+    tokenSource = 'extension';
+  } else {
+    try {
+      const cliConfigPath = path.join(os.homedir(), '.vibeflow-cli', 'config.yaml');
+      const cliContent = fs.readFileSync(cliConfigPath, 'utf-8');
+      const match = cliContent.match(/^api_token:\s*(.+)$/m);
+      if (match) {
+        token = match[1].trim();
+        tokenSource = 'cli-config';
+      }
+    } catch {
+      // No CLI config — handled by the loud failure below.
+    }
   }
 
-  if (!token) { return; }
+  if (!token) {
+    vscode.window.showErrorMessage(
+      'VibeFlow: Cannot write .mcp.json — no API key found. Run **VibeFlow: Setup** to connect (or set up the CLI), then re-launch the session. Without .mcp.json the agent has no access to VibeFlow tools (session_init, wait_for_work, etc.).',
+    );
+    return;
+  }
 
   // SECURITY GUARD: refuse to write if the workspace is a git repo and we
   // cannot guarantee .mcp.json will be ignored.
@@ -906,7 +928,7 @@ function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowCl
 
   try {
     fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), { encoding: 'utf-8', mode: 0o600 });
-    console.log('[VibeFlow] Wrote .mcp.json with vibeflow server config');
+    console.log(`[VibeFlow] Wrote .mcp.json with vibeflow server config (token source: ${tokenSource})`);
   } catch {
     // Non-fatal — agent can still use global config
   }
