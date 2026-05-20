@@ -26,7 +26,7 @@ export function isSafeBranchName(name: string): boolean {
   if (name.includes('..')) { return false; }
   if (name.includes('@{')) { return false; }
   if (name.endsWith('.lock')) { return false; }
-  return /^[A-Za-z0-9._/\-]+$/.test(name);
+  return /^[A-Za-z0-9._/-]+$/.test(name);
 }
 
 /**

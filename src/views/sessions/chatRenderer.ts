@@ -61,7 +61,7 @@ const RE_LINK = /\[([^\]\n]+)\]\(([^()\s]+)\)/g;
  * Drive-letter Windows paths are NOT handled here (rare in agent
  * output; can be added if a user reports a miss).
  */
-const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_.\/-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
+const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
 /**
  * Recognize git commit hashes — 7 to 40 hex chars. Anti-false-positive
  * guards: not inside a longer word; not preceded by `#` (which would
