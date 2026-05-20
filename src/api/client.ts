@@ -50,6 +50,18 @@ export class VibeFlowClient {
   }
 
   /**
+   * The bearer token the extension is currently authenticated with —
+   * sourced from VS Code's secret store via AuthService. Callers that
+   * need to write tokens into files (e.g. `.mcp.json` for the spawned
+   * agent) should prefer this over re-reading the CLI config so the
+   * extension's identity, not the CLI's, owns the spawned agent.
+   * Returns undefined when the user hasn't run VibeFlow: Setup yet.
+   */
+  getToken(): string | undefined {
+    return this.auth.getToken();
+  }
+
+  /**
    * Server origin without trailing slash. Used by webviews that need to
    * load asset URLs (avatars, icons) hosted alongside the API.
    */
