@@ -43,7 +43,7 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
 
       <Card
         title="Polling Interval"
-        description="How often the extension refreshes data from the VibeFlow API. Lower values = more responsive Agent Fleet and Work Items, but more API calls. The Activity Feed has its own 5-second poll regardless of this setting."
+        description="How often the extension refreshes data from the VibeFlow API. Lower values = more responsive Agent Fleet and Work Items, but more API calls. The Activity Feed runs on its own faster poll independent of this value."
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input
@@ -60,7 +60,7 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
 
       <Card
         title="Chat — Diff View"
-        description="How diff code blocks render inside the Session Chat panel. Either style supports an 'Open in Editor' button that opens VSCode's native diff editor for full-fidelity review."
+        description="How diff code blocks render inside the Session Chat panel. Either style supports an 'Open in Editor' button that opens VS Code's native diff editor for full-fidelity review."
       >
         <RadioGroup
           name="chatDiffView"

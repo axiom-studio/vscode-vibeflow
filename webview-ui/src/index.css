@@ -34,6 +34,27 @@ body {
 }
 
 /*
+ * Editor-area panels — Dashboard, Settings, Kanban, Compliance, Work
+ * Item, Session Chat, Document — should match the surrounding editor
+ * chrome, not the sidebar chrome. We remap `--feed-bg` (which defaults
+ * to `--vscode-sideBar-background`) to the editor background inside
+ * these scopes so any descendant using the variable follows
+ * automatically — no need to retouch each panel's root.
+ *
+ * Sidebar webviews (Activity Feed, Project Items, Work Items tree)
+ * leave `data-vf-mode` unset and keep the sidebar background.
+ */
+body[data-vf-mode="dashboard"],
+body[data-vf-mode="settings"],
+body[data-vf-mode="kanban"],
+body[data-vf-mode="workitem"],
+body[data-vf-mode="session-chat"],
+body[data-vf-mode="compliance"],
+body[data-vf-mode="document"] {
+  --feed-bg: var(--vscode-editor-background);
+}
+
+/*
  * Document viewer layout. The scroll container is the full-width
  * outer wrapper (`.vf-commentable-document` for editable docs with
  * comments; `.vf-doc-scroll` for read-only references). The scrollbar

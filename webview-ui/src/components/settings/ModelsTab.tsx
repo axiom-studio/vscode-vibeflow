@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { SettingsData, SettingsCommand } from './settingsTypes';
 
 interface Props {
@@ -24,7 +25,13 @@ const PERSONAS: { key: string; name: string; tier: string }[] = [
 ];
 
 export function ModelsTab({ data, onCommand }: Props) {
-  const provider = data.defaultProvider || 'claude';
+  // Tab-scoped provider picker. Defaults to the user's default
+  // provider but decouples from it, so the user can browse and pin
+  // models from a different provider without switching their global
+  // launch default. Stored sticky models are per-persona regardless of
+  // provider — see (custom) handling below for cross-provider pins.
+  const knownProviders = Object.keys(data.knownModels ?? {});
+  const [provider, setProvider] = useState<string>(data.defaultProvider || knownProviders[0] || 'claude');
   const knownModels = data.knownModels?.[provider] ?? [];
   const stickyModels = data.stickyModels ?? {};
 
@@ -32,13 +39,37 @@ export function ModelsTab({ data, onCommand }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Card
         title="Sticky Models"
-        description={
-          `Each persona remembers its last-used model so re-launching an agent picks up where you left off. Models shown are for your current default provider (${provider}). Change the default provider in the Providers tab to manage models for a different one.`
-        }
+        description="Each persona remembers its last-used model so re-launching an agent picks up where you left off. Pick a provider below to browse its models; pins from other providers stay visible as “(custom)” on each persona row."
       >
+        {/* Provider picker scoped to this tab. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>Showing models for</span>
+          <select
+            value={provider}
+            onChange={e => setProvider(e.target.value)}
+            style={{
+              padding: '4px 8px',
+              fontSize: 12,
+              background: 'var(--vscode-input-background)',
+              color: 'var(--vscode-input-foreground)',
+              border: '1px solid var(--vscode-input-border, var(--feed-border))',
+              borderRadius: 3,
+            }}
+          >
+            {(knownProviders.length ? knownProviders : [provider]).map(p => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          {provider !== data.defaultProvider && (
+            <span style={{ fontSize: 10.5, color: 'var(--feed-muted)' }}>
+              (Launch default is <code>{data.defaultProvider}</code>)
+            </span>
+          )}
+        </div>
+
         {knownModels.length === 0 ? (
           <div style={{ fontSize: 12, color: 'var(--feed-muted)', fontStyle: 'italic' }}>
-            No models known for provider <code>{provider}</code>. Set a different default provider on the Providers tab.
+            No models known for provider <code>{provider}</code>.
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

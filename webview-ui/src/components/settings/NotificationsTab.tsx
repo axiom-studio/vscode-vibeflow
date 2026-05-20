@@ -11,7 +11,7 @@ export function NotificationsTab({ data, onUpdate }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Card
         title="Notifications"
-        description="Toast notifications that pop up in the corner of VSCode. Useful for staying aware of agent activity without watching the sidebar constantly."
+        description="Toast notifications that pop up in the corner of VS Code. Useful for staying aware of agent activity without watching the sidebar constantly."
       >
         <ToggleRow
           label="Agent Prompts"
