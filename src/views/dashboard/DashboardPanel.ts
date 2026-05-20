@@ -58,13 +58,14 @@ interface DashboardSnapshot {
    * queue and report the same number — only one of them can run on a
    * branch at a time, so the queue is logically shared.
    *
-   * QA Lead is an upper bound: swimlane wire shape carries `security_reviewed`
-   * but not `qa_verified`, so we count `done && security_reviewed=true`,
-   * which overcounts items already QA-verified. Backend follow-up to extend
-   * VibeflowSwimlaneItem at axiomcloud/database/vibeflow_models.go:830-845.
+   * QA Lead is computed exactly: the supplementary `done` todo/issue
+   * fetches (which carry `qa_verified`, unlike the swimlane wire shape)
+   * let us count items with `security_reviewed=true && qa_verified=false`.
+   * If those calls fail, the value is `null` so the badge hides instead
+   * of showing a misleading zero.
    */
   personaQueues: Record<string, number | null>;
-  sessions: { active: number; stale: number; total: number };
+  sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
   workSummary: { total_commits: number; lines_added: number; lines_deleted: number; total_seconds: number } | undefined;
@@ -78,14 +79,28 @@ interface DashboardSnapshot {
 const POLL_INTERVAL_MS = 30_000;
 
 /**
- * Mission-control style dashboard. Composes a snapshot from 5 parallel API
+ * Mission-control style dashboard. Composes a snapshot from 7 parallel API
  * calls and posts it to the webview. Singleton (one panel per window).
+ *
+ * The two extra calls beyond the original 5 are the `done` todo/issue
+ * fetches that let us count pending-QA accurately (see personaQueues
+ * docstring on DashboardSnapshot).
  */
 export class DashboardPanel {
   private static instance: DashboardPanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  // Suppress double-refresh in the very first second after `dashboardLoad`
+  // — the webview fires it on mount, and the panel also reports a
+  // visibility change as it becomes active. Without this guard we'd
+  // round-trip 7 endpoints twice on open.
+  private lastFetchAt = 0;
+  // Trailing-edge debounce for nodePositions writes. The webview ships
+  // the FULL position map on every drag-stop; rapid layout fiddling
+  // shouldn't translate into one ContextProxy write per drag.
+  private positionsWriteTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingPositions: Record<string, { x: number; y: number }> | undefined;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -130,6 +145,15 @@ export class DashboardPanel {
 
   private attach(): void {
     this.panel.webview.onDidReceiveMessage((msg: DashboardClientMessage) => this.handleMessage(msg));
+    // Refresh on regaining focus. The 30s interval already skips ticks
+    // while hidden, but otherwise the user sees stale numbers for up to
+    // 30s after returning to the tab. Throttle to avoid stacking with
+    // the mount-time `dashboardLoad` request.
+    this.panel.onDidChangeViewState(e => {
+      if (!e.webviewPanel.visible) { return; }
+      if (Date.now() - this.lastFetchAt < 1000) { return; }
+      void this.sendSnapshot();
+    });
     this.panel.onDidDispose(() => this.dispose());
   }
 
@@ -183,10 +207,24 @@ export class DashboardPanel {
    * Merge the just-dragged positions into the per-project map and write back.
    * Webview sends the FULL position map on each drag-stop so we can simply
    * overwrite this project's slot — no need to diff.
+   *
+   * Trailing-edge debounced (250ms) so rapid layout tuning collapses to a
+   * single write. We hold the most recent map in `pendingPositions` and
+   * flush via `flushPositions()` on the timer.
    */
   private async saveNodePositions(
     positions: Record<string, { x: number; y: number }>,
   ): Promise<void> {
+    this.pendingPositions = positions;
+    if (this.positionsWriteTimer) { clearTimeout(this.positionsWriteTimer); }
+    this.positionsWriteTimer = setTimeout(() => { void this.flushPositions(); }, 250);
+  }
+
+  private async flushPositions(): Promise<void> {
+    this.positionsWriteTimer = undefined;
+    const positions = this.pendingPositions;
+    if (!positions) { return; }
+    this.pendingPositions = undefined;
     const all = this.contextProxy.get('vibeflow.dashboard.nodePositions') ?? {};
     all[String(this.project.projectId)] = positions;
     await this.contextProxy.set('vibeflow.dashboard.nodePositions', all);
@@ -200,6 +238,7 @@ export class DashboardPanel {
   }
 
   private async sendSnapshot(): Promise<void> {
+    this.lastFetchAt = Date.now();
     try {
       const stored = this.contextProxy.get('vibeflow.dashboard.nodePositions');
       const nodePositions = stored?.[String(this.project.projectId)];
@@ -233,6 +272,13 @@ export class DashboardPanel {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = undefined;
+    }
+    if (this.positionsWriteTimer) {
+      clearTimeout(this.positionsWriteTimer);
+      this.positionsWriteTimer = undefined;
+      // Flush any pending positions on close so a drag-then-immediately-
+      // close doesn't drop the user's layout change.
+      void this.flushPositions();
     }
     if (DashboardPanel.instance === this) {
       DashboardPanel.instance = undefined;
@@ -355,23 +401,28 @@ function derivePersonaStatus(sessions: VibeFlowSession[]): Record<string, Person
     const key = s.persona_key;
     if (!key) { continue; }
     // Fold the strongest status across multiple sessions for the same persona.
+    // 'inactive' is the initial value (set above for every persona key), so
+    // we only need to upgrade — never downgrade.
     const next: PersonaStatus = !s.active ? 'inactive' : (s.stale ? 'stale' : 'active');
     const prev = result[key];
     if (next === 'active') { result[key] = 'active'; }
     else if (next === 'stale' && prev !== 'active') { result[key] = 'stale'; }
-    else if (!(key in result)) { result[key] = next; }
   }
   return result;
 }
 
-function tallySessions(sessions: VibeFlowSession[]): { active: number; stale: number; total: number } {
+function tallySessions(sessions: VibeFlowSession[]): { active: number; stale: number } {
+  // No "total" — there's no fixed cap on sessions. Multiple sessions per
+  // persona are valid (e.g. two developer sessions on different
+  // branches), so a "X / 9 personas" denominator misled users into
+  // reading the card as "out of nine possible sessions."
   let active = 0;
   let stale = 0;
   for (const s of sessions) {
     if (!s.active) { continue; }
     if (s.stale) { stale++; } else { active++; }
   }
-  return { active, stale, total: DASHBOARD_PERSONAS.length };
+  return { active, stale };
 }
 
 /**
@@ -391,7 +442,11 @@ function tallyPersonaQueues(
   if (!swimlane) {
     return {
       product_manager: 0, architect: 0, developer: 0, principal_engineer: 0,
-      security_lead: 0, qa_lead: qaPending ?? 0, ux_designer: 0,
+      // qa_lead's count comes from a different pair of endpoints than
+      // the swimlane, so it can still be valid even when the swimlane
+      // failed. `null` means "those calls also failed" — let the badge
+      // hide rather than render a misleading 0.
+      security_lead: 0, qa_lead: qaPending, ux_designer: 0,
       project_manager: null, customer: null,
     };
   }
@@ -479,6 +534,15 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'assets', 'index.js'));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(distUri, 'assets', 'index.css'));
   const nonce = getNonce();
+  // img-src includes http: because persona avatars are loaded from the
+  // user's configured `vibeflow.serverUrl`, which can be
+  // `http://localhost:*` / `http://127.0.0.1:*` for dev/self-hosted
+  // setups. The serverUrl itself is gated by `validateServerUrl` at
+  // activation + every REST request + MCP transport construction (HTTPS
+  // required outside the loopback hosts), so the practical surface is
+  // narrow — the snapshot's `serverUrl` is host-derived, never
+  // webview-controlled. Tightening to `http://localhost:*` directly in
+  // CSP isn't expressible without enumerating the user's port.
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
