@@ -1,7 +1,7 @@
 {
   "name": "vscode-vibeflow",
   "displayName": "VibeFlow for VS Code",
-  "description": "A full AI engineering team - Developer, Architect, Product Manager, QA, Security Lead, etc. - that knows your codebase. Orchestrate multi-agent fleets, manage projects, and get real-time feed - all into VS Code.",
+  "description": "Ship faster with a full AI engineering team — Developer, Architect, QA, Security, and PM agents that know your codebase and do the work.",
   "author": {
     "name": "Axiom Studio AI",
     "url": "https://axiomstudio.ai"
