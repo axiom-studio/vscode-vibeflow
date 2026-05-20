@@ -7,6 +7,7 @@ import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled } from '../../commands/cliCommands.js';
+import { isBinaryOnPath } from '../../utils/whichBinary.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -388,10 +389,13 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     projects,
     defaultProvider: config.get('defaultProvider', 'claude'),
     providers: [
-      { key: 'claude', name: 'Claude Code', binary: 'claude', available: true, vibeflowIntegrated: true, envTokenSet: false },
-      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: false, vibeflowIntegrated: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
-      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: false, vibeflowIntegrated: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
-      { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: false, vibeflowIntegrated: true, envTokenSet: false },
+      { key: 'claude', name: 'Claude Code', binary: 'claude', available: isBinaryOnPath('claude'), vibeflowIntegrated: true, envTokenSet: false },
+      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: isBinaryOnPath('codex'), vibeflowIntegrated: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
+      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: isBinaryOnPath('gemini'), vibeflowIntegrated: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
+      // Cursor's IDE-bundled binary is `cursor-agent`; some installs
+      // alias it as `agent` (matches what sessionCommands.ts spawns).
+      // Either being on PATH counts as available.
+      { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: isBinaryOnPath('agent') || isBinaryOnPath('cursor-agent'), vibeflowIntegrated: true, envTokenSet: false },
     ],
     worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
     worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
@@ -413,6 +417,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     cliEnabled: config.get('cli.enabled', false),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliInstalled: isVibeflowInstalled(),
-    version: '0.1.0',
+    version: vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow')?.packageJSON?.version ?? 'unknown',
   };
 }

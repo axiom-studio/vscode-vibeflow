@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentType } from 'react';
 import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsTypes';
 import { ConnectionTab } from './ConnectionTab';
 import { ProvidersTab } from './ProvidersTab';
@@ -9,6 +9,10 @@ import { NotificationsTab } from './NotificationsTab';
 import { AboutTab } from './AboutTab';
 import { CliTab } from './CliTab';
 import { getVsCodeApi } from '../../vscodeApi';
+import {
+  PlugIcon, CpuIcon, SlidersIcon, BrainIcon, GitBranchIcon,
+  BellIcon, TerminalIcon, InfoIcon,
+} from '../_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
 
@@ -39,21 +43,23 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'chat.diffView': 'chatDiffView',
 };
 
-const TABS = [
-  { id: 'connection', label: 'Connection', icon: '🔗' },
-  { id: 'providers', label: 'Providers', icon: '🤖' },
-  { id: 'session', label: 'Session Defaults', icon: '⚙' },
-  { id: 'models', label: 'Sticky Models', icon: '🧠' },
-  { id: 'worktrees', label: 'Worktrees', icon: '🌿' },
-  { id: 'notifications', label: 'Notifications', icon: '🔔' },
-  { id: 'cli', label: 'CLI Interface', icon: '⌨' },
-  { id: 'about', label: 'About', icon: 'ℹ' },
+type TabIcon = ComponentType<{ size?: number }>;
+
+const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
+  { id: 'connection',    label: 'Connection',       Icon: PlugIcon },
+  { id: 'providers',     label: 'Providers',        Icon: CpuIcon },
+  { id: 'session',       label: 'Session Defaults', Icon: SlidersIcon },
+  { id: 'models',        label: 'Sticky Models',    Icon: BrainIcon },
+  { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
+  { id: 'notifications', label: 'Notifications',    Icon: BellIcon },
+  { id: 'cli',           label: 'CLI Interface',    Icon: TerminalIcon },
+  { id: 'about',         label: 'About',            Icon: InfoIcon },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
 
 export function SettingsView() {
-  const [activeTab, setActiveTab] = useState<TabId>('connection');
+  const [activeTab, setActiveTab] = useState<TabId>(TABS[0].id);
   const [data, setData] = useState<SettingsData | null>(null);
 
   useEffect(() => {
@@ -157,29 +163,35 @@ export function SettingsView() {
         padding: '0 32px',
         flexShrink: 0,
       }}>
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '10px 16px',
-              fontSize: 12,
-              fontWeight: activeTab === tab.id ? 600 : 400,
-              color: activeTab === tab.id ? 'var(--feed-fg)' : 'var(--feed-muted)',
-              background: 'transparent',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid var(--feed-link)' : '2px solid transparent',
-              cursor: 'pointer',
-              transition: 'all 100ms',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <span>{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
+        {TABS.map(tab => {
+          const Icon = tab.Icon;
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                padding: '10px 16px',
+                fontSize: 12,
+                fontWeight: active ? 600 : 400,
+                color: active ? 'var(--feed-fg)' : 'var(--feed-muted)',
+                background: 'transparent',
+                border: 'none',
+                borderBottom: active ? '2px solid var(--feed-link)' : '2px solid transparent',
+                cursor: 'pointer',
+                transition: 'all 100ms',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                <Icon size={14} />
+              </span>
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Content — wide padding so scrollbar sits at the right edge */}

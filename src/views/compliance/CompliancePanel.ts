@@ -8,35 +8,15 @@ import {
   type ComplianceHostMessage,
 } from '../../core/webviewMessages.js';
 
-/**
- * Frameworks recognised by axiomcloud's compliance pipeline. Hard-coded
- * server-side (see `VibeflowComplianceFramework.IsValid` in
- * axiomcloud/database/vibeflow_models.go). Mirroring the set here so the
- * webview can render a card per framework even when zero findings carry
- * that tag yet.
- */
-export const COMPLIANCE_FRAMEWORKS = [
-  'hipaa',
-  'pcidss',
-  'soc2',
-  'iso27001',
-  'gdpr',
-  'cmmc',
-  'fedramp',
-] as const;
-
-export type ComplianceFramework = typeof COMPLIANCE_FRAMEWORKS[number];
-
-/** Display label per framework — uppercased / spaced per industry convention. */
-export const FRAMEWORK_LABEL: Record<ComplianceFramework, string> = {
-  hipaa: 'HIPAA',
-  pcidss: 'PCI-DSS',
-  soc2: 'SOC 2',
-  iso27001: 'ISO 27001',
-  gdpr: 'GDPR',
-  cmmc: 'CMMC',
-  fedramp: 'FedRAMP',
-};
+// Framework constants moved to `./complianceFrameworks` so the webview
+// can share the same source of truth without dragging `vscode` into the
+// browser bundle. Re-export here to keep host call sites unchanged.
+import {
+  COMPLIANCE_FRAMEWORKS,
+  FRAMEWORK_LABEL,
+  type ComplianceFramework,
+} from './complianceFrameworks.js';
+export { COMPLIANCE_FRAMEWORKS, FRAMEWORK_LABEL, type ComplianceFramework };
 
 /**
  * Snapshot pushed every poll cycle. Single source of truth for the
@@ -102,6 +82,9 @@ export class CompliancePanel {
 
   private readonly panel: vscode.WebviewPanel;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
+  // Same throttle pattern as DashboardPanel — dedupe the mount-time
+  // `complianceLoad` against the panel's "became visible" event.
+  private lastFetchAt = 0;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -144,6 +127,11 @@ export class CompliancePanel {
 
   private attach(): void {
     this.panel.webview.onDidReceiveMessage((msg: ComplianceClientMessage) => this.handleMessage(msg));
+    this.panel.onDidChangeViewState(e => {
+      if (!e.webviewPanel.visible) { return; }
+      if (Date.now() - this.lastFetchAt < 1000) { return; }
+      void this.sendSnapshot();
+    });
     this.panel.onDidDispose(() => this.dispose());
   }
 
@@ -163,9 +151,17 @@ export class CompliancePanel {
         // command dispatch with an arbitrary string.
         const type = msg.payload.workItemType;
         if (type !== 'todo' && type !== 'issue') { return; }
+        const id = msg.payload.workItemId;
+        if (!Number.isFinite(id) || id <= 0) { return; }
+        // openWorkItemPanel takes positional (nodeId, label?, description?)
+        // where nodeId follows the tree-item shape "{type}-{id}". We
+        // don't have a finding-side title to pass, so the panel will
+        // resolve its own.
         await vscode.commands.executeCommand(
-          'vibeflow.openWorkItem',
-          { type, id: msg.payload.workItemId },
+          'vibeflow.openWorkItemPanel',
+          `${type}-${id}`,
+          '',
+          '',
         );
         return;
       }
@@ -215,6 +211,7 @@ export class CompliancePanel {
   }
 
   private async sendSnapshot(): Promise<void> {
+    this.lastFetchAt = Date.now();
     try {
       const snapshot = await composeSnapshot(this.client, this.projectId, this.projectName);
       this.postToWebview({ type: 'complianceData', payload: snapshot });
@@ -403,7 +400,7 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       style-src ${webview.cspSource} 'unsafe-inline';
       script-src 'nonce-${nonce}';
       font-src ${webview.cspSource};
-      img-src ${webview.cspSource} https: http: data:;">
+      img-src ${webview.cspSource} https: data:;">
   <link rel="stylesheet" href="${styleUri}">
   <title>Compliance</title>
 </head>
