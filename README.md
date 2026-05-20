@@ -6,7 +6,7 @@ Backed by the VibeFlow platform: features, todos, issues, governance, attachment
 
 ## Quick start
 
-1. **Install** from the VS Code Marketplace, or `code --install-extension vscode-vibeflow-1.1.0.vsix`
+1. **Install** from the VS Code Marketplace, or `code --install-extension vscode-vibeflow-1.0.2.vsix`
 2. **Sign in** — run `VibeFlow: Setup` from the command palette and paste your API key from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)
 3. **Launch a session** — `VibeFlow: Launch Session` → pick personas, provider, branch. The agent fleet starts working.
 
@@ -41,7 +41,7 @@ A dedicated `VibeFlow: Open Compliance` page (`Cmd+Shift+V C`) mirroring the pla
 Real-time streaming of every agent action. 9 message types with per-persona color coding, react-virtuoso for smooth scroll at 500+ entries, survives sidebar collapse + extension reload (host-side replay buffer + `vscode.setState` persistence). Drag the Monitor container to the right sidebar to keep it visible alongside the editor.
 
 ### Dashboard
-`VibeFlow: Open Dashboard` (`Cmd+Shift+V D`) — React Flow live topology of personas → branches → work items, composed over 5 parallel API endpoints with 30-second polling. Character-first persona nodes; click to focus the agent's terminal.
+`VibeFlow: Open Dashboard` (`Cmd+Shift+V D`) — React Flow live topology of personas → branches → work items, composed over 7 parallel API endpoints with 30-second polling. Character-first persona nodes; click to focus the agent's terminal.
 
 ### Kanban board
 `VibeFlow: Open Kanban` (`Cmd+Shift+V K`) — drag-and-drop work items between status columns. Backed by server-side reconciliation: an invalid move snaps back automatically.
