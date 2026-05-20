@@ -1,12 +1,12 @@
 {
   "name": "vscode-vibeflow",
   "displayName": "VibeFlow for VS Code",
-  "description": "VibeFlow for VS Code: A full AI engineering team — developer, architect, PM, QA, security — that knows your codebase. Not autocomplete.",
+  "description": "A full AI engineering team - Developer, Architect, Product Manager, QA, Security Lead, etc. - that knows your codebase. Orchestrate multi-agent fleets, manage projects, and get real-time feed - all into VS Code.",
   "author": {
     "name": "Axiom Studio AI",
     "url": "https://axiomstudio.ai"
   },
-  "version": "1.1.0",
+  "version": "1.0.2",
   "publisher": "AxiomStudio",
   "license": "Apache-2.0",
   "repository": {
@@ -298,6 +298,11 @@
         "icon": "$(copy)"
       },
       {
+        "command": "vibeflow.dismissFailedPending",
+        "title": "VibeFlow: Dismiss Failed Pending Session",
+        "icon": "$(close)"
+      },
+      {
         "command": "vibeflow.showAllTerminals",
         "title": "VibeFlow: Show All Agent Terminals",
         "icon": "$(eye)"
@@ -380,6 +385,16 @@
           "command": "vibeflow.killAndForgetSession",
           "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
           "group": "session_destructive@1"
+        },
+        {
+          "command": "vibeflow.dismissFailedPending",
+          "when": "view == vibeflow.agentFleet && viewItem == pendingSessionFailed",
+          "group": "inline"
+        },
+        {
+          "command": "vibeflow.dismissFailedPending",
+          "when": "view == vibeflow.agentFleet && viewItem == pendingSessionFailed",
+          "group": "session_destructive@0"
         },
         {
           "command": "vibeflow.openWorkItemPanel",
