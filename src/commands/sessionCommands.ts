@@ -18,6 +18,7 @@ import { getAdapter } from '../sessions/providerAdapters/index.js';
 import type { ProviderKey } from '../sessions/providerAdapters/types.js';
 import { TmuxBacking, buildHeadlessTmuxName } from '../sessions/tmuxBacking.js';
 import { detectTmuxAvailability } from '../sessions/tmuxAvailability.js';
+import { isBinaryOnPath, clearWhichBinaryCache } from '../utils/whichBinary.js';
 
 /**
  * Best-effort delete of `.vibeflow-session-{persona}` from the session's
@@ -117,6 +118,73 @@ function formatProjectStatusTag(status: string): string {
   return `$(${icon}) ${label}`;
 }
 
+// Provider → CLI binary names. Mirrors `SettingsPanel.ts:392-398` (the same
+// table the Setup tab uses to render its availability dots). Cursor ships
+// as `cursor-agent` but some installers symlink it to `agent`; either name
+// satisfies the gate. Aligns with vibeflow-cli's `ProviderRegistry`
+// (`internal/vibeflowcli/provider.go:174-180 checkBinaryAvailable`).
+const PROVIDER_BINARIES: Record<string, string[]> = {
+  claude: ['claude'],
+  codex: ['codex'],
+  gemini: ['gemini'],
+  cursor: ['cursor-agent', 'agent'],
+};
+
+function isProviderInstalled(provider: string): boolean {
+  const names = PROVIDER_BINARIES[provider] ?? [provider];
+  return names.some(n => isBinaryOnPath(n));
+}
+
+// Canonical name to print in user-facing error messages.
+function providerBinaryDisplayName(provider: string): string {
+  return PROVIDER_BINARIES[provider]?.[0] ?? provider;
+}
+
+// Conservative minimum-length floor per env-token kind. Goal: trip on the
+// "user pasted `abc123` / hit Enter on an empty box" path without rejecting
+// the wide variety of real key formats (Google AI Studio keys are 39-char
+// `AIza…`; gcloud-issued OAuth tokens are longer and start differently;
+// MCP bearer tokens vary by provider). Floors are deliberately well below
+// any plausible real-key length.
+const PROVIDER_KEY_RULES: Record<string, { minLength: number; hint: string }> = {
+  GEMINI_API_KEY: { minLength: 20, hint: 'Real Gemini keys are typically 39 characters starting with "AIza".' },
+  MCP_TOKEN: { minLength: 16, hint: 'Real MCP bearer tokens are at least 16 characters.' },
+};
+
+function validateProviderKey(envName: string, raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+  // Match vibeflow-cli's paste hygiene (`tui_wizard.go:851`
+  // `strings.Trim(w.envTokenValue, "[]\"' ")`) — users frequently paste
+  // keys with surrounding quotes/brackets from `.env` files or docs.
+  const trimmed = raw.replace(/^[\s[\]'"]+|[\s[\]'"]+$/g, '');
+  if (!trimmed) {
+    return { ok: false, reason: 'Key is empty.' };
+  }
+  const rule = PROVIDER_KEY_RULES[envName];
+  if (rule && trimmed.length < rule.minLength) {
+    return { ok: false, reason: `That value is only ${trimmed.length} characters — too short to be a real key. ${rule.hint}` };
+  }
+  return { ok: true, value: trimmed };
+}
+
+// Build the PROVIDERS list with per-entry availability tagged in the
+// description. Picking a flagged provider still triggers the post-pick
+// abort below — the tag is informational so users see the constraint
+// before picking. Mirrors vibeflow-cli's `Available()` filter pattern
+// from `provider.go:81-88`, but renders unavailable rows instead of
+// hiding them so the user understands why their preferred provider is
+// missing rather than being silently presented a different list.
+function buildProvidersWithAvailability(): { label: string; description: string; value: string; available: boolean }[] {
+  return PROVIDERS.map(p => {
+    const available = isProviderInstalled(p.value);
+    return {
+      label: p.label,
+      description: available ? p.description : `${p.description} · $(error) not installed`,
+      value: p.value,
+      available,
+    };
+  });
+}
+
 /**
  * Launch wizard. Mirrors vibeflow-cli's tui_wizard step set: Project →
  * Mode → Code Agent → Advisory → Provider → [Per-persona override] →
@@ -153,6 +221,12 @@ export async function launchSession(
     vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
     return;
   }
+
+  // Refresh binary-availability cache so install-then-relaunch works in
+  // the same VS Code session. `isBinaryOnPath` memoizes per-process for
+  // the Settings snapshot's hot path; the wizard wants a fresh read on
+  // every launch — one `which` exec per provider is negligible.
+  clearWhichBinaryCache();
 
   // Step 1: Project — fetch live, default to cached, re-cache if changed.
   // The CLI's tui_wizard StepProject does the same: every launch is a
@@ -250,12 +324,19 @@ export async function launchSession(
     return;
   }
 
-  // Step 5: Provider
-  const provider = await vscode.window.showQuickPick(PROVIDERS, {
+  // Step 5: Provider — tag unavailable providers in-list, then gate on pick.
+  const provider = await vscode.window.showQuickPick(buildProvidersWithAvailability(), {
     placeHolder: 'Select AI provider',
     title: 'VibeFlow: Launch Session — Provider',
   });
   if (!provider) { return; }
+  if (!provider.available) {
+    const binary = providerBinaryDisplayName(provider.value);
+    vscode.window.showErrorMessage(
+      `VibeFlow: '${binary}' CLI not found on PATH. Install it and reload the window, then re-run the wizard.`,
+    );
+    return;
+  }
 
   // Step 5b: Per-persona provider override (conditional — only when
   // running 2+ personas, mirrors tui_wizard's teamModeProvider gate).
@@ -293,13 +374,36 @@ export async function launchSession(
     if (overrideChoice === undefined) { return; }
     if (overrideChoice.value) {
       for (const persona of personas) {
-        const personaPick = await vscode.window.showQuickPick(PROVIDERS, {
+        const personaPick = await vscode.window.showQuickPick(buildProvidersWithAvailability(), {
           placeHolder: `Provider for ${persona}`,
           title: `VibeFlow: Launch Session — Provider for ${persona}`,
         });
         if (!personaPick) { return; }
+        if (!personaPick.available) {
+          const binary = providerBinaryDisplayName(personaPick.value);
+          vscode.window.showErrorMessage(
+            `VibeFlow: '${binary}' CLI not found on PATH — cannot route '${persona}' to ${personaPick.value}. Install it and re-run the wizard.`,
+          );
+          return;
+        }
         personaProviders.set(persona, personaPick.value);
       }
+    }
+  }
+
+  // Belt-and-suspenders preflight: every provider in the final routing
+  // map must be installed. The pickers above already gate on selection,
+  // so this only trips if a future code path adds a provider without
+  // going through `buildProvidersWithAvailability()`. Mirrors
+  // vibeflow-cli's `ResolvePersonaProvider` actionable-error pattern
+  // (`provider.go:191-208`).
+  const providersInUse = new Set(personaProviders.values());
+  for (const p of providersInUse) {
+    if (!isProviderInstalled(p)) {
+      vscode.window.showErrorMessage(
+        `VibeFlow: '${providerBinaryDisplayName(p)}' CLI not found on PATH — cannot launch session.`,
+      );
+      return;
     }
   }
 
@@ -315,14 +419,21 @@ export async function launchSession(
       envVars['MCP_TOKEN'] = stored;
     } else {
       const token = await vscode.window.showInputBox({
-        prompt: 'Codex MCP Token (or press Enter to skip if already configured)',
+        prompt: 'Codex MCP Token (required — paste your token)',
         placeHolder: 'MCP_TOKEN value',
         password: true,
         title: 'VibeFlow: Launch Session — Codex Token',
         ignoreFocusOut: true,
       });
       if (token === undefined) { return; }
-      if (token) { envVars['MCP_TOKEN'] = token; }
+      const result = validateProviderKey('MCP_TOKEN', token);
+      if (!result.ok) {
+        vscode.window.showErrorMessage(
+          `VibeFlow: Cannot launch Codex session — ${result.reason} If your MCP_TOKEN is set elsewhere (e.g., shell rc, vault), configure it via Settings → Providers and retry.`,
+        );
+        return;
+      }
+      envVars['MCP_TOKEN'] = result.value;
     }
   } else if (provider.value === 'gemini') {
     const stored = await context.getProviderEnvToken('GEMINI_API_KEY');
@@ -330,14 +441,21 @@ export async function launchSession(
       envVars['GEMINI_API_KEY'] = stored;
     } else {
       const token = await vscode.window.showInputBox({
-        prompt: 'Gemini API Key (or press Enter to skip if already configured)',
+        prompt: 'Gemini API Key (required — paste your key)',
         placeHolder: 'GEMINI_API_KEY value',
         password: true,
         title: 'VibeFlow: Launch Session — Gemini Key',
         ignoreFocusOut: true,
       });
       if (token === undefined) { return; }
-      if (token) { envVars['GEMINI_API_KEY'] = token; }
+      const result = validateProviderKey('GEMINI_API_KEY', token);
+      if (!result.ok) {
+        vscode.window.showErrorMessage(
+          `VibeFlow: Cannot launch Gemini session — ${result.reason} If your GEMINI_API_KEY is set elsewhere (e.g., gcloud, ~/.gemini/credentials), configure it via Settings → Providers and retry.`,
+        );
+        return;
+      }
+      envVars['GEMINI_API_KEY'] = result.value;
     }
   }
 
