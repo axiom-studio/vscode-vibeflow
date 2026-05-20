@@ -624,24 +624,27 @@
       {
         "id": "vibeflow.getStarted",
         "title": "Get Started with VibeFlow",
-        "description": "Set up your AI agent orchestration environment in 5 steps.",
+        "description": "Stand up a multi-persona AI agent team inside your IDE — five quick steps from sign-in to your first running session.",
         "steps": [
           {
             "id": "welcome",
             "title": "Welcome to VibeFlow",
-            "description": "VibeFlow brings multi-persona AI agent orchestration into your IDE. Run Developer, Architect, QA, Security, and PM agents — all from VSCode.\n\n[Learn more](https://axiomstudio.ai/vibeflow)",
+            "description": "Run a full software team — **Developer, Architect, QA, Security, Product Manager** — as autonomous AI agents inside VS Code. Each persona owns its workflow; you coordinate from the sidebar.\n\n[Learn more](https://axiomstudio.ai/vibeflow)",
             "media": {
               "image": "media/vibeflow-icon.svg",
-              "altText": "VibeFlow logo"
-            }
+              "altText": "VibeFlow"
+            },
+            "completionEvents": [
+              "onLink:https://axiomstudio.ai/vibeflow"
+            ]
           },
           {
             "id": "setup",
-            "title": "Connect to VibeFlow",
-            "description": "Paste your API key from Account > API Keys to connect.\n\n[Run Setup](command:vibeflow.setup)",
+            "title": "Sign in",
+            "description": "Connect to your VibeFlow workspace with the API key from your **Account → API Keys** page. We remember it across restarts, and the CLI and extension share the same identity once you sign in here.\n\n[Run Setup](command:vibeflow.setup)",
             "media": {
               "image": "media/vibeflow-icon.svg",
-              "altText": "Setup"
+              "altText": "Sign in"
             },
             "completionEvents": [
               "onCommand:vibeflow.setup"
@@ -649,8 +652,8 @@
           },
           {
             "id": "launch",
-            "title": "Launch Your First Session",
-            "description": "Pick a persona, provider, and branch. The agent runs in an integrated terminal.\n\n[Launch Session](command:vibeflow.launchSession)",
+            "title": "Launch your first agent",
+            "description": "Pick a persona, AI provider, and branch — the wizard handles the rest. Your agent boots in a per-persona terminal and starts polling for work the moment it lands.\n\n[Launch Session](command:vibeflow.launchSession)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Launch"
@@ -661,8 +664,8 @@
           },
           {
             "id": "respond",
-            "title": "Respond to Agent Prompts",
-            "description": "When an agent needs your input, a notification appears. Click Respond to answer.\n\n[Respond to Prompt](command:vibeflow.respondToPrompt)",
+            "title": "Stay in the loop",
+            "description": "When an agent needs your input — an architecture decision, a security tradeoff, a scope check — a notification surfaces in the status bar and on the Agent Fleet tree. Click **Respond** to weigh in without leaving the editor.\n\n[Respond to a Prompt](command:vibeflow.respondToPrompt)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Respond"
@@ -673,8 +676,8 @@
           },
           {
             "id": "explore",
-            "title": "Explore the Sidebar",
-            "description": "Click the VibeFlow icon in the Activity Bar to see Agent Fleet, Work Items, Activity Feed, and Documents.\n\n[Open Sidebar](command:vibeflow.viewSessions)",
+            "title": "Explore the workspace",
+            "description": "Click the VibeFlow icon in the Activity Bar to open four live views:\n\n- **Agent Fleet** — your running agents, grouped by branch\n- **Work Items** — todos and issues across your projects\n- **Activity Feed** — real-time stream of every agent action\n- **Documents** — PRDs, architecture, style guides, design system\n\n[Open Sidebar](command:vibeflow.viewSessions)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Sidebar"
