@@ -303,6 +303,11 @@
         "icon": "$(close)"
       },
       {
+        "command": "vibeflow.cancelStartingPending",
+        "title": "VibeFlow: Cancel Starting Session",
+        "icon": "$(stop)"
+      },
+      {
         "command": "vibeflow.showAllTerminals",
         "title": "VibeFlow: Show All Agent Terminals",
         "icon": "$(eye)"
@@ -394,6 +399,16 @@
         {
           "command": "vibeflow.dismissFailedPending",
           "when": "view == vibeflow.agentFleet && viewItem == pendingSessionFailed",
+          "group": "session_destructive@0"
+        },
+        {
+          "command": "vibeflow.cancelStartingPending",
+          "when": "view == vibeflow.agentFleet && viewItem == pendingSessionStarting",
+          "group": "inline"
+        },
+        {
+          "command": "vibeflow.cancelStartingPending",
+          "when": "view == vibeflow.agentFleet && viewItem == pendingSessionStarting",
           "group": "session_destructive@0"
         },
         {

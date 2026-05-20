@@ -800,6 +800,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       if (id) { sessionsProvider.dismissPendingByNodeId(id); }
     }),
+    vscode.commands.registerCommand('vibeflow.cancelStartingPending', (idOrNode: string | { id?: string }) => {
+      // Cancel a `starting` pending row in Agent Fleet — sends SIGTERM
+      // to the child process AND removes the UI row. Kill first so a
+      // slow exit doesn't leave the row visible past the user's click;
+      // the exit event fires later on its own clock.
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      if (!id || !id.startsWith('pending-')) { return; }
+      const handleId = id.slice('pending-'.length);
+      streamRegistry.killByHandleId(handleId);
+      sessionsProvider.dismissPendingByNodeId(id);
+    }),
     vscode.commands.registerCommand('vibeflow.copySessionId', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;

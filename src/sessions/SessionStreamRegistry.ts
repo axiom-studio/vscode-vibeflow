@@ -283,6 +283,20 @@ export class SessionStreamRegistry implements vscode.Disposable {
     return true;
   }
 
+  /**
+   * SIGTERM the child for the given handleId. Idempotent. Use this when
+   * the agent hasn't emitted `session_init` yet (so `agentSessionId` is
+   * still unset and `killBySessionId` can't resolve the handle) — e.g.
+   * the user-initiated Cancel on a stuck `starting` pending row in
+   * Agent Fleet. Returns true if the handle existed and was signaled.
+   */
+  killByHandleId(handleId: string): boolean {
+    const handle = this.streams.get(handleId);
+    if (!handle) { return false; }
+    handle.process.kill();
+    return true;
+  }
+
   dispose(): void {
     if (this.disposed) { return; }
     this.disposed = true;
