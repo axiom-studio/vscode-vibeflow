@@ -1,8 +1,42 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
+
+/**
+ * Read the CLI's PID lock file and return the live PID, or null if no
+ * vibeflow-cli instance is running. Mirrors the Go-side helpers in
+ * `vibeflow-cli/internal/vibeflowcli/pidlock.go` —
+ * `PIDLockPath()` writes `~/.vibeflow-cli/vibeflow.pid` and
+ * `readPIDLock` parses + liveness-probes the PID.
+ *
+ * `process.kill(pid, 0)` is the standard Node existence probe: no signal
+ * is sent, but the call throws ESRCH if no process owns the PID, or
+ * EPERM if it exists but is owned by another user. Both alive-cases
+ * (ours or theirs) mean "the CLI is running" for our purposes.
+ */
+function getRunningCliPid(): number | null {
+  const lockPath = path.join(os.homedir(), '.vibeflow-cli', 'vibeflow.pid');
+  let raw: string;
+  try {
+    raw = fs.readFileSync(lockPath, 'utf-8');
+  } catch {
+    return null; // no lock file → not running
+  }
+  const pid = parseInt(raw.trim(), 10);
+  if (!Number.isFinite(pid) || pid <= 0) { return null; }
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EPERM') { return pid; } // exists but owned by another user
+    return null; // ESRCH or other → stale lock, process dead
+  }
+}
 const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/latest';
 const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
 
@@ -57,6 +91,29 @@ export async function openCli(workspaceRoot: string | undefined): Promise<void> 
   const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
   if (existing) {
     existing.show(false); // take focus
+    return;
+  }
+
+  // External CLI guard: another vibeflow-cli (likely a Terminal.app
+  // session the user kicked off before opening VS Code) holds the PID
+  // lock at ~/.vibeflow-cli/vibeflow.pid. Spawning a new instance would
+  // hit `AcquirePIDLock` and bail to a bare shell prompt — confusing
+  // because the user clicked "Launch Session" and expected a wizard.
+  // Front-run that failure with a modal explaining how to recover.
+  const externalPid = getRunningCliPid();
+  if (externalPid !== null) {
+    const choice = await vscode.window.showWarningMessage(
+      `VibeFlow CLI is already running externally (PID ${externalPid}).`,
+      {
+        modal: true,
+        detail:
+          'Quit your existing vibeflow-cli and rerun the step. You do not need to kill the running coding agents — just exit from the VibeFlow CLI. We\'ll resume those sessions inside VS Code.',
+      },
+      'Retry',
+    );
+    if (choice === 'Retry') {
+      return openCli(workspaceRoot); // re-checks the lock
+    }
     return;
   }
 
