@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
 import type { DetectedProject, ProjectDetector } from '../project/ProjectDetector.js';
@@ -150,6 +151,33 @@ const PROVIDER_KEY_RULES: Record<string, { minLength: number; hint: string }> = 
   GEMINI_API_KEY: { minLength: 20, hint: 'Real Gemini keys are typically 39 characters starting with "AIza".' },
   MCP_TOKEN: { minLength: 16, hint: 'Real MCP bearer tokens are at least 16 characters.' },
 };
+
+/**
+ * Detect provider credentials configured outside the VS Code secret store.
+ * Called when the user hits Enter on an empty env-token prompt — empty
+ * input doesn't mean "no auth", it often means "I have auth set up
+ * elsewhere (gcloud, shell rc, ~/.gemini/credentials)." Returning a
+ * non-null source lets the wizard proceed without setting `envVars[envName]`;
+ * the spawned terminal inherits parent-process env via the existing
+ * `vscode.window.createTerminal({ env })` merge semantics, so a shell
+ * `GEMINI_API_KEY` survives the launch.
+ *
+ * Existence-only check — does NOT validate that the credential actually
+ * works. The agent binary fails fast at startup if the credential is
+ * bad, which is detectable via the #2175 stall sweep.
+ */
+function detectExternalAuth(envName: string): { source: string } | null {
+  if (process.env[envName]) {
+    return { source: `${envName} from your shell environment` };
+  }
+  if (envName === 'GEMINI_API_KEY') {
+    const credPath = path.join(os.homedir(), '.gemini', 'credentials');
+    if (fs.existsSync(credPath)) {
+      return { source: '~/.gemini/credentials (local Gemini auth)' };
+    }
+  }
+  return null;
+}
 
 function validateProviderKey(envName: string, raw: string): { ok: true; value: string } | { ok: false; reason: string } {
   // Match vibeflow-cli's paste hygiene (`tui_wizard.go:851`
@@ -419,21 +447,34 @@ export async function launchSession(
       envVars['MCP_TOKEN'] = stored;
     } else {
       const token = await vscode.window.showInputBox({
-        prompt: 'Codex MCP Token (required — paste your token)',
+        prompt: 'Codex MCP Token (paste your token, or press Enter if MCP_TOKEN is set in your shell)',
         placeHolder: 'MCP_TOKEN value',
         password: true,
         title: 'VibeFlow: Launch Session — Codex Token',
         ignoreFocusOut: true,
       });
       if (token === undefined) { return; }
-      const result = validateProviderKey('MCP_TOKEN', token);
-      if (!result.ok) {
-        vscode.window.showErrorMessage(
-          `VibeFlow: Cannot launch Codex session — ${result.reason} If your MCP_TOKEN is set elsewhere (e.g., shell rc, vault), configure it via Settings → Providers and retry.`,
-        );
-        return;
+      if (!token.trim()) {
+        // Empty Enter — only valid if external auth is present.
+        const external = detectExternalAuth('MCP_TOKEN');
+        if (!external) {
+          vscode.window.showErrorMessage(
+            'VibeFlow: Cannot launch Codex session — no MCP_TOKEN found in VS Code secret store, shell environment, or anywhere else. Configure it via Settings → Providers (or export MCP_TOKEN in your shell) and retry.',
+          );
+          return;
+        }
+        vscode.window.showInformationMessage(`VibeFlow: Using ${external.source} for Codex.`);
+        // Leave envVars['MCP_TOKEN'] unset — spawned terminal inherits from parent env.
+      } else {
+        const result = validateProviderKey('MCP_TOKEN', token);
+        if (!result.ok) {
+          vscode.window.showErrorMessage(
+            `VibeFlow: Cannot launch Codex session — ${result.reason} If your MCP_TOKEN is set elsewhere, configure it via Settings → Providers and retry.`,
+          );
+          return;
+        }
+        envVars['MCP_TOKEN'] = result.value;
       }
-      envVars['MCP_TOKEN'] = result.value;
     }
   } else if (provider.value === 'gemini') {
     const stored = await context.getProviderEnvToken('GEMINI_API_KEY');
@@ -441,21 +482,34 @@ export async function launchSession(
       envVars['GEMINI_API_KEY'] = stored;
     } else {
       const token = await vscode.window.showInputBox({
-        prompt: 'Gemini API Key (required — paste your key)',
+        prompt: 'Gemini API Key (paste your key, or press Enter if GEMINI_API_KEY / gcloud / ~/.gemini/credentials is configured)',
         placeHolder: 'GEMINI_API_KEY value',
         password: true,
         title: 'VibeFlow: Launch Session — Gemini Key',
         ignoreFocusOut: true,
       });
       if (token === undefined) { return; }
-      const result = validateProviderKey('GEMINI_API_KEY', token);
-      if (!result.ok) {
-        vscode.window.showErrorMessage(
-          `VibeFlow: Cannot launch Gemini session — ${result.reason} If your GEMINI_API_KEY is set elsewhere (e.g., gcloud, ~/.gemini/credentials), configure it via Settings → Providers and retry.`,
-        );
-        return;
+      if (!token.trim()) {
+        // Empty Enter — only valid if external auth is present.
+        const external = detectExternalAuth('GEMINI_API_KEY');
+        if (!external) {
+          vscode.window.showErrorMessage(
+            'VibeFlow: Cannot launch Gemini session — no GEMINI_API_KEY found in VS Code secret store, shell environment, or ~/.gemini/credentials. Configure it via Settings → Providers (or run `gcloud auth application-default login`) and retry.',
+          );
+          return;
+        }
+        vscode.window.showInformationMessage(`VibeFlow: Using ${external.source} for Gemini.`);
+        // Leave envVars['GEMINI_API_KEY'] unset — spawned terminal inherits from parent env.
+      } else {
+        const result = validateProviderKey('GEMINI_API_KEY', token);
+        if (!result.ok) {
+          vscode.window.showErrorMessage(
+            `VibeFlow: Cannot launch Gemini session — ${result.reason} If your GEMINI_API_KEY is set elsewhere, configure it via Settings → Providers and retry.`,
+          );
+          return;
+        }
+        envVars['GEMINI_API_KEY'] = result.value;
       }
-      envVars['GEMINI_API_KEY'] = result.value;
     }
   }
 
@@ -802,7 +856,7 @@ function ensureMcpConfig(workDir: string, serverUrl: string, _client: VibeFlowCl
   // Read token from CLI config (same source as extension auto-login)
   let token: string | undefined;
   try {
-    const cliConfigPath = path.join(require('os').homedir(), '.vibeflow-cli', 'config.yaml');
+    const cliConfigPath = path.join(os.homedir(), '.vibeflow-cli', 'config.yaml');
     const cliContent = fs.readFileSync(cliConfigPath, 'utf-8');
     const match = cliContent.match(/^api_token:\s*(.+)$/m);
     if (match) { token = match[1].trim(); }
