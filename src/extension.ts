@@ -793,6 +793,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { deleteSession(client, session, sessionsProvider); }
     }),
+    vscode.commands.registerCommand('vibeflow.dismissFailedPending', (idOrNode: string | { id?: string }) => {
+      // Right-click → Dismiss on a failed pending row in Agent Fleet.
+      // Removes the row without touching any real session (pending entries
+      // are local-only — clearing one only fires the tree-change event).
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      if (id) { sessionsProvider.dismissPendingByNodeId(id); }
+    }),
     vscode.commands.registerCommand('vibeflow.copySessionId', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
