@@ -45,6 +45,20 @@ export interface PendingSession {
 type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
 
 /**
+ * Cap on how long a pending row may remain in `starting` before the
+ * sweep in `fetchAndRefresh` flips it to `failed`. 120s is generous
+ * enough for slow first-launches (CLI binary first-run auth, model
+ * metadata fetch) and tight enough that a doomed launch (missing
+ * binary, fake key, hung MCP handshake) doesn't sit visible for
+ * minutes — Kevin's reported `(1009s)` failure mode is the bug.
+ *
+ * Independent of `polling.interval`: sweep runs on every refresh tick
+ * so the actual UI transition fires within one polling cycle of the
+ * threshold being crossed.
+ */
+const PENDING_STALL_THRESHOLD_MS = 120_000;
+
+/**
  * Derive a display status from server-side `active`/`stale` flags PLUS
  * the optional local tmux probe.
  *
@@ -239,6 +253,17 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   /**
+   * Dismiss a pending row from its tree-node id (the form produced by
+   * `buildPendingNode`, `pending-<handleId>`). Exposed for the
+   * `vibeflow.dismissFailedPending` command so right-click → Dismiss
+   * doesn't need to know the encoding.
+   */
+  dismissPendingByNodeId(nodeId: string): void {
+    if (!nodeId.startsWith('pending-')) { return; }
+    this.clearPending(nodeId.slice('pending-'.length));
+  }
+
+  /**
    * Snapshot the current pending entries. Used by command handlers
    * (e.g. dismiss-failed-pending) that need to enumerate failures.
    */
@@ -290,6 +315,26 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       if (realLanded) {
         this.pendingSessions.delete(pending.handleId);
       }
+    }
+
+    // Stall sweep: any entry still `starting` past PENDING_STALL_THRESHOLD_MS
+    // gets transitioned to `failed` with a synthesized reason. The child
+    // process may still be alive (no exit event to trigger `markFailed`),
+    // but if session_init hasn't landed by now it isn't going to. Without
+    // this sweep the row counts up forever (the bug — see issue #2175).
+    const now = Date.now();
+    for (const pending of this.pendingSessions.values()) {
+      if (pending.state !== 'starting') { continue; }
+      if (now - pending.startedAt <= PENDING_STALL_THRESHOLD_MS) { continue; }
+      this.pendingSessions.set(pending.handleId, {
+        ...pending,
+        state: 'failed',
+        // Don't clobber a reason captured by `markFailed` if a child-exit
+        // landed in the same tick — caller-supplied messages are richer
+        // than this fallback.
+        failureMessage: pending.failureMessage
+          ?? `No session_init within ${PENDING_STALL_THRESHOLD_MS / 1000}s. Likely cause: missing CLI binary, invalid API key, or MCP startup failure. Check the VibeFlow: Agent Activity Output channel.`,
+      });
     }
 
     // Probe local tmux only when CLI mode is on. The probe is sync but
@@ -427,7 +472,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       tooltip.appendMarkdown('\n> Open **VibeFlow: Agent Activity** Output channel for full stderr / exit detail.\n');
     } else {
       tooltip.appendMarkdown(`- Status: Waiting for the agent to call \`session_init\` (${elapsedSec}s)\n`);
-      tooltip.appendMarkdown('\n> If this row sticks for >30s, check the **VibeFlow: Agent Activity** Output channel.\n');
+      tooltip.appendMarkdown(`\n> Will be marked **Failed** after ${PENDING_STALL_THRESHOLD_MS / 1000}s. Check the **VibeFlow: Agent Activity** Output channel for details.\n`);
     }
     return {
       id: `pending-${p.handleId}`,
