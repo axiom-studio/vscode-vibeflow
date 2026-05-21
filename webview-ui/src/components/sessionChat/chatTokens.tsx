@@ -229,9 +229,9 @@ function CommitHashButton({ hash, onClick }: { hash: string; onClick: () => void
 /**
  * Render a path reference as a click-to-open file button. Preserves
  * the original text (with the `:line:col` suffix if present) so the
- * label exactly matches what the agent typed — Ranjan's reported bug
- * was paths showing as plain text; the fix is just to make them
- * clickable, not to reformat.
+ * label exactly matches what the agent typed — the reported bug was
+ * paths showing as plain text; the fix is just to make them clickable,
+ * not to reformat.
  */
 function PathRefButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (

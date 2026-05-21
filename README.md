@@ -6,7 +6,7 @@ Backed by the VibeFlow platform: features, todos, issues, governance, attachment
 
 ## Quick start
 
-1. **Install** from the VS Code Marketplace, or `code --install-extension vscode-vibeflow-1.0.2.vsix`
+1. **Install** from the VS Code Marketplace, or `code --install-extension vscode-vibeflow-1.0.3.vsix`
 2. **Sign in** — run `VibeFlow: Setup` from the command palette and paste your API key from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)
 3. **Launch a session** — `VibeFlow: Launch Session` → pick personas, provider, branch. The agent fleet starts working.
 
