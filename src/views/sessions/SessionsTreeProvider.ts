@@ -50,7 +50,7 @@ type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
  * enough for slow first-launches (CLI binary first-run auth, model
  * metadata fetch) and tight enough that a doomed launch (missing
  * binary, fake key, hung MCP handshake) doesn't sit visible for
- * minutes — Kevin's reported `(1009s)` failure mode is the bug.
+ * minutes — the reported `(1009s)` failure mode is the bug.
  *
  * Independent of `polling.interval`: sweep runs on every refresh tick
  * so the actual UI transition fires within one polling cycle of the

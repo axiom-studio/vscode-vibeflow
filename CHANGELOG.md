@@ -1,8 +1,12 @@
 # Changelog
 
+## 1.0.3 (2026-05-22)
+
+Re-cut of 1.0.2 with customer-identifying mentions scrubbed from the release notes. Same code as 1.0.2; CHANGELOG copy is the only change.
+
 ## 1.0.2 (2026-05-20)
 
-Onboarding-focused patch release. New-user feedback (Kevin + Ranjan from the post-1.0.1 batch) surfaced a chain of UX dead-ends in the wizard, the Agent Fleet tree, and the CLI handoff — all fixed here. Plus a polish pass on the editor-area panels (Settings, Dashboard, Kanban, Compliance) that had been accumulating in the working tree since 1.0.1.
+Onboarding-focused patch release. Post-1.0.1 beta feedback surfaced a chain of UX dead-ends in the wizard, the Agent Fleet tree, and the CLI handoff — all fixed here. Plus a polish pass on the editor-area panels (Settings, Dashboard, Kanban, Compliance) that had been accumulating in the working tree since 1.0.1.
 
 ### Fixed — Launch wizard & onboarding
 
@@ -10,15 +14,15 @@ Onboarding-focused patch release. New-user feedback (Kevin + Ranjan from the pos
 
 - **Empty-Enter detects external auth** (#2179) — self-correction to #2174. New `detectExternalAuth(envName)` helper checks `process.env[envName]` for any provider, plus `~/.gemini/credentials` for Gemini. When external auth is present, the wizard surfaces an info message ("Using GEMINI_API_KEY from your shell environment") and proceeds without setting the env var — the spawned terminal inherits parent env via `vscode.window.createTerminal`'s default merge. Only aborts with a clear error when no auth is configured anywhere.
 
-- **CLI handoff PID-lock guard** (#2181) — when `vibeflow.cli.enabled=true` AND an external vibeflow-cli is already holding `~/.vibeflow-cli/vibeflow.pid`, the launcher now shows a modal warning (Ranjan's wording: "Quit your existing vibeflow-cli and rerun the step…") + Retry/Cancel buttons instead of silently dropping the user to a bare shell. New `getRunningCliPid()` helper mirrors the Go-side `pidlock.go` semantics via `process.kill(pid, 0)`.
+- **CLI handoff PID-lock guard** (#2181) — when `vibeflow.cli.enabled=true` AND an external vibeflow-cli is already holding `~/.vibeflow-cli/vibeflow.pid`, the launcher now shows a modal warning ("Quit your existing vibeflow-cli and rerun the step…") + Retry/Cancel buttons instead of silently dropping the user to a bare shell. New `getRunningCliPid()` helper mirrors the Go-side `pidlock.go` semantics via `process.kill(pid, 0)`.
 
 - **`.mcp.json` writes use extension's own token first** (#2184) — `ensureMcpConfig` previously sourced the bearer token ONLY from `~/.vibeflow-cli/config.yaml`; extension users without the CLI installed got a silent skip and the spawned agent had zero VibeFlow MCP tools. Now resolves extension secret store first (via new `VibeFlowClient.getToken()`), CLI config as fallback, and shows a loud error when neither source has a token. Side-benefit: closes the CLI-vs-extension auth-identity hijack — when both are signed in as different users, the agent now boots with the extension's identity (the one the user actually sees in Agent Fleet).
 
 ### Fixed — Agent Fleet tree
 
-- **Pending sessions stall sweep + Dismiss** (#2175) — Kevin reported pending session rows stuck in `starting... (1009s)` forever when `session_init` never returned. New `PENDING_STALL_THRESHOLD_MS = 120s`; `fetchAndRefresh` now transitions stuck `starting` entries to `failed` after the threshold (preserves any prior `markFailed`-captured stderr). Failed rows gain a Dismiss action (inline × on hover + right-click menu) so users can clear them without `Reload Window`.
+- **Pending sessions stall sweep + Dismiss** (#2175) — a tester reported pending session rows stuck in `starting... (1009s)` forever when `session_init` never returned. New `PENDING_STALL_THRESHOLD_MS = 120s`; `fetchAndRefresh` now transitions stuck `starting` entries to `failed` after the threshold (preserves any prior `markFailed`-captured stderr). Failed rows gain a Dismiss action (inline × on hover + right-click menu) so users can clear them without `Reload Window`.
 
-- **Cancel action on `starting` rows** (#2178) — Ranjan: "how do I stop them?" — previously the right-click menu for `pendingSessionStarting` rows was empty. New `vibeflow.cancelStartingPending` command sends SIGTERM to the child via the new `SessionStreamRegistry.killByHandleId()` helper, then removes the UI row. Surfaced as both an inline stop button on hover and a right-click context menu entry.
+- **Cancel action on `starting` rows** (#2178) — previously the right-click menu for `pendingSessionStarting` rows was empty (no way to stop a stuck pending launch). New `vibeflow.cancelStartingPending` command sends SIGTERM to the child via the new `SessionStreamRegistry.killByHandleId()` helper, then removes the UI row. Surfaced as both an inline stop button on hover and a right-click context menu entry.
 
 ### Added & changed — first-impression UX
 
