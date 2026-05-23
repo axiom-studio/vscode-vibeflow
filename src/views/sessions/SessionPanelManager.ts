@@ -666,7 +666,13 @@ export class SessionPanelManager implements vscode.Disposable {
         // alongside other project-scoped files.
         'general',
       );
-      const assetId = attachment.asset?.id;
+      // Backend's POST /attachments returns the attachment row directly —
+      // `attachment_id` is the FK we sent in step 2 (= the asset id from
+      // step 1). The nested `.asset` object is ONLY populated by the LIST
+      // endpoints (see vibeflow_models.go:111-114 comment). Prefer the
+      // always-present FK; fall back to the nested object if a future
+      // response variant ever populates it.
+      const assetId = attachment.attachment_id ?? attachment.asset?.id;
       if (!Number.isInteger(assetId) || (assetId as number) <= 0) {
         fail('Upload succeeded but the server did not return an asset id.');
         return;
