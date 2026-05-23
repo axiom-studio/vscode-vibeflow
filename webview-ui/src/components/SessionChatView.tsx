@@ -693,12 +693,26 @@ function readInitialMeta(): SessionMeta {
 
 function mergeAppend(prev: ChatPrompt[], incoming: ChatPrompt[]): ChatPrompt[] {
   if (incoming.length === 0) { return prev; }
-  // Dedupe by id (the host's chatAppend can occasionally re-deliver
-  // optimistic + poll-discovered duplicates for the same row).
-  const seen = new Set(prev.map(p => p.id));
-  const novel = incoming.filter(p => !seen.has(p.id));
-  if (novel.length === 0) { return prev; }
-  return [...prev, ...novel].sort((a, b) => a.id - b.id);
+  // Upsert by id. The host re-fetches the recent window when a prompt
+  // is still pending so the chip can transition from "Working…" to the
+  // agent's response (the row stays at the same id; only response_text
+  // / status flip). Replacing existing entries instead of dropping them
+  // is what makes that transition appear. Optimistic local sends pass
+  // through with the same id from createPrompt so the upsert is a no-op
+  // (or a refresh) rather than a duplicate.
+  const incomingById = new Map(incoming.map(p => [p.id, p]));
+  let changed = false;
+  const updated = prev.map(p => {
+    const fresh = incomingById.get(p.id);
+    if (!fresh) { return p; }
+    incomingById.delete(p.id);
+    if (fresh === p) { return p; }
+    changed = true;
+    return fresh;
+  });
+  const novel = Array.from(incomingById.values());
+  if (!changed && novel.length === 0) { return prev; }
+  return [...updated, ...novel].sort((a, b) => a.id - b.id);
 }
 
 function mergePrepend(prev: ChatPrompt[], older: ChatPrompt[]): ChatPrompt[] {

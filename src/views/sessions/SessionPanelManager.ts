@@ -37,6 +37,35 @@ interface ChatCursor {
   newestId: number | null;
   oldestId: number | null;
   initialized: boolean;
+  /**
+   * Prompt ids the host has seen in `pending` status and not yet seen
+   * flip off. The after_id poll strategy (line ~505) misses in-place
+   * `response_text` updates to existing rows — when the agent answers a
+   * prompt, the row keeps its id, so an after_id filter never returns
+   * it. We refresh these specific ids on every tick via a window
+   * re-fetch so the chat panel actually shows responses. Empty set →
+   * skip the refresh (no outstanding work).
+   */
+  pendingIds: Set<number>;
+}
+
+/**
+ * Update the pending-id set from a fresh batch of prompts. Adds ids
+ * still in `pending`, removes ids that have flipped to any other status
+ * (responded / expired / activity). Returns a NEW set so the caller
+ * can keep ChatCursor instances immutable.
+ */
+function nextPendingIds(prev: Set<number>, messages: VibeFlowPrompt[]): Set<number> {
+  if (messages.length === 0) { return prev; }
+  const next = new Set(prev);
+  for (const m of messages) {
+    if (m.status === 'pending') {
+      next.add(m.id);
+    } else {
+      next.delete(m.id);
+    }
+  }
+  return next;
 }
 
 /**
@@ -235,6 +264,7 @@ export class SessionPanelManager implements vscode.Disposable {
               newestId: nextNewest,
               oldestId: state?.oldestId ?? created.id,
               initialized: state?.initialized ?? true,
+              pendingIds: nextPendingIds(state?.pendingIds ?? new Set(), [created]),
             });
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
@@ -270,6 +300,7 @@ export class SessionPanelManager implements vscode.Disposable {
                 newestId: state.newestId,
                 oldestId: resp.page.oldest_id ?? state.oldestId,
                 initialized: state.initialized,
+                pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
               });
               this.postToWebview(panel, {
                 type: 'chatPrepend',
@@ -489,6 +520,7 @@ export class SessionPanelManager implements vscode.Disposable {
           newestId: resp.page.newest_id,
           oldestId: resp.page.oldest_id,
           initialized: true,
+          pendingIds: nextPendingIds(state?.pendingIds ?? new Set(), resp.prompts),
         });
         this.postToWebview(panel, {
           type: 'chatTranscript',
@@ -505,13 +537,34 @@ export class SessionPanelManager implements vscode.Disposable {
           after_id: state.newestId,
           limit: 200,
         });
+        let cursor: ChatCursor = state;
         if (resp.prompts.length > 0) {
-          this.chatState.set(sessionId, {
+          cursor = {
             newestId: resp.page.newest_id ?? state.newestId,
             oldestId: state.oldestId ?? resp.page.oldest_id,
             initialized: true,
-          });
+            pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
+          };
+          this.chatState.set(sessionId, cursor);
           this.postToWebview(panel, { type: 'chatAppend', payload: { messages: resp.prompts } });
+        }
+        // Refresh in-place response_text updates: after_id only returns
+        // NEW prompt ids, so a prompt that flipped from `pending` →
+        // `responded` (same id, new response_text) is invisible to that
+        // filter. Re-fetch the recent window for any tracked-pending
+        // ids; webview's mergeAppend upserts by id so the chip
+        // transitions from "Working…" to the answer within one tick.
+        if (cursor.pendingIds.size > 0) {
+          const windowResp = await this.client.listSessionPrompts(projectId, sessionId, { limit: CHAT_PAGE_SIZE });
+          if (windowResp.prompts.length > 0) {
+            this.chatState.set(sessionId, {
+              newestId: windowResp.page.newest_id ?? cursor.newestId,
+              oldestId: cursor.oldestId ?? windowResp.page.oldest_id,
+              initialized: true,
+              pendingIds: nextPendingIds(cursor.pendingIds, windowResp.prompts),
+            });
+            this.postToWebview(panel, { type: 'chatAppend', payload: { messages: windowResp.prompts } });
+          }
         }
       } else {
         // Initialized but transcript was empty — re-poll for first arrivals.
@@ -521,6 +574,7 @@ export class SessionPanelManager implements vscode.Disposable {
             newestId: resp.page.newest_id,
             oldestId: resp.page.oldest_id,
             initialized: true,
+            pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
           });
           this.postToWebview(panel, {
             type: 'chatTranscript',
