@@ -436,27 +436,40 @@ export class VibeFlowClient {
     // browser-style FormData with auto-generated boundary.
     const form = new FormData();
     form.append('file', new Blob([new Uint8Array(fileBuffer)], { type: contentType }), fileName);
+    console.log('[VibeFlow] uploadAttachment step 1: POST /assets/upload', { fileName, contentType, size: fileBuffer.byteLength });
     const uploadRes = await fetch(`${this.baseUrl}/rest/v1/vibeflow/assets/upload`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
       body: form,
     });
     if (!uploadRes.ok) {
-      throw new Error(`Asset upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+      const body = await uploadRes.text().catch(() => '<unreadable>');
+      console.error('[VibeFlow] uploadAttachment step 1 FAILED', { status: uploadRes.status, statusText: uploadRes.statusText, body });
+      throw new Error(`Asset upload failed: ${uploadRes.status} ${uploadRes.statusText} — ${body}`);
     }
     const asset = (await uploadRes.json()) as { id: number };
+    console.log('[VibeFlow] uploadAttachment step 1 OK', { assetId: asset.id });
 
     // Step 2 — link asset to work item.
-    return await this.request<VibeFlowAttachment>('/rest/v1/vibeflow/attachments', {
-      method: 'POST',
-      body: JSON.stringify({
-        attachment_type: 'asset',
-        attachment_id: asset.id,
-        entity_type: entityType,
-        entity_id: entityId,
-        category: category ?? 'general',
-      }),
-    });
+    const linkPayload = {
+      attachment_type: 'asset',
+      attachment_id: asset.id,
+      entity_type: entityType,
+      entity_id: entityId,
+      category: category ?? 'general',
+    };
+    console.log('[VibeFlow] uploadAttachment step 2: POST /attachments', linkPayload);
+    try {
+      const result = await this.request<VibeFlowAttachment>('/rest/v1/vibeflow/attachments', {
+        method: 'POST',
+        body: JSON.stringify(linkPayload),
+      });
+      console.log('[VibeFlow] uploadAttachment step 2 OK', { attachmentId: (result as { id?: number }).id });
+      return result;
+    } catch (err) {
+      console.error('[VibeFlow] uploadAttachment step 2 FAILED', { payload: linkPayload, error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
   }
 
   /**
