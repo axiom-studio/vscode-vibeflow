@@ -329,6 +329,7 @@ export class SessionPanelManager implements vscode.Disposable {
           this.refreshPanel(session, panel);
           break;
         case 'chatUploadAsset':
+          console.log('[VibeFlow] chatUploadAsset received', { name: msg.payload.name, size: msg.payload.size, mimeType: msg.payload.mimeType });
           await this.handleChatUploadAsset(panel, msg.payload);
           break;
         case 'chatGetAssetUri':
