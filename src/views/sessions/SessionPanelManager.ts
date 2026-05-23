@@ -657,7 +657,13 @@ export class SessionPanelManager implements vscode.Disposable {
         bytes,
         safeName,
         payload.mimeType,
-        'chat_attachment',
+        // 'general' — axiomcloud's VibeflowAttachmentCategory allowlist is
+        // {design_system, architecture, requirements, general}; the previous
+        // 'chat_attachment' value was 400-rejected by POST /attachments,
+        // leaving every upload as an orphan asset. Until the backend enum
+        // gains a chat-specific value, chat attachments live under general
+        // alongside other project-scoped files.
+        'general',
       );
       const assetId = attachment.asset?.id;
       if (!Number.isInteger(assetId) || (assetId as number) <= 0) {
@@ -727,7 +733,7 @@ export class SessionPanelManager implements vscode.Disposable {
     }
     if (lines.length === 0) { return text; }
     const heading = lines.length === 1 ? '📎 1 attachment:' : `📎 ${lines.length} attachments:`;
-    const guide = `Agents: fetch via the \`list_attachments\` MCP tool with entity_type='project' and filter category='chat_attachment', or directly via /rest/v1/vibeflow/assets/<id>/download with the project's auth.`;
+    const guide = `Agents: fetch via the \`list_attachments\` MCP tool with entity_type='project' (match the asset_id from the inline reference), or directly via /rest/v1/vibeflow/assets/<id>/download with the project's auth.`;
     return `${text}\n\n---\n${heading}\n${lines.join('\n')}\n\n_${guide}_`;
   }
 
