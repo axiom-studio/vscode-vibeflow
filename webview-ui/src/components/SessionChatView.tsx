@@ -400,7 +400,11 @@ export function SessionChatView() {
   }
 
   return (
-    <div className={`session-chat-root${railOpen ? '' : ' rail-collapsed'}`}>
+    <div
+      className={`session-chat-root${railOpen ? '' : ' rail-collapsed'}${
+        meta.sessionMode === 'chat_first' ? ' no-rail' : ''
+      }`}
+    >
       {/* Chat column (75% — full width when rail is collapsed) */}
       <div className="chat-column">
         <div className="chat-header">
