@@ -33,6 +33,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // Integration tests use mocha + @vscode/test-electron (TDD globals
+    // suite/test/setup/teardown), not vitest. Excluded here so vitest
+    // doesn't try to load them with its bdd globals and fail with
+    // "suite is not defined". They run via `yarn test:integration`.
+    exclude: ['src/test/integration/**', 'node_modules/**', 'dist/**', 'out/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],

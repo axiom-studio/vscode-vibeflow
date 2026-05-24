@@ -9,6 +9,10 @@ out/
 # Webview build output
 webview-ui/dist/
 
+# Integration test compile output + downloaded VS Code build
+out/
+.vscode-test/
+
 # Build artifacts
 *.map
 
