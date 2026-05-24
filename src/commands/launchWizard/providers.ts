@@ -62,9 +62,27 @@ export function detectExternalAuth(envName: string): { source: string } | null {
     return { source: `${envName} from your shell environment` };
   }
   if (envName === 'GEMINI_API_KEY') {
-    const credPath = path.join(os.homedir(), '.gemini', 'credentials');
-    if (fs.existsSync(credPath)) {
+    // Gemini auth lives in several places depending on how the user
+    // logged in — accept any of them.
+    const home = os.homedir();
+    // 1. `gemini auth login` writes here.
+    const geminiCredPath = path.join(home, '.gemini', 'credentials');
+    if (fs.existsSync(geminiCredPath)) {
       return { source: '~/.gemini/credentials (local Gemini auth)' };
+    }
+    // 2. `gcloud auth application-default login` (ADC) writes here.
+    //    Our pre-1.0.4 detect missed this even though the error message
+    //    explicitly told users to run that command — confusing.
+    //    User-reported via agent-prompt 8db1893f (2026-05-24).
+    const gcloudAdcPath = path.join(home, '.config', 'gcloud', 'application_default_credentials.json');
+    if (fs.existsSync(gcloudAdcPath)) {
+      return { source: '~/.config/gcloud/application_default_credentials.json (gcloud ADC)' };
+    }
+    // 3. `gcloud auth login` writes legacy creds here. Less common for
+    //    new users but still works for some setups.
+    const gcloudLegacyDir = path.join(home, '.config', 'gcloud', 'legacy_credentials');
+    if (fs.existsSync(gcloudLegacyDir)) {
+      return { source: '~/.config/gcloud/legacy_credentials (gcloud legacy auth)' };
     }
   }
   return null;
