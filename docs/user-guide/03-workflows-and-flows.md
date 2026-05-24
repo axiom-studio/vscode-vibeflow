@@ -1,8 +1,8 @@
 # Workflows and Flow Diagrams
 
-**Who this is for**: Anyone who's installed the extension and wants to understand *how the pieces fit together* — what happens in what order, what calls what, what state moves where. This is the doc for "but **why** is it asking me that?"
+**Who this is for**: Anyone who's installed the extension and wants to understand *how the pieces fit together*. What happens in what order, what calls what, what state moves where. This is the doc for "but **why** is it asking me that?"
 
-**TL;DR**: Six end-to-end flows that cover ~95% of VibeFlow usage. Sequence + state diagrams in Mermaid (GitHub and VS Code render them natively).
+**TL;DR**: Six end-to-end flows that cover ~95% of VibeFlow usage. Sequence and state diagrams in Mermaid (GitHub and VS Code render them natively).
 
 > See [07-glossary.md](07-glossary.md) for any unfamiliar term.
 
@@ -10,7 +10,7 @@
 
 ## 1. New-user onboarding (first 5 minutes)
 
-You install the extension. VS Code reloads. What happens next, in order:
+You install the extension. VS Code reloads. Here's what happens next, in order:
 
 ```mermaid
 sequenceDiagram
@@ -42,9 +42,9 @@ sequenceDiagram
     Ext-->>User: ✅ "Connected to vscode-vibeflow"
 ```
 
-**What you see**: walkthrough → "Sign in" link → three Quick Picks → "Connected" toast. About 90 seconds total.
+**What you see**: walkthrough, then "Sign in" link, then three Quick Picks, then a "Connected" toast. About 90 seconds total.
 
-**What can go wrong**: an invalid API key returns 401 from the server. The wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl` (security guard from issue #1947). See [06-troubleshooting.md](06-troubleshooting.md) for symptoms + fixes.
+**What can go wrong**: an invalid API key returns 401 from the server. The wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl` (security guard from issue #1947). See [06-troubleshooting.md](06-troubleshooting.md) for symptoms and fixes.
 
 ---
 
@@ -96,21 +96,21 @@ sequenceDiagram
 ```
 
 **The session-mode choice matters**:
-- **Vanilla** — agent asks permission for every file edit, shell command, git op. Safe. Default.
-- **VibeFlow (YOLO)** — agent skips permission prompts. Faster. You consent via a modal once per session.
-- **Chat-First** — agent runs hidden, you interact through the Session Chat panel. YOLO is required (atomic bundle since issue #1611). Best for "talk to the agent like Copilot" workflows.
+- **Vanilla**: agent asks permission for every file edit, shell command, git op. Safe. Default.
+- **VibeFlow (YOLO)**: agent skips permission prompts. Faster. You consent via a modal once per session.
+- **Chat-First**: agent runs hidden, you interact through the Session Chat panel. YOLO is required (atomic bundle since issue #1611). Best for "talk to the agent like Copilot" workflows.
 
 **What you see**: 5-7 Quick Pick / Input Box prompts, then a new terminal opens (in hybrid mode) or a chat panel opens (in chat-first mode), and a row appears in the Agent Fleet view.
 
 ---
 
-## 3. Multi-turn chat — Vanilla session vs Chat-First session
+## 3. Multi-turn chat: Vanilla session vs Chat-First session
 
-The chat panel looks the same in both, but the plumbing is fundamentally different. Understanding why prevents confusion when chat hangs at "Working…" forever (see issue #2305).
+The chat panel looks the same in both, but the plumbing underneath is fundamentally different. Knowing why prevents confusion when chat hangs at "Working…" forever (see issue #2305).
 
-### 3a. Vanilla session — terminal-driven
+### 3a. Vanilla session: terminal-driven
 
-In vanilla mode, the agent's primary surface is the terminal. The Session Chat panel is *read-only-ish* — it streams the agent's output but the agent reads its instructions from the work items it pulls via `wait_for_work`, not from the chat panel.
+In vanilla mode, the agent's primary surface is the terminal. The Session Chat panel is *read-only-ish*: it streams the agent's output, but the agent reads its instructions from the work items it pulls via `wait_for_work`, not from the chat panel.
 
 ```mermaid
 sequenceDiagram
@@ -130,9 +130,9 @@ sequenceDiagram
     Agent->>Server: wait_for_work (next item)
 ```
 
-**The Session Chat panel for vanilla sessions** shows a transcript but typing into the input box is **disabled** with an upfront banner ("This agent reads work items only — type your request and convert it into a tracked todo or issue"). The "Convert to work item" button opens the ad-hoc work-item Quick Pick.
+**The Session Chat panel for vanilla sessions** shows a transcript, but typing into the input box is **disabled**, with an upfront banner ("This agent reads work items only. Type your request and convert it into a tracked todo or issue"). The "Convert to work item" button opens the ad-hoc work-item Quick Pick.
 
-### 3b. Chat-First session — chat-driven
+### 3b. Chat-First session: chat-driven
 
 In chat-first mode, the chat panel **is** the input. The agent runs hidden (under `tmux` if available, otherwise a hidden VS Code terminal), and you steer it by typing.
 
@@ -163,11 +163,11 @@ sequenceDiagram
 
 **The Session Chat panel for chat-first sessions** has an enabled input, a textarea, an @mention picker (`@symbol:`, `@document:`, `@todo:`, etc.), file-drop attachments, and renders agent diffs / commit hashes / file paths as clickable.
 
-**Why two patterns**: vanilla = "agents work autonomously on tracked work items"; chat-first = "agent is like Copilot but with file-edit powers." Different use cases, different UI, intentional.
+**Why two patterns**: vanilla means "agents work autonomously on tracked work items"; chat-first means "agent is like Copilot but with file-edit powers." Different use cases, different UI, intentional.
 
 ---
 
-## 4. Work item lifecycle — from idea to closed
+## 4. Work item lifecycle: from idea to closed
 
 Every feature, todo, and issue moves through the same status machine. The shape:
 
@@ -191,18 +191,18 @@ stateDiagram-v2
 ```
 
 **Where you (the human) typically step in**:
-- **`in_review`** — you review what an agent or another user filed. Decide whether to promote.
-- **`done` → `security_review`** — if you're acting as the Security Lead, you walk the diff and approve / reject.
-- **`security_review` → `qa_review`** — if you're acting as QA Lead, you verify the AC.
-- **Anywhere** — you can comment, change priority, change branch, change parent feature.
+- **`in_review`**: you review what an agent or another user filed. Decide whether to promote.
+- **`done` → `security_review`**: if you're acting as the Security Lead, you walk the diff and approve or reject.
+- **`security_review` → `qa_review`**: if you're acting as QA Lead, you verify the AC.
+- **Anywhere**: you can comment, change priority, change branch, change parent feature.
 
 **Where agents step in**:
-- `in_review → planning` (architect agents — claim items in `ready_to_implement` or `architecture_review_complete`)
+- `in_review → planning` (architect agents claim items in `ready_to_implement` or `architecture_review_complete`)
 - `planning → ready_to_implement` (after writing a plan)
 - `ready_to_implement → implementing → done` (developer agents)
 - `done → security_review → qa_review` (security/QA agents auto-poll for items needing their gate)
 
-**The review gates exist on purpose**: silent regressions caught in production are the worst kind. Two recent incidents (commit `e0ef3ad` silently deleting #1947's three-layer HTTPS guard; commit `7a3d3be` silently deleting #1614's @mention picker) are exactly what the gates are meant to prevent in future.
+**The review gates exist on purpose**: silent regressions caught in production are the worst kind. Two recent incidents (commit `e0ef3ad` silently deleting #1947's three-layer HTTPS guard; commit `7a3d3be` silently deleting #1614's @mention picker) are exactly what the gates are meant to prevent going forward.
 
 ---
 
@@ -241,21 +241,21 @@ sequenceDiagram
     Server-->>User: notification — work item closed
 ```
 
-**Each persona is its own session** (one agent per persona on your machine, polling independently). They never talk to each other directly — coordination happens through the work item's status field and execution log on the server.
+**Each persona is its own session** (one agent per persona on your machine, polling independently). They never talk to each other directly. Coordination happens through the work item's status field and execution log on the server.
 
-**You can collapse this**: not every team needs all 9 personas active. A minimal team is *Architect + Developer + QA* — three sessions, the rest implicit (you act as the PM and Security yourself).
+**You can collapse this**: not every team needs all 9 personas active. A minimal team is *Architect + Developer + QA*: three sessions, the rest implicit (you act as the PM and Security yourself).
 
 ---
 
 ## 6. Worktree workflow (multi-branch parallelism)
 
-When you want a Developer agent working on `feature/foo` while you keep working on `main`, you have two options:
+When you want a Developer agent working on `feature/foo` while you keep working on `main`, you've got two options:
 
-### Option A — switch branches yourself
+### Option A: switch branches yourself
 
 Stash your changes, `git checkout feature/foo`, launch the Developer agent, watch it work. When you want to come back to `main`, kill the session, `git checkout main`, unstash. Friction-heavy.
 
-### Option B — git worktree (the VibeFlow way)
+### Option B: git worktree (the VibeFlow way)
 
 ```mermaid
 sequenceDiagram
@@ -297,9 +297,9 @@ sequenceDiagram
 
 ---
 
-## Putting it all together — a realistic day
+## Putting it all together: a realistic day
 
-A representative day with VibeFlow active:
+Here's a representative day with VibeFlow active:
 
 ```mermaid
 gantt
@@ -333,16 +333,16 @@ gantt
     Approves                          :s2, 11:14, 1m
 ```
 
-You spend ~35 minutes of human attention; the agents do ~75 minutes of work in parallel. The Activity Feed is your single pane of glass — it shows every transition above.
+You spend ~35 minutes of human attention; the agents do ~75 minutes of work in parallel. The Activity Feed is your single pane of glass. It shows every transition above.
 
 ---
 
 ## What this doc deliberately doesn't cover
 
-- **Compliance findings** workflow — see the **Compliance** panel + [04-chat-first-mode.md](04-chat-first-mode.md) for the Security Lead persona's tools.
-- **Pull request creation** — see `VibeFlow: Create Pull Request` and the branch-review status workflow. Single command; not a multi-step flow worth diagramming.
-- **CLI handoff** (when `vibeflow.cli.enabled=true`) — relevant for ~5% of users; out of the common-flow scope. See [05-settings-reference.md](05-settings-reference.md).
-- **Document comments + persona handoff** workflow — the comments feature is its own subsystem; see the Documents view's right-click menu.
+- **Compliance findings** workflow: see the **Compliance** panel and [04-chat-first-mode.md](04-chat-first-mode.md) for the Security Lead persona's tools.
+- **Pull request creation**: see `VibeFlow: Create Pull Request` and the branch-review status workflow. Single command; not a multi-step flow worth diagramming.
+- **CLI handoff** (when `vibeflow.cli.enabled=true`): relevant for ~5% of users; out of the common-flow scope. See [05-settings-reference.md](05-settings-reference.md).
+- **Document comments + persona handoff** workflow: the comments feature is its own subsystem; see the Documents view's right-click menu.
 
 ---
 
