@@ -14,19 +14,19 @@ A long-running AI process that thinks and writes code on your behalf. VibeFlow r
 ### Persona
 The role an agent plays. VibeFlow ships with nine: **Developer** (Kai), **Architect** (Morgan), **Principal Engineer** (Kai), **Product Manager** (Priya), **Project Manager** (Casey), **UX Designer** (Sage), **QA Lead** (Quinn), **Security Lead** (Sophie), and **Customer** (Riley). You launch one agent *per persona*. They poll independently for work that matches their role.
 
-> *Code agents* (Developer, Architect, Principal Engineer) write source code. *Advisory agents* (everyone else) write specs, reviews, comments — they don't commit code.
+> *Code agents* (Developer, Architect, Principal Engineer) write source code. *Advisory agents* (everyone else) write specs, reviews, and comments. They don't commit code.
 
 ### Session
 One running agent instance. A session has a **persona**, a **branch** (the git branch it operates on), and a **provider** (which model backs it). Sessions are what the **Agent Fleet** view lists.
 
 ### Provider
-The underlying AI provider behind an agent. Today VibeFlow supports **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), and **Cursor**. Each requires its own API key (you don't need all four — pick the one you have access to).
+The underlying AI provider behind an agent. Today VibeFlow supports **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), and **Cursor**. Each requires its own API key. You don't need all four; pick the one you have access to.
 
 ### Project
 A VibeFlow project. Maps roughly to one of your code repositories. Created on the **VibeFlow Cloud** server. Identified by a name (e.g. `vscode-vibeflow`) plus a numeric ID. The extension auto-detects which project applies to your current workspace by reading the git remote URL.
 
 ### MCP (Model Context Protocol)
-The protocol agents use to talk to the VibeFlow Cloud server. Behind the scenes, when an agent calls `list_features` or `create_todo`, it's making an MCP tool call. You almost never need to think about this — it's wired automatically when a session launches.
+The protocol agents use to talk to the VibeFlow Cloud server. When an agent calls `list_features` or `create_todo`, it's making an MCP tool call under the hood. You almost never need to think about this. It's wired automatically when a session launches.
 
 ### `.mcp.json`
 A file the extension writes into your workspace so the launched agent knows how to reach the VibeFlow Cloud server. It contains your API token, so it's git-ignored automatically and written with `mode 0o600`. If the workspace is a git repo and `.mcp.json` can't be ignored, the extension refuses to write it.
@@ -45,7 +45,7 @@ A container for related work. A feature can hold many **todos**. Example: "VSCod
 A discrete piece of work *inside a feature*. Always has a parent feature. Example: "Wire Agent Fleet TreeView to live MCP API data."
 
 ### Issue
-A discrete piece of work that *doesn't fit under a feature* — typically a bug, a standalone fix, or a cross-cutting change. Issues sit at the project level. They *can* be linked to a feature for context but don't require one.
+A discrete piece of work that *doesn't fit under a feature*. Typically a bug, a standalone fix, or a cross-cutting change. Issues sit at the project level. They *can* be linked to a feature for context but don't require one.
 
 ### Status
 The lifecycle stage of a work item. The flow:
@@ -71,13 +71,13 @@ Every work item carries a `target_branch` (defaults to `main`). Sessions filter 
 Where the agent's terminal output goes. Three values: **hybrid** (code agents visible, advisory agents hidden), **all** (every agent visible), **none** (every agent hidden). Default is **hybrid**.
 
 ### Hybrid mode
-The default. Developer / Architect / Principal Engineer terminals are visible in VS Code's terminal pane. Advisory agents (QA, Security, PM, etc.) run hidden in the background because their output is mostly diagnostic — you'll see their work via the chat panel and execution logs.
+The default. Developer, Architect, and Principal Engineer terminals are visible in VS Code's terminal pane. Advisory agents (QA, Security, PM, etc.) run hidden in the background because their output is mostly diagnostic. You'll see their work via the chat panel and execution logs.
 
 ### Chat-First Mode
 A session mode where you talk to the agent through the **Session Chat** panel instead of a terminal. The agent runs hidden in the background; the chat panel is the only UI. You must explicitly opt in at launch time (a consent modal appears) because chat-first uses **YOLO mode** under the hood.
 
 ### YOLO mode
-"You Only Live Once." A session mode where the agent runs with `--dangerously-skip-permissions` — it executes file edits, shell commands, and git operations without asking for permission. Trade safety for speed. Required for chat-first; optional for hybrid. The first time you turn it on, a modal asks for explicit consent.
+"You Only Live Once." A session mode where the agent runs with `--dangerously-skip-permissions`. It executes file edits, shell commands, and git operations without asking for permission. Trade safety for speed. Required for chat-first; optional for hybrid. The first time you turn it on, a modal asks for explicit consent.
 
 ### Vanilla mode
 The opposite of YOLO. The agent asks permission for every action that could change the world. Slower but safe. Default for hybrid sessions.
@@ -99,19 +99,19 @@ A panel in VS Code's sidebar. VibeFlow ships five: **Agent Fleet**, **Work Items
 VS Code's leftmost strip with the icons (Explorer, Search, Source Control…). VibeFlow adds a custom icon there.
 
 ### Activity Feed
-A real-time stream of what agents are doing — claims, status transitions, commits, prompts to you. Lives in the **VibeFlow Monitor** panel by default (right side of the workbench).
+A real-time stream of what agents are doing: claims, status transitions, commits, prompts to you. Lives in the **VibeFlow Monitor** panel by default (right side of the workbench).
 
 ### Session Chat panel
-An editor panel (not a sidebar — it opens in the main editor area) where you talk to one specific session. Shows the conversation transcript, lets you send messages, render diffs, click commit hashes to open the diff. The headline feature of *chat-first* mode.
+An editor panel where you talk to one specific session. It opens in the main editor area, not a sidebar. Shows the conversation transcript, lets you send messages, render diffs, and click commit hashes to open the diff. The headline feature of *chat-first* mode.
 
 ### Work Item panel
-An editor panel showing details for one work item — description, execution log, comments, governance actions (QA verify / reject, security approve / reject).
+An editor panel showing details for one work item: description, execution log, comments, and governance actions (QA verify/reject, security approve/reject).
 
 ### Walkthrough
 VS Code's built-in 5-step onboarding tutorial. Opens automatically the first time you install the extension. Title: "Get Started with VibeFlow."
 
 ### Command Palette
-VS Code's `Cmd/Ctrl+Shift+P` menu. Every VibeFlow action is registered there with a `VibeFlow:` prefix — type "VibeFlow:" and you'll see all 43 commands.
+VS Code's `Cmd/Ctrl+Shift+P` menu. Every VibeFlow action is registered there with a `VibeFlow:` prefix. Type "VibeFlow:" and you'll see all 43 commands.
 
 ### `@vibeflow` chat participant
 A GitHub Copilot Chat participant. In Copilot Chat's input, type `@vibeflow` and you can run `/status`, `/create`, `/review`, `/summary`, `/launch`, `/respond`, or `/compliance` against your project without leaving the chat surface.
@@ -121,26 +121,26 @@ A GitHub Copilot Chat participant. In Copilot Chat's input, type `@vibeflow` and
 ## Governance
 
 ### Governance
-The framework for letting humans gate AI-generated code. Two gates after an agent marks a work item `done`: **security review** (Sophie / a Security Lead agent or human) then **QA review** (Quinn / a QA Lead agent or human). Items in `done` show up in the **Work Items** view with badges showing which gates they've passed.
+The framework for letting humans gate AI-generated code. Two gates after an agent marks a work item `done`: **security review** (Sophie, a Security Lead agent or human) then **QA review** (Quinn, a QA Lead agent or human). Items in `done` show up in the **Work Items** view with badges showing which gates they've passed.
 
 ### Security review
 The gate after `done` and before `qa_verified`. The Security Lead persona inspects the diff for security issues (token leaks, command injection, CSP gaps, etc.). Approves or rejects with a comment. Approval flips `security_reviewed=true`.
 
 ### QA review
-The gate after security. The QA Lead persona walks through the acceptance criteria, runs builds/tests if relevant, validates that the change does what it claims. Approval flips `qa_verified=true`. Once both gates pass, the work item is fully closed.
+The gate after security. The QA Lead persona walks through the acceptance criteria, runs builds/tests if relevant, and validates that the change does what it claims. Approval flips `qa_verified=true`. Once both gates pass, the work item is fully closed.
 
 ### Branch review status
-A status-bar indicator showing how many items on your current branch have passed both gates. Click it to open a checklist. Useful before opening a pull request — it tells you whether the branch's work is fully reviewed.
+A status-bar indicator showing how many items on your current branch have passed both gates. Click it to open a checklist. Useful before opening a pull request: it tells you whether the branch's work is fully reviewed.
 
 ---
 
 ## Git plumbing
 
 ### Worktree
-A separate working directory checked out to a different git branch, in the same repository. VibeFlow can create a worktree at `.claude/worktrees/<branch>` so a Developer agent can work on `feature/foo` while you work on `main` in your main checkout — no `git stash` shuffling. Configurable via `vibeflow.worktree.*` settings.
+A separate working directory checked out to a different git branch, in the same repository. VibeFlow can create a worktree at `.claude/worktrees/<branch>` so a Developer agent can work on `feature/foo` while you work on `main` in your main checkout, with no `git stash` shuffling. Configurable via `vibeflow.worktree.*` settings.
 
 ### `vibeflow-cli`
-A separate command-line tool (not the extension). Pre-existed the extension; the extension can optionally hand off session launching to the CLI via the `vibeflow.cli.enabled` setting. Most users don't need the CLI — the extension handles session lifecycle itself. The CLI exists for users who prefer a terminal-only workflow.
+A separate command-line tool (not the extension). It pre-existed the extension; the extension can optionally hand off session launching to the CLI via the `vibeflow.cli.enabled` setting. Most users don't need the CLI because the extension handles session lifecycle itself. The CLI exists for users who prefer a terminal-only workflow.
 
 ---
 
@@ -163,17 +163,17 @@ The 3-step onboarding flow (Server URL → API Key → Project) that runs the fi
 ## Less-common terms
 
 ### Prompt
-A message from an agent asking the user to make a decision. Appears as a notification + a row in the **Activity Feed**. Use **VibeFlow: Respond to Prompt** or the inline reply box in chat to answer.
+A message from an agent asking the user to make a decision. Appears as a notification plus a row in the **Activity Feed**. Use **VibeFlow: Respond to Prompt** or the inline reply box in chat to answer.
 
 ### Compliance finding
 A flagged item from the Security Lead persona tied to a specific compliance framework (SOC 2, ISO 27001, PCI-DSS, HIPAA). Visible in the **Compliance** panel. Each finding links to the work item where it was found and the framework clause it relates to.
 
 ### Stream-json
-A communication protocol between the extension and provider CLIs (Claude, Codex, Gemini, Cursor) in chat-first mode. Lets the panel show live agent output as the agent thinks. Provider-agnostic — adapters in `src/sessions/providerAdapters/` translate each provider's stream format into a common shape.
+A communication protocol between the extension and provider CLIs (Claude, Codex, Gemini, Cursor) in chat-first mode. Lets the panel show live agent output as the agent thinks. It's provider-agnostic: adapters in `src/sessions/providerAdapters/` translate each provider's stream format into a common shape.
 
 ### MCP server (the .vsix kind)
 Distinct from the MCP *protocol*. VS Code exposes a separate concept of an "MCP server" that other Copilot-like extensions can discover. The VibeFlow extension registers itself as an MCP server so other AI tools in your IDE (Copilot, Continue, Cody) can call VibeFlow tools too.
 
 ---
 
-*Missing a term? Open an issue at the VibeFlow repo — we'll add it.*
+*Missing a term? Open an issue at the VibeFlow repo and we'll add it.*
