@@ -8,20 +8,24 @@ The project has three distinct verification layers. Each catches a different cla
 |---|---|---|---|
 | **Unit** | `vitest` (`yarn test`) | Pure-function modules — string parsers, state machines, regex tokenizers, key validators. No VSCode API, no DOM. Runs in Node. | Any new pure helper, any regex / validator / parser change. |
 | **Build-time guard** | `node scripts/check-security-guards.mjs` (runs inside `yarn build`) | Static pattern assertions across `src/`. Today: the three-layer `validateServerUrl` defense for #1947. | A security-critical invariant that MUST hold across every commit and can be expressed as a grep / AST pattern. Catches silent removals at commit time, faster than waiting for a unit-test re-run. |
-| **Integration** | (none yet — separate phase) | Live MCP server, real VSCode extension host, real webview React mounting under jsdom. | Out of scope for the current test layer. |
+| **Integration** | `@vscode/test-electron` + `mocha` (`yarn test:integration`) | A real VS Code Electron host running this extension. Today: activation invariants (extension activates, every contributed command + view registers). Future: chat-panel postMessage round-trip, mention dispatch echo, diff overlay scheme, polling-coordinator behavior. | Anything that touches the `vscode` namespace at runtime and CAN'T be exercised by a pure-function unit test — `activate()` decomposition, view registration, panel webview lifecycle, command-registration order, polling coordinators. |
+| **Future** | (jsdom + react-testing-library, dedicated workspace) | Webview React component tests in isolation from the extension host. | Webview-side UI logic that doesn't need a live host — local component behavior, hook ordering, render output. |
 
 ## Quick commands
 
 ```bash
-yarn test                # run unit tests once
+yarn test                # vitest unit tests (~200ms)
 yarn test:watch          # watch mode for TDD on a single module
 yarn test:coverage       # v8 coverage report (text + summary)
-yarn check               # typecheck + lint + test + security-guards (CI gate)
+yarn test:integration    # @vscode/test-electron extension-host suite (~5-30s; downloads VS Code on first run)
+yarn check               # typecheck + lint + unit test + security-guards (CI gate; does NOT run integration)
 ```
+
+Integration tests deliberately do NOT run inside `yarn check` — they download a ~210 MB VS Code build on first run, take 4-30s per cycle, and launch a real Electron process. Wire them into CI as a separate job, or invoke `yarn test:integration` manually before pushing changes that touch `activate()` / view registration / panel webview lifecycle.
 
 ## File layout
 
-Tests live alongside the source they cover:
+**Unit tests** live alongside the source they cover:
 
 ```
 src/auth/serverUrl.ts
@@ -32,6 +36,18 @@ src/utils/nonce.test.ts
 ```
 
 Vitest discovers them via the `src/**/*.test.ts` glob in `vitest.config.ts`. The `tsconfig.test.json` separately includes `vitest/globals` types so production typecheck (`tsc --noEmit`) doesn't pull them in.
+
+**Integration tests** live under a dedicated folder:
+
+```
+src/test/integration/
+├── runTest.ts                    ← electron launcher
+├── suite/
+│   ├── index.ts                  ← mocha bootstrap (TDD UI, 30s timeout default)
+│   └── activation.test.ts        ← extension activates + commands + views
+```
+
+The integration cohort compiles to `out/test/` via `tsconfig.test-integration.json` (separate config — different module system, includes mocha types). Mocha runs in TDD mode (`suite`/`test`/`setup`/`teardown` globals — NOT BDD `describe`/`it`). Test files use `.test.ts` extension matching the unit cohort.
 
 ## What's covered today (Phase 5-A)
 
@@ -46,11 +62,28 @@ The Phase 5-A test cohort focuses on the highest-leverage pure-function modules 
 - `src/views/activity/feedStateController.ts` — state-machine transitions, debounce, threshold
 - `src/commands/sessionCommands.ts` — `detectExternalAuth`, `validateProviderKey`, `buildProvidersWithAvailability`
 
+## Integration cohort (Phase 5-A2)
+
+What runs today (`src/test/integration/suite/`):
+- `activation.test.ts` — extension is present + activates within 60s; every advertised `vibeflow.*` command is registered; every advertised view is reachable via its generated `<viewId>.focus` command. **Catches**: any regression in `activate()` that drops a command, drops a view, or fails to fire (#1975's P5-B2 refactor will be guarded by this).
+
+What's NOT in the cohort yet (filed as follow-ups):
+- **chat-panel postMessage round-trip** — open a session chat panel, assert webview HTML mounts, `ready` → `state` round-trip works, `chatSend` returns a `messages` update.
+- **mention dispatch** — fire `chatMentionQuery` with `kind='document'`, assert `chatMentionResults` reply with `requestId` echo within 2s.
+- **diff overlay** — register `vibeflow-diff` scheme, open a URI, assert `TextDocumentContentProvider` returns content.
+- **activation-order assertion** — log-scrape or instrumentation-hook to assert `validateServerUrl(cachedServerUrl)` runs BEFORE `tryAutoConnect` (the #1947 invariant). Would have caught the `e0ef3ad` silent regression.
+- **polling-coordinator behavior** — added as part of P5-C (the polling-coordinator refactor itself); P5-A2 sets up the runner that C plugs into.
+
+Each of these unblocks a specific bounce-class:
+- chat-panel suite → unblocks #1975 (P5-B2 activate decomposition) and the not-yet-filed P5-B3 (SessionPanelManager refactor).
+- mention dispatch suite → unblocks #1979 (P5-B1b wizard decomposition) if any mention-related code lives in the wizard path.
+- polling-coordinator suite → unblocks P5-C.
+
 ## What's deliberately NOT covered (yet)
 
-- **`src/views/**` non-helper code** (TreeView providers, WebView panels). They depend on the VSCode runtime API. Fighting a fake VSCode is more cost than benefit at this layer — covered by manual / integration tests in a later phase.
-- **`src/commands/**` non-helper code** (the launch wizard, QA flows). Same reason — heavy VSCode API surface.
-- **`src/extension.ts`** activation entry. Tested implicitly by manual launch.
+- **`src/views/**` non-helper code** (TreeView providers, WebView panels). They depend on the VSCode runtime API — partially reachable via integration suite, but the per-view internal state machines are not unit-testable without a real host. Integration tests cover registration; behavior tests would need richer fixtures.
+- **`src/commands/**` non-helper code** (the launch wizard, QA flows). Same reason — heavy VSCode API surface. Integration suite catches command-registration regressions; wizard end-to-end is too brittle for autonomous testing today.
+- **`src/extension.ts`** activation order beyond "did it activate" — the #1947 preflight invariant deserves an explicit ordering assertion; currently relies on `scripts/check-security-guards.mjs` for the structural defense and `activation.test.ts` for the "is the extension alive" smoke.
 - **`webview-ui/src/**`** React components. Would require jsdom + react-testing-library + a separate workspace test config — separate phase.
 - **`scripts/check-security-guards.mjs`**. Already runs inside `yarn build` as a build-time guard. Migrating into vitest would change nothing structural; keep it where it lives.
 
