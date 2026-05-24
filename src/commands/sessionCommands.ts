@@ -166,7 +166,7 @@ const PROVIDER_KEY_RULES: Record<string, { minLength: number; hint: string }> = 
  * works. The agent binary fails fast at startup if the credential is
  * bad, which is detectable via the #2175 stall sweep.
  */
-function detectExternalAuth(envName: string): { source: string } | null {
+export function detectExternalAuth(envName: string): { source: string } | null {
   if (process.env[envName]) {
     return { source: `${envName} from your shell environment` };
   }
@@ -179,7 +179,7 @@ function detectExternalAuth(envName: string): { source: string } | null {
   return null;
 }
 
-function validateProviderKey(envName: string, raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+export function validateProviderKey(envName: string, raw: string): { ok: true; value: string } | { ok: false; reason: string } {
   // Match vibeflow-cli's paste hygiene (`tui_wizard.go:851`
   // `strings.Trim(w.envTokenValue, "[]\"' ")`) — users frequently paste
   // keys with surrounding quotes/brackets from `.env` files or docs.
@@ -201,7 +201,7 @@ function validateProviderKey(envName: string, raw: string): { ok: true; value: s
 // from `provider.go:81-88`, but renders unavailable rows instead of
 // hiding them so the user understands why their preferred provider is
 // missing rather than being silently presented a different list.
-function buildProvidersWithAvailability(): { label: string; description: string; value: string; available: boolean }[] {
+export function buildProvidersWithAvailability(): { label: string; description: string; value: string; available: boolean }[] {
   return PROVIDERS.map(p => {
     const available = isProviderInstalled(p.value);
     return {
