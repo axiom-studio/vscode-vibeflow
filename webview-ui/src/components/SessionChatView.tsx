@@ -496,6 +496,7 @@ export function SessionChatView() {
                 personaName={meta.personaName}
                 personaAvatarUrl={personaAvatar}
                 diffView={diffView}
+                sessionMode={meta.sessionMode}
                 onRespond={respond}
               />
             ))
