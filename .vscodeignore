@@ -24,3 +24,15 @@ CLAUDE.md
 AGENTS.md
 GEMINI.md
 QWEN.md
+# 1.0.4: integration-test compile output + test configs + dev-only scripts.
+# The integration cohort (Phase 5-A2 #1980) compiles src/test/** to out/test/
+# via tsconfig.test-integration.json — but those compiled .js files are
+# Mocha specs for the extension host, not anything end users need. Without
+# these excludes the .vsix would ship ~794 KB of dead-weight test JS (83
+# files), doubling the package size for zero user value.
+out/**
+TESTING.md
+tsconfig.test.json
+tsconfig.test-integration.json
+vitest.config.ts
+scripts/**

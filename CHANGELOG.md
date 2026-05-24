@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.0.4 (2026-05-24)
+
+A reliability + UX pass on the Session Chat panel — most of the post-1.0.3 effort went into fixing the rough edges that surfaced as people actually used chat-first sessions for multi-turn work. Plus a Phase 5 quality push (test scaffolding, integration tests, a meaningful refactor of `sessionCommands.ts`) and a new user-facing documentation suite.
+
+### Fixed — Session Chat
+
+- **Chat upload now works end-to-end.** Two bugs in series: the upload was hitting `POST /attachments` with category `'chat_attachment'`, which isn't in the backend's allowlist — replaced with `'general'`. Then once the chain unblocked, the host read `attachment.asset?.id` from the response but the backend only populates `.asset` in LIST responses (POST returns `attachment.attachment_id` directly). Fixed both; uploads land cleanly now.
+- **Stuck "Working…" forever.** Chat polled with `after_id: state.newestId`, which only returns prompts with `id > newestId` — but the agent updates the SAME row in place (`response_text` fills in, id unchanged). `ChatCursor` now tracks `pendingIds: Set<number>` and re-fetches the recent window when something's pending. Webview's `mergeAppend` switched from dedupe-and-drop to upsert-by-id so the chip transitions in place from "Working…" to the agent's actual response.
+- **Chat-first multi-turn.** `resolveHeadlessBacking()`'s `'auto'` default mapped to `'vscode'`, which uses `claude --print` (one-shot — agent exits after the single response). Now `'auto'` probes tmux availability and prefers it when available, since the tmux-backed path runs the interactive TUI inside a detached pane and survives multiple turns. The Settings UI labels and `enumDescriptions` were updated to reflect the new behavior.
+- **Tmux "duplicate session" on relaunch.** A chat-first relaunch with the previous tmux pane still alive (which is the whole point of tmux backing) hit `tmux new-session: duplicate session`. Now pre-checks `tmuxBacking.hasSession(name)` and reuses the existing pane with a friendly "Reusing existing…" message + kill command.
+- **GFM tables in agent responses.** Markdown tables rendered as unstyled HTML (no borders, no header bolding) because `sessionChat.css` had table rules scoped to `.msg-content` only. Extended the selectors to also cover `.msg-response`; added `width: max-content` / `max-width: 100%` for natural wrapping and `vertical-align: top` for cleaner multi-line cells.
+- **Commit-hash auto-link no longer false-positives on UUID fragments.** The 7-hex-char fragment of a UUID prompt id (e.g. `80998aa-42ec-…`) was being rendered as a clickable commit hash. Tightened `RE_COMMIT` to reject `-<hex>` adjacency in both lookbehind and lookahead.
+- **Commit hashes inside inline backticks are now clickable.** `` `b0dd753` `` in chat prose used to render as a plain code span; now it's a clickable button that opens the commit-details editor, mirroring the bare-hex behavior.
+- **Commit-diff click now works in monorepos / subfolder-open setups.** `openCommitDiff` used strict `r.rootUri.fsPath === folder.uri.fsPath` to find the git repo, which failed silently when the workspace folder ≠ repo root. Replaced with a 4-rule cascade: exact match → workspace-inside-repo → repo-inside-workspace → single-repo trust. Click → VS Code's native Commit Details editor opens for real instead of the terminal-fallback prompt.
+- **Bare-basename chat links fall back to Quick Open.** When the agent references a deeply-nested file by just its basename (e.g. `SessionPanelManager.ts` intending `src/views/sessions/SessionPanelManager.ts`), the workspace-relative open used to fail with "Could not open" toast. Now falls back to `workbench.action.quickOpen` prefilled with the basename — user picks from a fuzzy-matched list in 1-2 keystrokes.
+- **Vibeflow-doc filenames no longer render as broken file links.** Agent-emitted references like "Updated context: vscode-extension-v2-context.md" were being matched by the path tokenizer and rendered as clickable links that fail (the file lives in the VibeFlow backend, not the workspace). The path tokenizer now skips filenames matching known vibeflow conventions (`*-context.md`, `*-architecture.md`, `prd-*.md`, `arch-*.md`); they render as plain text instead.
+- **Hidden the agent-readable `_Agents:_` attachment footer from the visible transcript.** The footer is metadata for sibling agents, not the user — it leaked into the chat as a stylized italic block. Now stripped from the user-visible body while still flowing through to other agents via the wire payload.
+- **Reattach prompt no longer offers to spawn duplicates for tmux-backed sessions.** `SessionReattacher.detectPhantoms` checked the backend's live-session list but not tmux — so a tmux-backed session whose pane was still running looked like a phantom and the reattach prompt would have spawned a SECOND agent process for the same session id. Now skips phantoms whose `buildHeadlessTmuxName(...)` is reported alive by `tmuxBacking.hasSession`.
+- **Autonomous-agent hint suppressed in chat-first mode.** The "agent is running autonomously — won't reply to plain chat" stale-pending hint was added pre-WorkingIndicator era when `pending` looked like a bug. In chat-first mode the agent DOES reply via `response_text` — the hint is actively wrong there. Still shows in vanilla / vibeflow (terminal-driven) modes where it remains accurate.
+
+### Changed — Session Chat
+
+- **Side rail hidden in chat-first mode.** The right-side rail (Current Task + Activity ledger) is work-item-driven; chat-first agents don't claim work items, so the rail rendered empty placeholders. The entire rail + its "Show details / Hide details" toggle are now skip-rendered in chat-first mode and the grid collapses from `1fr 340px` to `1fr` so the chat fills the whole panel. Vanilla + vibeflow modes get the rail as before.
+- **Chat input snappier on long transcripts.** A perf triplet that targets the most likely lag sources without behavior change: (1) `React.memo` on `MessageBubble` (the transcript was rendered as a plain `messages.map(...)` with zero memoization, re-running `react-markdown` + `rehype-highlight` on every keystroke); (2) `useDeferredValue` on the messages array so the textarea draft paints before the transcript catch-up; (3) 200ms debounce on the `@mention` picker's host fetch so a fast typist doesn't fire one REST round-trip per keystroke. Bisectable per-commit if any of them regresses.
+
+### Added — Project Quality
+
+- **Vitest unit-test scaffold + first cohort.** 146 tests across 8 files — pure-function modules with the highest regression-risk (`serverUrl`, `nonce`, `html`, `personas`, `mentionParser`, `chatRenderer`, `feedStateController`, plus three exported helpers from `sessionCommands.ts`). `yarn test` runs in ~200ms; `yarn test:coverage` shows ≥90% branch on every self-contained cohort file. `yarn check` (the CI gate) now runs typecheck + lint + unit tests + the existing build-time security guards in one shot.
+- **Integration-test cohort via `@vscode/test-electron`.** New `src/test/integration/` runner + mocha bootstrap + activation suite. Asserts that the extension activates within 60s, every advertised `vibeflow.*` command registers, every advertised view registers, and the #1947 cached-serverUrl preflight survives the OK branch. `yarn test:integration` downloads a real VS Code build and runs the suite in headless Electron — deliberately separate from `yarn check` so the 30s cold-run + 210 MB download doesn't slow the pre-commit gate.
+
+### Internal — Architecture
+
+- **`sessionCommands.ts` split from 1472 LOC to 819 LOC.** Helpers + lifecycle commands extracted to focused modules under `src/commands/launchWizard/` (providers, project-status formatter, `.mcp.json` writer + git-ignore guard) and `src/commands/sessionLifecycle.ts` (kill/delete/restart/focus). All four new modules are under 400 LOC; lint went from 4 errors → 0/0. Pure mechanical extraction — zero behavior change. The `launchSession` wizard itself stayed put pending a future attended decomposition pass that needs an end-to-end wizard walkthrough harness.
+- **`mentionParser` dedup.** The webview-side `mentionParser.ts` was a near-verbatim copy of the host file; webview now re-exports from the host canonical via a 17-line shim (using the same cross-tree-relative import pattern the codebase already uses for `webview-ui/src/components/comments/types.ts` and similar). Eliminates the dual-life maintenance trap.
+
+### Added — Documentation
+
+- **User-facing documentation suite at `docs/user-guide/`** — 8 docs covering Getting Started, Feature Tour, Workflows & Flows (with Mermaid diagrams), Chat-First Mode, Settings Reference, Troubleshooting, FAQ, and a Glossary. Repo-root `README.md` now points at the suite index.
+
+### Chore
+
+- **`.vscodeignore` tightened.** Excludes the integration-test compile output (`out/**`), test configs (`tsconfig.test*.json`, `vitest.config.ts`), internal `TESTING.md`, and dev scripts (`scripts/**`). Cuts the published `.vsix` size roughly in half — internal test JS is no longer dead weight in the marketplace download.
+
 ## 1.0.3 (2026-05-22)
 
 Re-cut of 1.0.2 with customer-identifying mentions scrubbed from the release notes. Same code as 1.0.2; CHANGELOG copy is the only change.
