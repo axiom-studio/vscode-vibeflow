@@ -1,47 +1,36 @@
 import * as vscode from 'vscode';
-import { execSync, execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
 import type { DetectedProject, ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
-import type { VibeFlowProject, VibeFlowSession } from '../api/types.js';
+import type { VibeFlowProject } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
-import { createOrAttachWorktree, removeWorktreeAt } from './worktreeCommands.js';
+import { createOrAttachWorktree } from './worktreeCommands.js';
 import { StickyModels } from '../sessions/stickyModels.js';
-import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
-import { killTmuxSession } from '../sessions/tmuxState.js';
+import { recordLaunchMode } from '../sessions/launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 import { SessionStreamRegistry } from '../sessions/SessionStreamRegistry.js';
 import { getAdapter } from '../sessions/providerAdapters/index.js';
 import type { ProviderKey } from '../sessions/providerAdapters/types.js';
 import { TmuxBacking, buildHeadlessTmuxName } from '../sessions/tmuxBacking.js';
 import { detectTmuxAvailability } from '../sessions/tmuxAvailability.js';
-import { isBinaryOnPath, clearWhichBinaryCache } from '../utils/whichBinary.js';
+import { clearWhichBinaryCache } from '../utils/whichBinary.js';
+import {
+  isProviderInstalled,
+  providerBinaryDisplayName,
+  detectExternalAuth,
+  validateProviderKey,
+  buildProvidersWithAvailability,
+} from './launchWizard/providers.js';
+import { formatProjectStatusTag } from './launchWizard/projectStatus.js';
+import { ensureMcpConfig } from './launchWizard/mcpConfig.js';
 
-/**
- * Best-effort delete of `.vibeflow-session-{persona}` from the session's
- * working directory (or worktree path if set). Used by:
- *   - killAndForgetSession — explicit user request to wipe resume state
- *   - SessionReattacher's stale-sweep path — when liveSessionIds confirms
- *     the file points at a session_id the backend no longer knows
- *
- * No-op when the file is missing, so safe to call from any teardown.
- * Default kill paths intentionally do NOT call this — the file is the
- * session's resume hint and matches CLI semantics
- * (vibeflow-cli/internal/vibeflowcli/tui.go:619).
- */
-function removeSessionFile(persona: string, workDir: string): void {
-  if (!workDir || !persona) { return; }
-  const filePath = path.join(workDir, `.vibeflow-session-${persona}`);
-  try {
-    fs.rmSync(filePath, { force: true });
-  } catch {
-    // Permissions / already gone — nothing actionable from a kill path.
-  }
-}
+// Re-export the helpers covered by the P5-A test cohort so existing
+// callers (and `sessionCommands.test.ts`) keep working unchanged.
+export { detectExternalAuth, validateProviderKey, buildProvidersWithAvailability };
 
 // Two modes: Vanilla (per-action permission prompts) and VibeFlow (YOLO).
 // Auto mode (--enable-auto-mode) was a third option but Claude Code 2.1+
@@ -87,131 +76,6 @@ const ADVISORY_AGENTS = [
   { label: 'UX Designer', description: 'Design user experiences, wireframes', value: 'ux_designer', picked: false },
   { label: 'Customer', description: 'Request features, report issues', value: 'customer', picked: false },
 ];
-
-const PROVIDERS = [
-  { label: '$(hubot) Claude', description: 'claude', value: 'claude' },
-  { label: '$(code) Codex', description: 'codex', value: 'codex' },
-  { label: '$(sparkle) Gemini', description: 'gemini', value: 'gemini' },
-  { label: '$(terminal) Cursor', description: 'cursor', value: 'cursor' },
-];
-
-// Codicon per project status — mirrors FEATURE_STATUS_ICON in
-// views/projectItems/ProjectItemsTreeProvider.ts so the picker reads with
-// the same iconography users see in the sidebar. QuickPick descriptions
-// support the `$(codicon-name)` inline syntax; uppercasing + space
-// substitution gives the trailing token a "tag" feel without HTML/CSS.
-const PROJECT_STATUS_CODICON: Record<string, string> = {
-  in_review: 'search',
-  needs_pm_input: 'search',
-  needs_ux_input: 'search',
-  planning: 'zap',
-  ready_to_implement: 'checklist',
-  architecture_review_complete: 'checklist',
-  implementing: 'zap',
-  done: 'check',
-  archived: 'archive',
-  rejected: 'archive',
-};
-
-function formatProjectStatusTag(status: string): string {
-  const icon = PROJECT_STATUS_CODICON[status] ?? 'tag';
-  const label = (status || 'unknown').replace(/_/g, ' ').toUpperCase();
-  return `$(${icon}) ${label}`;
-}
-
-// Provider → CLI binary names. Mirrors `SettingsPanel.ts:392-398` (the same
-// table the Setup tab uses to render its availability dots). Cursor ships
-// as `cursor-agent` but some installers symlink it to `agent`; either name
-// satisfies the gate. Aligns with vibeflow-cli's `ProviderRegistry`
-// (`internal/vibeflowcli/provider.go:174-180 checkBinaryAvailable`).
-const PROVIDER_BINARIES: Record<string, string[]> = {
-  claude: ['claude'],
-  codex: ['codex'],
-  gemini: ['gemini'],
-  cursor: ['cursor-agent', 'agent'],
-};
-
-function isProviderInstalled(provider: string): boolean {
-  const names = PROVIDER_BINARIES[provider] ?? [provider];
-  return names.some(n => isBinaryOnPath(n));
-}
-
-// Canonical name to print in user-facing error messages.
-function providerBinaryDisplayName(provider: string): string {
-  return PROVIDER_BINARIES[provider]?.[0] ?? provider;
-}
-
-// Conservative minimum-length floor per env-token kind. Goal: trip on the
-// "user pasted `abc123` / hit Enter on an empty box" path without rejecting
-// the wide variety of real key formats (Google AI Studio keys are 39-char
-// `AIza…`; gcloud-issued OAuth tokens are longer and start differently;
-// MCP bearer tokens vary by provider). Floors are deliberately well below
-// any plausible real-key length.
-const PROVIDER_KEY_RULES: Record<string, { minLength: number; hint: string }> = {
-  GEMINI_API_KEY: { minLength: 20, hint: 'Real Gemini keys are typically 39 characters starting with "AIza".' },
-  MCP_TOKEN: { minLength: 16, hint: 'Real MCP bearer tokens are at least 16 characters.' },
-};
-
-/**
- * Detect provider credentials configured outside the VS Code secret store.
- * Called when the user hits Enter on an empty env-token prompt — empty
- * input doesn't mean "no auth", it often means "I have auth set up
- * elsewhere (gcloud, shell rc, ~/.gemini/credentials)." Returning a
- * non-null source lets the wizard proceed without setting `envVars[envName]`;
- * the spawned terminal inherits parent-process env via the existing
- * `vscode.window.createTerminal({ env })` merge semantics, so a shell
- * `GEMINI_API_KEY` survives the launch.
- *
- * Existence-only check — does NOT validate that the credential actually
- * works. The agent binary fails fast at startup if the credential is
- * bad, which is detectable via the #2175 stall sweep.
- */
-export function detectExternalAuth(envName: string): { source: string } | null {
-  if (process.env[envName]) {
-    return { source: `${envName} from your shell environment` };
-  }
-  if (envName === 'GEMINI_API_KEY') {
-    const credPath = path.join(os.homedir(), '.gemini', 'credentials');
-    if (fs.existsSync(credPath)) {
-      return { source: '~/.gemini/credentials (local Gemini auth)' };
-    }
-  }
-  return null;
-}
-
-export function validateProviderKey(envName: string, raw: string): { ok: true; value: string } | { ok: false; reason: string } {
-  // Match vibeflow-cli's paste hygiene (`tui_wizard.go:851`
-  // `strings.Trim(w.envTokenValue, "[]\"' ")`) — users frequently paste
-  // keys with surrounding quotes/brackets from `.env` files or docs.
-  const trimmed = raw.replace(/^[\s[\]'"]+|[\s[\]'"]+$/g, '');
-  if (!trimmed) {
-    return { ok: false, reason: 'Key is empty.' };
-  }
-  const rule = PROVIDER_KEY_RULES[envName];
-  if (rule && trimmed.length < rule.minLength) {
-    return { ok: false, reason: `That value is only ${trimmed.length} characters — too short to be a real key. ${rule.hint}` };
-  }
-  return { ok: true, value: trimmed };
-}
-
-// Build the PROVIDERS list with per-entry availability tagged in the
-// description. Picking a flagged provider still triggers the post-pick
-// abort below — the tag is informational so users see the constraint
-// before picking. Mirrors vibeflow-cli's `Available()` filter pattern
-// from `provider.go:81-88`, but renders unavailable rows instead of
-// hiding them so the user understands why their preferred provider is
-// missing rather than being silently presented a different list.
-export function buildProvidersWithAvailability(): { label: string; description: string; value: string; available: boolean }[] {
-  return PROVIDERS.map(p => {
-    const available = isProviderInstalled(p.value);
-    return {
-      label: p.label,
-      description: available ? p.description : `${p.description} · $(error) not installed`,
-      value: p.value,
-      available,
-    };
-  });
-}
 
 /**
  * Launch wizard. Mirrors vibeflow-cli's tui_wizard step set: Project →
@@ -655,7 +519,7 @@ export async function launchSession(
     try {
       const personaProviderKey = personaProviders.get(persona) ?? provider.value;
       const model = stickyModels.getModel(persona);
-      const binary = binaries[personaProviderKey] ?? 'claude';
+      const binary = AGENT_BINARIES[personaProviderKey] ?? 'claude';
 
       // Build the init prompt that tells the agent which persona and project to use.
       // For TUI mode this is sent to the terminal after the agent loads (~4s delay).
@@ -856,173 +720,11 @@ async function waitForAgentSessionThenOpenPanel(
   );
 }
 
-/**
- * Ensure .mcp.json exists in the workspace with the vibeflow MCP server config.
- * Claude reads this on startup to discover MCP servers. Without it, the agent
- * can't call session_init or any other VibeFlow MCP tool.
- *
- * SECURITY: this file embeds a Bearer token in args. Before writing, we verify
- * the workspace's .gitignore excludes .mcp.json (or self-heal it). If the
- * workspace is a git repo and we cannot ensure the file will be ignored, we
- * refuse to write rather than risk leaking the token in a future commit.
- */
-function ensureMcpConfig(workDir: string, serverUrl: string, client: VibeFlowClient): void {
-  const mcpPath = path.join(workDir, '.mcp.json');
-
-  // Token resolution: extension's own secret store first (Setup wizard /
-  // Settings → Connection), then CLI config as fallback. Reading from the
-  // CLI was the legacy single source — but extension users who never
-  // installed the CLI had no token and got a silent skip → no .mcp.json
-  // → spawned agent had zero VibeFlow MCP tools available. Preferring the
-  // extension's own token also fixes the auth-identity hijack: if CLI and
-  // extension are signed in as different users, the agent now boots with
-  // the extension's identity (the one the user actually sees in Agent
-  // Fleet) instead of silently inheriting the CLI's.
-  let token: string | undefined;
-  let tokenSource: 'extension' | 'cli-config' | undefined;
-  token = client.getToken();
-  if (token) {
-    tokenSource = 'extension';
-  } else {
-    try {
-      const cliConfigPath = path.join(os.homedir(), '.vibeflow-cli', 'config.yaml');
-      const cliContent = fs.readFileSync(cliConfigPath, 'utf-8');
-      const match = cliContent.match(/^api_token:\s*(.+)$/m);
-      if (match) {
-        token = match[1].trim();
-        tokenSource = 'cli-config';
-      }
-    } catch {
-      // No CLI config — handled by the loud failure below.
-    }
-  }
-
-  if (!token) {
-    vscode.window.showErrorMessage(
-      'VibeFlow: Cannot write .mcp.json — no API key found. Run **VibeFlow: Setup** to connect (or set up the CLI), then re-launch the session. Without .mcp.json the agent has no access to VibeFlow tools (session_init, wait_for_work, etc.).',
-    );
-    return;
-  }
-
-  // SECURITY GUARD: refuse to write if the workspace is a git repo and we
-  // cannot guarantee .mcp.json will be ignored.
-  if (!ensureMcpJsonIsGitIgnored(workDir)) {
-    console.warn('[VibeFlow] Skipping .mcp.json write: cannot ensure file is gitignored.');
-    vscode.window.showWarningMessage(
-      'VibeFlow: Skipped writing .mcp.json — could not confirm the file is gitignored. ' +
-      'Add `.mcp.json` to your workspace .gitignore or configure the MCP server globally instead.',
-    );
-    return;
-  }
-
-  // Read existing .mcp.json if present
-  let existing: Record<string, unknown> = {};
-  try {
-    const content = fs.readFileSync(mcpPath, 'utf-8');
-    existing = JSON.parse(content);
-  } catch {
-    // File doesn't exist or invalid JSON — will create fresh
-  }
-
-  const mcpServers = (existing.mcpServers ?? {}) as Record<string, unknown>;
-
-  // Only write if vibeflow isn't already configured
-  if (mcpServers.vibeflow) { return; }
-
-  mcpServers.vibeflow = {
-    command: 'npx',
-    args: [
-      '-y',
-      'mcp-remote',
-      `${serverUrl}/rest/v1/vibeflow/mcp`,
-      '--header',
-      `Authorization: Bearer ${token}`,
-    ],
-  };
-
-  existing.mcpServers = mcpServers;
-
-  try {
-    fs.writeFileSync(mcpPath, JSON.stringify(existing, null, 2), { encoding: 'utf-8', mode: 0o600 });
-    console.log(`[VibeFlow] Wrote .mcp.json with vibeflow server config (token source: ${tokenSource})`);
-  } catch {
-    // Non-fatal — agent can still use global config
-  }
-}
-
-/**
- * Ensures `.mcp.json` is excluded from git in the given workspace.
- *
- * Returns true if either:
- *   - the workspace is not a git repo (no .git, no .gitignore — write is fine),
- *   - git itself reports `.mcp.json` is ignored (handles all the wrinkles
- *     including anchored paths, double-star globs, parent-dir gitignore,
- *     `.git/info/exclude`, and global `core.excludesFile`), or
- *   - we successfully appended `.mcp.json` to .gitignore AND git confirms
- *     the post-append state still ignores it (defense against a parent
- *     `!.mcp.json` re-include line that beats our local rule).
- *
- * Returns false if the workspace looks like a git repo but we couldn't
- * confirm the file will be ignored. Caller refuses to write the token.
- *
- * History: a prior hand-rolled matcher stripped leading `!` from gitignore
- * lines before pattern-matching, so a `!.mcp.json` re-include line was
- * mis-read as a positive ignore — and the function returned true ("safe to
- * write") for monorepos using the common `*` + `!.mcp.json` idiom, leaking
- * the bearer token on the next `git add .`. Issue #1948 / AXIOMCLOUD-…
- * filed by Sophie 2026-05-07. Fix: delegate to `git check-ignore`, which
- * is the canonical implementation of gitignore semantics.
- */
-function ensureMcpJsonIsGitIgnored(workDir: string): boolean {
-  const gitignorePath = path.join(workDir, '.gitignore');
-  const gitDirPath = path.join(workDir, '.git');
-
-  const isGitRepo = fs.existsSync(gitDirPath) || fs.existsSync(gitignorePath);
-  if (!isGitRepo) { return true; }
-
-  if (isPathIgnoredByGit(workDir, '.mcp.json')) { return true; }
-
-  // Not currently ignored — append the rule and re-verify with git.
-  try {
-    let existing = '';
-    try { existing = fs.readFileSync(gitignorePath, 'utf-8'); } catch { /* will create */ }
-    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
-    fs.appendFileSync(
-      gitignorePath,
-      `${prefix}\n# Added by VibeFlow — contains a Bearer token, do not commit.\n.mcp.json\n`,
-      'utf-8',
-    );
-  } catch {
-    return false;
-  }
-
-  // Re-check: a parent `.gitignore` with `!.mcp.json` would beat our local
-  // append, and git's last-matching-rule semantics mean we wouldn't know
-  // without re-asking git itself. Without this re-verify, the post-append
-  // path could still be a token leak.
-  return isPathIgnoredByGit(workDir, '.mcp.json');
-}
-
-/**
- * Authoritative "is this path ignored?" check via `git check-ignore`. Exit 0
- * means ignored; exit 1 means not ignored; anything else (git missing, not
- * a repo, etc.) we conservatively treat as "cannot confirm" → not ignored,
- * so the caller refuses to write the token.
- */
-function isPathIgnoredByGit(workDir: string, relPath: string): boolean {
-  try {
-    execFileSync('git', ['check-ignore', '-q', '--', relPath], {
-      cwd: workDir,
-      stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Provider binary mapping (matches CLI defaults from config.go DefaultConfig)
-const binaries: Record<string, string> = {
+// Provider binary mapping (matches CLI defaults from config.go DefaultConfig).
+// Single-name lookup used at launch + restart — distinct from PROVIDER_BINARIES
+// in launchWizard/providers.ts, which lists ALL acceptable names per provider
+// for availability detection (cursor accepts both `cursor-agent` and `agent`).
+export const AGENT_BINARIES: Record<string, string> = {
   claude: 'claude',
   codex: 'codex',
   gemini: 'gemini',
@@ -1040,7 +742,7 @@ const binaries: Record<string, string> = {
  * Any other sessionMode string falls through to vanilla so a stale
  * config value (e.g. 'auto' from an older install) doesn't crash launch.
  */
-function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
+export function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
   const isYolo = sessionMode === 'vibeflow' || sessionMode === 'chat_first';
   if (!isYolo) {
     return binary;
@@ -1059,362 +761,6 @@ function buildLaunchCommand(binary: string, provider: string, sessionMode: strin
   return binary;
 }
 
-/**
- * Focus the terminal for a session. Opens hidden terminals.
- */
-export function focusTerminal(
-  terminalRegistry: TerminalRegistry,
-  session: VibeFlowSession,
-): void {
-  const found = terminalRegistry.focus(session.persona_key, session.git_branch);
-  if (!found) {
-    vscode.window.showInformationMessage(
-      `VibeFlow: No local terminal for ${session.persona_name ?? session.persona_key}. This session may be running on another machine.`,
-    );
-  }
-}
-
-/**
- * Kill a session with confirmation. Disposes the local terminal AND
- * deletes the backend record — anything less leaves the user looking
- * at a "killed" status badge while the agent process is still running
- * locally, which is confusing and can also cause stale write attempts
- * against the backend (the agent's next heartbeat 404s).
- *
- * Sidecar file is preserved by default for session-ID resume on next
- * launch (matches CLI semantics — see vibeflow-cli/internal/vibeflowcli/
- * tui.go:619). Use killAndForgetSession when the user explicitly wants
- * to wipe the resume hint.
- */
-export async function killSession(
-  client: VibeFlowClient,
-  session: VibeFlowSession,
-  sessionsProvider: SessionsTreeProvider,
-  terminalRegistry: TerminalRegistry,
-): Promise<void> {
-  return killSessionInternal(client, session, sessionsProvider, terminalRegistry, { forget: false });
-}
-
-/**
- * Kill a session AND wipe its `.vibeflow-session-{persona}` sidecar so
- * the next launch starts fresh. Matches the CLI's `CleanupStaleSession`
- * concept but invoked explicitly by the user. The default Kill action
- * preserves the sidecar to enable session_id resume; this one is the
- * "forget everything, start over" variant.
- */
-export async function killAndForgetSession(
-  client: VibeFlowClient,
-  session: VibeFlowSession,
-  sessionsProvider: SessionsTreeProvider,
-  terminalRegistry: TerminalRegistry,
-): Promise<void> {
-  return killSessionInternal(client, session, sessionsProvider, terminalRegistry, { forget: true });
-}
-
-interface KillOptions {
-  /** When true, also delete the .vibeflow-session-{persona} sidecar. */
-  forget: boolean;
-}
-
-async function killSessionInternal(
-  client: VibeFlowClient,
-  session: VibeFlowSession,
-  sessionsProvider: SessionsTreeProvider,
-  terminalRegistry: TerminalRegistry,
-  opts: KillOptions,
-): Promise<void> {
-  const personaLabel = session.persona_name ?? session.persona_key;
-  const prompt = opts.forget
-    ? `Kill ${personaLabel} session on ${session.git_branch} AND forget its resume state? Next launch will start a fresh session.`
-    : `Kill ${personaLabel} session on ${session.git_branch}? The session id stays on disk so the next launch can resume.`;
-  const button = opts.forget ? 'Kill & Forget' : 'Kill Session';
-  const confirm = await vscode.window.showWarningMessage(
-    prompt,
-    { modal: true },
-    button,
-  );
-  if (confirm !== button) { return; }
-
-  // Tear down the agent's local resources first — even if the backend
-  // kill fails, we don't want to leave the agent process alive after
-  // the user explicitly asked to kill it.
-  //
-  // Two custody models to handle:
-  //   - Extension-launched terminals live in TerminalRegistry. Disposing
-  //     the registered terminal sends Ctrl-C-then-close to the shell.
-  //   - CLI-launched agents live under tmux on the `-L vibeflow` socket;
-  //     TerminalRegistry has no record of them. Without an explicit
-  //     tmux kill-session, the pane keeps running with an orphan claude
-  //     process inside that 404s against the now-deleted backend record.
-  //     This is exactly the "vibeflow-cli shows a disconnected entry
-  //     after extension-side kill" bug.
-  //
-  // Both calls are no-ops when nothing's there, so it's safe to run
-  // both unconditionally — cheaper than threading a "which mode launched
-  // this session" flag through the call site.
-  terminalRegistry.kill(session.persona_key, session.git_branch);
-  killTmuxSession(session.agent_type ?? '', session.session_id);
-  // Headless tmux-backing (todo #1615) lives on a different socket
-  // (`vibeflow-headless`). Names follow `buildHeadlessTmuxName` —
-  // we recompute here from (persona, branch, workDir) so we don't
-  // need to thread another parameter through every kill call site.
-  // TmuxBacking is stateless (verb dispatcher only); local instance.
-  // Best-effort; no-op when the session was launched any other way.
-  const workDir = session.git_worktree_path
-    || session.working_directory
-    || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    || '';
-  if (workDir) {
-    const headlessName = buildHeadlessTmuxName(session.persona_key, session.git_branch, workDir);
-    void new TmuxBacking().kill(headlessName);
-  }
-
-  // Sidecar handling depends on whether the user picked "Kill" or
-  // "Kill & Forget". Default Kill preserves the sidecar to enable
-  // session_id resume on next launch — matches CLI semantics
-  // (vibeflow-cli/internal/vibeflowcli/tui.go:619 — "Session file is
-  // intentionally kept so the session ID can be reused on next
-  // launch.") Kill & Forget wipes the sidecar so the next launch
-  // starts a fresh session_id, mirroring the CLI's
-  // CleanupStaleSession path.
-  //
-  // Stale sidecars (kept by Kill, but whose session_id the backend
-  // doesn't know about anymore) are swept on the next window load by
-  // SessionReattacher.detectPhantoms via the liveSessionIds cross-check.
-  if (opts.forget) {
-    const workDir = session.git_worktree_path || session.working_directory;
-    removeSessionFile(session.persona_key, workDir);
-  }
-
-  let backendKillSucceeded = false;
-  try {
-    await client.killSession(session.session_id);
-    backendKillSucceeded = true;
-    const msg = opts.forget
-      ? 'VibeFlow: Session killed and forgotten'
-      : 'VibeFlow: Session killed';
-    vscode.window.showInformationMessage(msg);
-  } catch (err) {
-    // Local terminal is already gone; surface the backend error so the
-    // user knows the server record may need manual cleanup, but don't
-    // pretend the kill failed entirely.
-    const msg = err instanceof Error ? err.message : String(err);
-    vscode.window.showErrorMessage(`VibeFlow: Local terminal killed but backend record cleanup failed — ${msg}`);
-  }
-
-  // Cleanup-on-kill: remove the session's worktree iff backend kill
-  // succeeded, the session was running in a worktree, and the user opted
-  // in via `vibeflow.worktree.cleanupOnKill`. Skipped on backend failure
-  // because we'd be removing the worktree of a still-active session
-  // record, which is worse than leaving the worktree in place.
-  if (backendKillSucceeded && session.git_worktree_path) {
-    await maybeCleanupWorktree(session);
-  }
-
-  sessionsProvider.refresh();
-}
-
-/**
- * Honor `vibeflow.worktree.cleanupOnKill` after a successful kill:
- *   - `always` → unconditional `git worktree remove --force`
- *   - `ask`    → modal prompt, only removes on confirm
- *   - `never`  → noop
- *
- * Run from the session's launch workspace folder, not the worktree
- * itself — `git worktree remove` cannot remove the cwd it's running in.
- */
-async function maybeCleanupWorktree(session: VibeFlowSession): Promise<void> {
-  const cleanup = vscode.workspace.getConfiguration('vibeflow')
-    .get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask');
-  if (cleanup === 'never') { return; }
-
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceRoot) { return; }
-  // If the user happens to have opened the worktree itself as their
-  // workspace, fall back to the working_directory the session recorded.
-  const cwd = workspaceRoot === session.git_worktree_path
-    ? (session.working_directory || workspaceRoot)
-    : workspaceRoot;
-
-  if (cleanup === 'ask') {
-    const confirm = await vscode.window.showWarningMessage(
-      `Delete the worktree this session ran in?\n\n${session.git_worktree_path}`,
-      { modal: true },
-      'Delete Worktree',
-    );
-    if (confirm !== 'Delete Worktree') { return; }
-  }
-
-  try {
-    removeWorktreeAt(cwd, session.git_worktree_path!);
-    vscode.window.showInformationMessage(`VibeFlow: Worktree ${session.git_worktree_path} removed`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    vscode.window.showErrorMessage(`VibeFlow: Failed to remove worktree — ${msg}`);
-  }
-}
-
-/**
- * Remove an inactive session record from the project. The active path is
- * killSession (which both kills the local terminal and deletes the server
- * record); this is the lighter-weight cleanup for sessions whose terminals
- * are already gone but whose server records linger.
- */
-export async function deleteSession(
-  client: VibeFlowClient,
-  session: VibeFlowSession,
-  sessionsProvider: SessionsTreeProvider,
-): Promise<void> {
-  const persona = session.persona_name ?? session.persona_key;
-  const confirm = await vscode.window.showWarningMessage(
-    `Delete the ${persona} session record on ${session.git_branch}? This removes it from the Agent Fleet permanently.`,
-    { modal: true },
-    'Delete',
-  );
-  if (confirm !== 'Delete') { return; }
-
-  try {
-    // killSession already calls DELETE /sessions/{id} on the backend; we
-    // just give it a different prompt so the wording matches the user's
-    // intent ("delete the record" vs "kill the running agent").
-    await client.killSession(session.session_id);
-    // Defensive tmux kill — this command is gated on inactiveSession in
-    // the menu, so the pane SHOULD already be dead. But "ghost" state
-    // (backend active + tmux dead) and similar edge cases mean we run
-    // it anyway. No-op when nothing matches.
-    killTmuxSession(session.agent_type ?? '', session.session_id);
-    // Sidecar is intentionally preserved — same reasoning as
-    // killSession: it's session-ID memory for resume, not process state.
-    vscode.window.showInformationMessage(`VibeFlow: ${persona} session removed`);
-    sessionsProvider.refresh();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    vscode.window.showErrorMessage(`VibeFlow: Failed to delete session — ${msg}`);
-  }
-}
-
-/**
- * Copy a session id to the clipboard. Useful for filing bug reports,
- * pasting into Cloud UI's session detail view, or the agent's
- * `session_init(session_id: ...)` recovery path.
- */
-export async function copySessionId(session: VibeFlowSession): Promise<void> {
-  await vscode.env.clipboard.writeText(session.session_id);
-  vscode.window.showInformationMessage(`VibeFlow: Copied session id ${session.session_id}`);
-}
-
-/**
- * Restart a session — kill the existing record + terminal, then spawn a
- * fresh terminal for the same persona / provider / branch / workdir so
- * the agent re-enters its polling loop without the user having to walk
- * the wizard again.
- *
- * The agent itself calls `session_init` from inside the new terminal
- * (via the standard init prompt that launchSession also uses), so the
- * extension still doesn't touch session_init directly — same constraint
- * documented in the P3-B notes, just executed via the agent binary
- * instead of bouncing the user back to "Launch Session" manually.
- */
-export async function restartSession(
-  client: VibeFlowClient,
-  session: VibeFlowSession,
-  detector: ProjectDetector,
-  sessionsProvider: SessionsTreeProvider,
-  terminalRegistry: TerminalRegistry,
-  stickyModels: StickyModels,
-  context: ContextProxy,
-): Promise<void> {
-  const personaLabel = session.persona_name ?? session.persona_key;
-  const confirm = await vscode.window.showWarningMessage(
-    `Restart ${personaLabel} session on ${session.git_branch}?`,
-    { modal: true },
-    'Restart',
-  );
-  if (confirm !== 'Restart') { return; }
-
-  const project = detector.getCachedProject();
-  if (!project) {
-    vscode.window.showErrorMessage('VibeFlow: No project cached. Run "VibeFlow: Setup" first.');
-    return;
-  }
-
-  try {
-    await client.killSession(session.session_id);
-  } catch (err) {
-    // Backend kill failure shouldn't block the respawn — the local
-    // terminal might already be gone and the user just wants the agent
-    // back. Log and continue; the new session_init will reconcile.
-    console.warn('[VibeFlow] killSession failed during restart, continuing:', err);
-  }
-
-  // Resolve respawn parameters from the session record + config.
-  // Prefer the session's worktree path so a worktree-launched agent
-  // restarts inside the worktree, not the main workspace.
-  const config = vscode.workspace.getConfiguration('vibeflow');
-  const provider = session.agent_type || config.get<string>('defaultProvider', 'claude');
-  const persona = session.persona_key;
-  const branch = session.git_branch;
-  const workDir = session.git_worktree_path
-    || session.working_directory
-    || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    || '';
-  if (!workDir) {
-    vscode.window.showErrorMessage('VibeFlow: cannot resolve a working directory for restart.');
-    return;
-  }
-
-  // Resolution order for sessionMode:
-  //   1. The mode we recorded when this persona was originally launched
-  //      on this branch+workDir (so YOLO stays YOLO and vanilla stays
-  //      vanilla — no surprise downgrade or upgrade).
-  //   2. vibeflow.session.reattachMode config — applies when the launch
-  //      record is missing (e.g. session created before this tracking
-  //      shipped, or workspace state was wiped).
-  //   3. 'vanilla' as the safety floor.
-  const recordedMode = lookupLaunchMode(context, persona, branch, workDir);
-  const sessionMode = recordedMode
-    ?? config.get<string>('session.reattachMode', 'vanilla');
-  // Chat-First sessions force `'none'` (hidden terminal) regardless of the
-  // workspace `session.terminalMode` setting — chat is the only surface.
-  const workspaceTerminalMode = config.get<TerminalMode>('session.terminalMode', 'hybrid');
-  const terminalMode: TerminalMode = sessionMode === 'chat_first' ? 'none' : workspaceTerminalMode;
-  const serverUrl = config.get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
-
-  const binary = binaries[provider] ?? 'claude';
-  const command = buildLaunchCommand(binary, provider, sessionMode);
-  const model = stickyModels.getModel(persona);
-  const initPrompt = `Initialize a vibeflow session for project ${project.projectName} with persona ${persona} and follow the agent prompt. Call session_init with project_name: ${project.projectName}, persona: ${persona}, git_branch: ${branch} and begin Phase 1 immediately.`;
-
-  try {
-    terminalRegistry.create({
-      persona,
-      branch,
-      provider,
-      workDir,
-      command,
-      env: {
-        VIBEFLOW_SERVER_URL: serverUrl,
-        VIBEFLOW_PERSONA: persona,
-        VIBEFLOW_BRANCH: branch,
-        VIBEFLOW_MODEL: model,
-      },
-      terminalMode,
-      initPrompt,
-    });
-    // Refresh the launch-mode record. Usually it's already there from
-    // the original launch; this keeps it accurate when a config-driven
-    // fallback resolved the mode (e.g. when the original launch
-    // pre-dates this tracking).
-    void recordLaunchMode(context, persona, branch, workDir, sessionMode);
-    vscode.window.showInformationMessage(
-      `VibeFlow: Restarted ${personaLabel} on ${branch}.`,
-    );
-    sessionsProvider.refresh();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    vscode.window.showErrorMessage(`VibeFlow: Failed to respawn terminal — ${msg}`);
-  }
-}
 
 /**
  * Resolve `vibeflow.session.headlessBacking` to a concrete
