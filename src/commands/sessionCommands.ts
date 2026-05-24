@@ -1417,17 +1417,27 @@ export async function restartSession(
 async function resolveHeadlessBacking(): Promise<'tmux' | 'vscode'> {
   const config = vscode.workspace.getConfiguration('vibeflow');
   const setting = config.get<string>('session.headlessBacking', 'auto');
-  if (setting !== 'tmux') {
-    return 'vscode';
-  }
+  // Explicit 'vscode' = opt out of multi-turn — the user wants the agent
+  // tied to this IDE window's lifetime (one-shot `claude --print`).
+  if (setting === 'vscode') { return 'vscode'; }
+  // 'auto' (default) or explicit 'tmux' → prefer tmux when available.
+  // tmux-backed chat-first runs `claude --dangerously-skip-permissions
+  // <initPrompt>` (interactive TUI, NOT --print) inside a detached
+  // tmux pane — the agent stays alive and keeps polling wait_for_work,
+  // which is what makes multi-turn chat actually work. The vscode-backed
+  // path uses claude --print which exits after one assistant response;
+  // it's the right choice only when the user wants that lifecycle
+  // explicitly. See issue #2306 for the full diagnosis.
   const probe = await detectTmuxAvailability();
-  if (!probe.available) {
+  if (probe.available) { return 'tmux'; }
+  // Only warn on explicit 'tmux' — silent fallback on 'auto' is
+  // expected (Windows, or Unix without tmux installed).
+  if (setting === 'tmux') {
     vscode.window.showWarningMessage(
       'VibeFlow: tmux backing requested but tmux is not available on this system. Falling back to a hidden VS Code terminal. Install tmux or change vibeflow.session.headlessBacking to suppress this warning.',
     );
-    return 'vscode';
   }
-  return 'tmux';
+  return 'vscode';
 }
 
 /**
