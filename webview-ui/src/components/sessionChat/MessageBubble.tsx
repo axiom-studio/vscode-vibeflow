@@ -220,6 +220,16 @@ function markdownComponents(diffView: 'unified' | 'split'): Components {
       if (lang === 'diff' || lang === 'patch') {
         return <DiffBlock text={childrenToString(children)} mode={diffView} />;
       }
+      // Inline `code` (no language class) — recurse through enhanceLeafText so
+      // commit hashes / file paths wrapped in backticks (e.g. `` `abc1234` ``)
+      // become clickable buttons. Without this they render as opaque monospace
+      // and click does nothing. Issue #2334.
+      //
+      // Fenced code with a known language stays opaque so rehype-highlight's
+      // syntax coloring isn't interrupted by token buttons inside source code.
+      if (!lang) {
+        return <code className={className} {...props}>{enhanceLeafText(children, chatTokenDispatch)}</code>;
+      }
       return <code className={className} {...props}>{children}</code>;
     },
     pre({ children, ...props }) {
