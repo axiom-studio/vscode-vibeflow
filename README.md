@@ -106,6 +106,17 @@ Natural-language commands in Copilot Chat: `/status`, `/create`, `/review`, `/su
 - Chat attachments validated host-side: declared MIME re-verified against magic bytes; executables (PE/ELF/Mach-O/Java class) rejected unconditionally; filenames sanitized; 32MB cap; binary cache cleared on logout
 - Vulnerability disclosure: see [SECURITY.md](https://github.com/axiom-studio/vscode-vibeflow/blob/main/SECURITY.md)
 
+## Development
+
+```bash
+yarn install            # install host + webview-ui deps
+yarn build              # security guards + webview build + esbuild bundle
+yarn test               # vitest unit tests (host pure-function modules)
+yarn check              # typecheck + lint + test + security-guards
+```
+
+See [TESTING.md](TESTING.md) for the test-layer model (unit / build-guard / future-integration), the policy on stubs, and what's deliberately not covered yet.
+
 ## Support
 
 - **Report a bug or request a feature** → [github.com/axiom-studio/vscode-vibeflow/issues](https://github.com/axiom-studio/vscode-vibeflow/issues) (also reachable in-IDE via `VibeFlow: Report an Issue…`)
