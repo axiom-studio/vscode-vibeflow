@@ -429,19 +429,26 @@ export function SessionChatView() {
               </div>
             </div>
           </div>
-          <button
-            className="chat-header-toggle"
-            onClick={() => setRailOpen(o => !o)}
-            aria-label={railOpen ? 'Collapse side rail' : 'Expand side rail'}
-          >
-            <span>{railOpen ? 'Hide details' : 'Show details'}</span>
-            <span
-              className="chat-header-toggle-chevron"
-              style={{ transform: railOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}
+          {/*
+            Show/Hide details toggle: only render when the side rail
+            itself is rendered (i.e. NOT in chat-first mode). See the
+            <SideRail> render guard below + issue #2329 for the design call.
+          */}
+          {meta.sessionMode !== 'chat_first' && (
+            <button
+              className="chat-header-toggle"
+              onClick={() => setRailOpen(o => !o)}
+              aria-label={railOpen ? 'Collapse side rail' : 'Expand side rail'}
             >
-              <ChevronIcon size={11} />
-            </span>
-          </button>
+              <span>{railOpen ? 'Hide details' : 'Show details'}</span>
+              <span
+                className="chat-header-toggle-chevron"
+                style={{ transform: railOpen ? 'rotate(0deg)' : 'rotate(180deg)' }}
+              >
+                <ChevronIcon size={11} />
+              </span>
+            </button>
+          )}
         </div>
 
         {hasMore && (
@@ -629,14 +636,22 @@ export function SessionChatView() {
         </div>
       </div>
 
-      {/* Side rail (25%) */}
-      <SideRail
-        meta={meta}
-        logs={logs}
-        personaAvatarUrl={personaAvatar}
-        onStop={() => vscode.postMessage({ type: 'stop' })}
-        onRefresh={() => vscode.postMessage({ type: 'refresh' })}
-      />
+      {/*
+        Side rail (25%) — hidden entirely in chat-first mode (#2329).
+        The rail surfaces work-item state (persona / current task /
+        activity ledger) that chat-first agents don't populate; the
+        toggle button above is also hidden so there's nothing left to
+        toggle. Vanilla + vibeflow YOLO sessions get the rail as before.
+      */}
+      {meta.sessionMode !== 'chat_first' && (
+        <SideRail
+          meta={meta}
+          logs={logs}
+          personaAvatarUrl={personaAvatar}
+          onStop={() => vscode.postMessage({ type: 'stop' })}
+          onRefresh={() => vscode.postMessage({ type: 'refresh' })}
+        />
+      )}
     </div>
   );
 }
