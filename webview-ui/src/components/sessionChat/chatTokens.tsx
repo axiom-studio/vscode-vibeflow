@@ -45,6 +45,32 @@ import { Fragment, type ReactNode, type MouseEvent } from 'react';
 // never by `-<hex>` on either side. Issue #2326.
 const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
 const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
+
+/**
+ * Blocklist for the path tokenizer (#2329 follow-up via user prompt
+ * 20588c4d).
+ *
+ * The agent frequently references vibeflow-backend documents in chat
+ * by bare filename — e.g. "Updated context: vscode-extension-v2-context.md".
+ * Those files live in the vibeflow backend, NOT in the workspace, so
+ * matching them with RE_PATH renders a clickable button that fails
+ * (openWorkspaceRelativePath can't find the file). Worse, it MISLEADS
+ * the user — they click expecting the context viewer and get nothing.
+ *
+ * Until the agent emits structured tokens (`[context:N "title"]`,
+ * `[document:N "title"]`, etc. — Layer B per the design discussion),
+ * the safer behavior is to leave these filenames as plain text rather
+ * than render a broken clickable. The text is still readable; users
+ * navigate to the matching context via the Documents/Contexts tree
+ * for now.
+ *
+ * Extend this regex when new naming conventions surface. Today:
+ *   - `*-context.md`         — vibeflow project / feature contexts
+ *   - `*-architecture.md`    — architecture docs (if used)
+ *   - `prd-*.md` / `prd_*.md` — product requirements docs
+ *   - `arch-*.md` / `arch_*.md` — abbreviated architecture docs
+ */
+const RE_PATH_VIBEFLOW_DOC_BLOCKLIST = /(?:-context\.md|-architecture\.md|^prd[-_]|^arch[-_])/i;
 /**
  * Chat attachment token (#1670): `[asset:123 "filename.ext"]`.
  *
@@ -151,6 +177,18 @@ function scanString(text: string, dispatch: ChatTokenDispatch): ReactNode {
   while ((m = pathRe.exec(text)) !== null) {
     if (m[0].length === 0) { pathRe.lastIndex++; continue; }
     const pathStr = m[1];
+    // Skip vibeflow-backend doc filenames — they aren't workspace files
+    // and clicking them would mislead the user. See RE_PATH_VIBEFLOW_DOC_BLOCKLIST
+    // header for the convention list and the longer Layer-A vs Layer-B
+    // design note.
+    //
+    // We use `basename` (drop everything up to the last `/`) so a
+    // legitimate workspace file at e.g. `docs/notes-context.md` would
+    // also be skipped — that's the conservative call for now; a user
+    // who really does have a `-context.md` in their workspace can still
+    // open it via the Explorer.
+    const basename = pathStr.replace(/^.*[/\\]/, '');
+    if (RE_PATH_VIBEFLOW_DOC_BLOCKLIST.test(basename)) { continue; }
     const line = m[2] ? Number(m[2]) : undefined;
     const column = m[3] ? Number(m[3]) : undefined;
     const raw = m[0];
