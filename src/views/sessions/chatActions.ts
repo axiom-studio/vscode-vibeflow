@@ -38,7 +38,41 @@ export async function openCommitDiff(hash: string): Promise<void> {
   if (gitExt) {
     try {
       const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate())?.getAPI?.(1);
-      const repo = api?.repositories?.find((r: { rootUri: { fsPath: string } }) => r.rootUri.fsPath === folder.uri.fsPath);
+      // Repo match: previous strict `r.rootUri.fsPath === folder.uri.fsPath`
+      // failed silently for monorepos / subfolder-open setups (e.g.
+      // user opens `src/` of a parent repo; workspace folder fsPath
+      // doesn't equal the repo rootUri fsPath). Then the path fell
+      // through to the terminal fallback prompt, which the user
+      // experiences as "click did nothing useful". User-reported via
+      // agent-prompt e8f02fd4 (2026-05-24).
+      //
+      // Tolerant match:
+      //   1. Exact match (was the original behavior).
+      //   2. Workspace folder is a subdir of the repo (user opened a
+      //      subfolder). Most common monorepo case.
+      //   3. The repo is a subdir of the workspace (multi-root workspaces).
+      //   4. If there's exactly ONE repo registered, use it regardless.
+      const repos = api?.repositories ?? [];
+      const workspaceFs = folder.uri.fsPath;
+      let repo = repos.find((r: { rootUri: { fsPath: string } }) => r.rootUri.fsPath === workspaceFs);
+      if (!repo) {
+        // Case 2: workspace is under the repo (workspaceFs starts with rootUri/).
+        repo = repos.find((r: { rootUri: { fsPath: string } }) => {
+          const rootFs = r.rootUri.fsPath;
+          return workspaceFs === rootFs || workspaceFs.startsWith(rootFs + '/') || workspaceFs.startsWith(rootFs + '\\');
+        });
+      }
+      if (!repo) {
+        // Case 3: repo is under the workspace.
+        repo = repos.find((r: { rootUri: { fsPath: string } }) => {
+          const rootFs = r.rootUri.fsPath;
+          return rootFs.startsWith(workspaceFs + '/') || rootFs.startsWith(workspaceFs + '\\');
+        });
+      }
+      if (!repo && repos.length === 1) {
+        // Case 4: single registered repo, no path overlap — trust it.
+        repo = repos[0];
+      }
       if (repo) {
         await vscode.commands.executeCommand('git.viewCommit', repo, hash);
         return;
