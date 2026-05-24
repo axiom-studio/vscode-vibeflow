@@ -5,7 +5,7 @@ import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
-import type { ChatPrompt } from './sessionChatTypes';
+import type { ChatPrompt, SessionMode } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
 import { PersonaAvatar } from './PersonaAvatar';
 import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
@@ -25,6 +25,15 @@ interface Props {
   personaAvatarUrl?: string;
   /** User's preferred inline diff layout, threaded down from SessionChatView. */
   diffView: 'unified' | 'split';
+  /**
+   * Per-launch session mode (#2329). Used to suppress the
+   * "agent is autonomous, won't reply to plain chat" stale-pending
+   * hint in chat-first mode where the agent DOES reply via
+   * `response_text`. The hint is correct ONLY for vanilla / vibeflow
+   * (terminal-driven) sessions; for chat-first it would actively
+   * mislead the user.
+   */
+  sessionMode: SessionMode;
   onRespond?: (promptId: string, text: string) => void;
 }
 
@@ -53,7 +62,7 @@ interface Props {
  * it non-stable, this memo will degrade silently to "always re-render";
  * worth a `useCallback` audit if profile data ever points back here.
  */
-function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, onRespond }: Props) {
+function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessionMode, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -61,13 +70,22 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, onRes
   const time = formatTime(msg.created_at);
 
   // User → agent prompts can sit in `pending` indefinitely when the
-  // agent is autonomous: it picks up work items via `wait_for_work` and
-  // doesn't reply to conversational messages unless they match a tracked
-  // todo / issue. Without a hint, the `pending` badge reads like a bug
-  // ("the agent ignored me"). Surface a subtle explainer once the message
-  // has been pending past PENDING_HINT_THRESHOLD_MS.
+  // agent is autonomous AND terminal-driven (vanilla / vibeflow):
+  // it picks up work items via `wait_for_work` and doesn't reply to
+  // conversational messages unless they match a tracked todo / issue.
+  // Without a hint, the `pending` badge reads like a bug ("the agent
+  // ignored me"). Surface a subtle explainer once the message has been
+  // pending past PENDING_HINT_THRESHOLD_MS.
+  //
+  // **Suppressed in chat-first mode** (#2329 follow-up): chat-first
+  // agents DO reply via `response_text` — that's the whole point of
+  // chat-first. The hint would actively mislead the user there. The
+  // WorkingIndicator ("Working... 1m 23s") in the message header is
+  // already sufficient signal that the agent is alive and processing;
+  // a chat-first user just needs to wait, not "create a work item".
   const showStalePendingHint = isUser
     && msg.status === 'pending'
+    && sessionMode !== 'chat_first'
     && isStale(msg.created_at, PENDING_HINT_THRESHOLD_MS);
 
   return (
