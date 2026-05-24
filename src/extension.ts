@@ -293,7 +293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     client,
     vscode.Uri.joinPath(context.globalStorageUri, 'asset-cache'),
   );
-  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry, assetCache);
+  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry, assetCache, contextProxy);
   const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider);
 
   // --- Activity poller (started when connected) ---

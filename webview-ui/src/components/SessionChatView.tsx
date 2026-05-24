@@ -679,6 +679,11 @@ function readInitialDiffView(): 'unified' | 'split' {
 function readInitialMeta(): SessionMeta {
   const ds = document.body.dataset;
   const status = (ds.vfStatus as SessionMeta['status']) || 'inactive';
+  const rawMode = ds.vfSessionMode;
+  const sessionMode: SessionMeta['sessionMode'] =
+    rawMode === 'chat_first' || rawMode === 'vibeflow' || rawMode === 'vanilla'
+      ? rawMode
+      : 'vanilla';
   return {
     sessionId: ds.vfSessionId ?? '',
     personaName: ds.vfPersonaName ?? 'Agent',
@@ -688,6 +693,7 @@ function readInitialMeta(): SessionMeta {
     status: status === 'active' || status === 'stale' || status === 'inactive' ? status : 'inactive',
     taskTitle: ds.vfTaskTitle ?? '',
     taskStatus: ds.vfTaskStatus ?? '',
+    sessionMode,
   };
 }
 
