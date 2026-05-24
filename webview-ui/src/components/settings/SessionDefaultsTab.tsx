@@ -27,15 +27,15 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
 
       <Card
         title="Headless Backing (chat-first)"
-        description="How chat-first / headless agent sessions are run under the hood. tmux backing lets the agent survive an IDE restart and be observed from any terminal via `tmux -L vibeflow-headless attach -t <name>`. Default uses a hidden VS Code terminal — simpler, but the agent dies with the IDE window."
+        description="How chat-first / headless agent sessions are run under the hood. tmux backing keeps the agent alive across multiple chat turns and lets it survive an IDE restart (attachable from any terminal via `tmux -L vibeflow-headless attach -t <name>`). The VS Code terminal backing only handles a single turn before the agent exits — pick it only if you want the agent's lifetime tied to this IDE window."
       >
         <RadioGroup
           name="sessionHeadlessBacking"
           value={data.sessionHeadlessBacking ?? 'auto'}
           options={[
-            { value: 'auto', label: 'Auto (default)', desc: 'Hidden VS Code terminal — tmux backing is opt-in via the "tmux" option' },
-            { value: 'tmux', label: 'tmux (Unix only)', desc: 'Agent survives IDE restart. Ignored on Windows; falls back to VS Code if tmux is missing' },
-            { value: 'vscode', label: 'VS Code terminal', desc: 'Always use a hidden VS Code terminal — explicit form of the default' },
+            { value: 'auto', label: 'Auto (recommended)', desc: 'tmux when available (Mac / Linux with tmux installed) — required for multi-turn chat. Falls back to a hidden VS Code terminal otherwise' },
+            { value: 'tmux', label: 'tmux (Unix only)', desc: 'Always use tmux. Agent survives IDE restart and supports multi-turn chat. Ignored on Windows; warns if tmux is missing' },
+            { value: 'vscode', label: 'VS Code terminal', desc: 'Force a hidden VS Code terminal — single-turn only, agent dies with the IDE window' },
           ]}
           onChange={v => onUpdate('session.headlessBacking', v)}
         />

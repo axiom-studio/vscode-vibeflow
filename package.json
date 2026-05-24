@@ -762,11 +762,11 @@
             "vscode"
           ],
           "enumDescriptions": [
-            "Use a hidden VS Code terminal (default — tmux backing is opt-in via 'tmux')",
+            "tmux when available (Mac / Linux with tmux installed), otherwise a hidden VS Code terminal. Recommended — tmux is the only backing that supports multi-turn chat today.",
             "Always use tmux (Unix only; ignored on Windows). Agent survives IDE restart; attach via `tmux -L vibeflow-headless attach -t <name>`",
-            "Always use a hidden VS Code terminal — chat-first agents are tied to this IDE window's lifetime"
+            "Always use a hidden VS Code terminal — chat-first agent is tied to this IDE window's lifetime AND only handles a single chat turn before exiting"
           ],
-          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' is the recommended default and keeps agents tied to this IDE window. 'tmux' is opt-in — it lets agents survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal."
+          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' picks tmux when available (multi-turn chat works) and falls back to a hidden VS Code terminal (single-turn only). 'tmux' lets the agent survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal. 'vscode' forces the IDE-tied single-turn backing."
         },
         "vibeflow.chat.diffView": {
           "type": "string",
