@@ -459,20 +459,33 @@
   text-decoration: none;
 }
 .msg-content a:hover { text-decoration: underline; }
-.msg-content table {
+/*
+ * Markdown table styling for BOTH the user-prompt body (.msg-content)
+ * AND the agent-response body (.msg-response). Previously only .msg-content
+ * had table rules, so agent responses with GFM tables rendered as
+ * unstyled HTML — visible as a wall of unaligned text. Issue #2325.
+ */
+.msg-content table,
+.msg-response table {
   border-collapse: collapse;
   margin: 8px 0;
+  width: max-content;
+  max-width: 100%;
 }
-.msg-content th, .msg-content td {
+.msg-content th, .msg-content td,
+.msg-response th, .msg-response td {
   border: 1px solid var(--vscode-panel-border);
   padding: 6px 10px;
   text-align: left;
+  vertical-align: top;
 }
-.msg-content th {
+.msg-content th,
+.msg-response th {
   background: var(--vscode-list-hoverBackground);
   font-weight: 600;
 }
-.msg-content hr {
+.msg-content hr,
+.msg-response hr {
   border: none;
   border-top: 1px solid var(--vscode-panel-border);
   margin: 16px 0;
