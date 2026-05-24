@@ -1,10 +1,10 @@
 # Feature Tour
 
-**Who this is for**: You've finished [Getting Started](01-getting-started.md), the extension is installed, you're signed in, and you have a project picked. Now you want to know what every button, view, panel, and command actually *does* before you go deeper.
+**Who this is for**: You've finished [Getting Started](getting-started.md), the extension is installed, you're signed in, and you have a project picked. Now you want to know what every button, view, panel, and command actually *does* before you go deeper.
 
 **TL;DR**: VibeFlow ships four sidebar TreeViews, one bottom-panel webview, six editor-area panels, a chat participant, a status bar quartet, and 43 commands. This page walks you through them in the order you'll hit them.
 
-> Jargon in **bold** is defined in [the glossary](07-glossary.md).
+> Jargon in **bold** is defined in [the glossary](glossary.md).
 
 ---
 
@@ -193,7 +193,7 @@ Open by clicking a row in the [Documents view](#documents-view).
 
 The header carries a version badge and a **Done** button. Settings persist as soon as you change them. There's no Save button.
 
-Open via the gear icon in any view's title bar, or run **VibeFlow: Settings**. For exhaustive per-setting documentation see [05-settings-reference.md](05-settings-reference.md).
+Open via the gear icon in any view's title bar, or run **VibeFlow: Settings**. For exhaustive per-setting documentation see [settings-reference.md](settings-reference.md).
 
 ### Dashboard panel
 
@@ -269,6 +269,6 @@ Other useful keys: `Cmd/Ctrl+Shift+V R` runs **Respond to Prompt**, `Cmd/Ctrl+Sh
 
 Every setting on the Settings panel has a dotted config key under `vibeflow.*` (e.g. `vibeflow.session.terminalMode`, `vibeflow.worktree.cleanupOnKill`). The Settings UI is the friendly face. The raw keys are available via VS Code's standard `Cmd/Ctrl+,` settings editor too. Search for `vibeflow.` to see them all.
 
-For a per-setting reference (exhaustive descriptions, defaults, enum values, when to change each), see [the settings reference](05-settings-reference.md). For workflow-level context on *when* you'd reach for a given setting, see [the workflows guide](03-workflows-and-flows.md). For terminology, [the glossary](07-glossary.md).
+For a per-setting reference (exhaustive descriptions, defaults, enum values, when to change each), see [the settings reference](settings-reference.md). For workflow-level context on *when* you'd reach for a given setting, see [the workflows guide](workflows-and-flows.md). For terminology, [the glossary](glossary.md).
 
-That's the tour. From here, [the workflows guide](03-workflows-and-flows.md) walks you through what the pieces look like in motion.
+That's the tour. From here, [the workflows guide](workflows-and-flows.md) walks you through what the pieces look like in motion.
