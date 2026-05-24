@@ -4,7 +4,7 @@
 
 **TL;DR**: Six end-to-end flows that cover ~95% of VibeFlow usage. Sequence and state diagrams in Mermaid (GitHub and VS Code render them natively).
 
-> See [07-glossary.md](07-glossary.md) for any unfamiliar term.
+> See [glossary.md](glossary.md) for any unfamiliar term.
 
 ---
 
@@ -44,7 +44,7 @@ sequenceDiagram
 
 **What you see**: walkthrough, then "Sign in" link, then three Quick Picks, then a "Connected" toast. About 90 seconds total.
 
-**What can go wrong**: an invalid API key returns 401 from the server. The wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl` (security guard from issue #1947). See [06-troubleshooting.md](06-troubleshooting.md) for symptoms and fixes.
+**What can go wrong**: an invalid API key returns 401 from the server. The wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl` (security guard from issue #1947). See [troubleshooting.md](troubleshooting.md) for symptoms and fixes.
 
 ---
 
@@ -339,9 +339,9 @@ You spend ~35 minutes of human attention; the agents do ~75 minutes of work in p
 
 ## What this doc deliberately doesn't cover
 
-- **Compliance findings** workflow: see the **Compliance** panel and [04-chat-first-mode.md](04-chat-first-mode.md) for the Security Lead persona's tools.
+- **Compliance findings** workflow: see the **Compliance** panel and [chat-first-mode.md](chat-first-mode.md) for the Security Lead persona's tools.
 - **Pull request creation**: see `VibeFlow: Create Pull Request` and the branch-review status workflow. Single command; not a multi-step flow worth diagramming.
-- **CLI handoff** (when `vibeflow.cli.enabled=true`): relevant for ~5% of users; out of the common-flow scope. See [05-settings-reference.md](05-settings-reference.md).
+- **CLI handoff** (when `vibeflow.cli.enabled=true`): relevant for ~5% of users; out of the common-flow scope. See [settings-reference.md](settings-reference.md).
 - **Document comments + persona handoff** workflow: the comments feature is its own subsystem; see the Documents view's right-click menu.
 
 ---

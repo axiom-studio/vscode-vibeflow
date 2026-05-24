@@ -4,7 +4,7 @@
 
 **TL;DR**: Most failures fall into one of three buckets: auth (API key, server URL), session plumbing (terminal, tmux, PID locks), or chat-first quirks (single-turn vs multi-turn). The fixes below are ordered by how often they hit users, most common first. If nothing here matches, jump to [Still stuck?](#still-stuck) at the bottom.
 
-> Term unfamiliar? See [07-glossary.md](07-glossary.md). Wondering *why* something works the way it does? The flow diagrams in [03-workflows-and-flows.md](03-workflows-and-flows.md) explain the underlying choreography.
+> Term unfamiliar? See [glossary.md](glossary.md). Wondering *why* something works the way it does? The flow diagrams in [workflows-and-flows.md](workflows-and-flows.md) explain the underlying choreography.
 
 ---
 
@@ -14,7 +14,7 @@
 
 **Fix**: Open the Command Palette (`Cmd/Ctrl+Shift+P`) and run **VibeFlow: Setup**. Walk through the three steps (Server URL, API Key, Project). The new key is stored in VS Code's Secrets API and overrides the old one immediately. No reload needed.
 
-> If you've used VibeFlow before and the wizard says "key looks valid" but the sidebar still shows nothing, hit the refresh icon at the top of **Agent Fleet** or run **VibeFlow: Refresh**. See the onboarding sequence in [section 1 of the flows doc](03-workflows-and-flows.md#1-new-user-onboarding-first-5-minutes) for the full handshake.
+> If you've used VibeFlow before and the wizard says "key looks valid" but the sidebar still shows nothing, hit the refresh icon at the top of **Agent Fleet** or run **VibeFlow: Refresh**. See the onboarding sequence in [section 1 of the flows doc](workflows-and-flows.md#1-new-user-onboarding-first-5-minutes) for the full handshake.
 
 ---
 
@@ -48,7 +48,7 @@ Save, then re-run **VibeFlow: Refresh**. Re-running **VibeFlow: Setup** is not r
 
 **What it means**: There's no agent session currently running for the project you're viewing. This is the post-issue #1963 wording. Older builds showed a confusing blank state; the new copy tells you why and gives you the next action.
 
-**Fix**: Click **Launch Session** in the notification (it opens the Launch Wizard), or click **Refresh** if you *just* started a session and it hasn't registered yet. The wizard flow is documented in [section 2 of the flows doc](03-workflows-and-flows.md#2-launch-a-session-the-most-common-action).
+**Fix**: Click **Launch Session** in the notification (it opens the Launch Wizard), or click **Refresh** if you *just* started a session and it hasn't registered yet. The wizard flow is documented in [section 2 of the flows doc](workflows-and-flows.md#2-launch-a-session-the-most-common-action).
 
 ---
 
@@ -71,7 +71,7 @@ After dismissal, re-launch and watch the terminal output. That's where the under
 
 **Fix**: You have two options.
 
-- **Switch backing to tmux (recommended)**. Open **VibeFlow: Settings** and set `vibeflow.session.headlessBacking` to `tmux`. Re-launch the chat-first session. Requires `tmux` on PATH (`brew install tmux` on macOS; pre-installed on most Linux). See the chat-first sequence diagram in [section 3b](03-workflows-and-flows.md#3b-chat-first-session--chat-driven) for why per-turn respawn needs a persistent backing.
+- **Switch backing to tmux (recommended)**. Open **VibeFlow: Settings** and set `vibeflow.session.headlessBacking` to `tmux`. Re-launch the chat-first session. Requires `tmux` on PATH (`brew install tmux` on macOS; pre-installed on most Linux). See the chat-first sequence diagram in [section 3b](workflows-and-flows.md#3b-chat-first-session--chat-driven) for why per-turn respawn needs a persistent backing.
 - **Live with single-turn**. Leave the backing at `vscode` and re-launch the session before each new message. Tedious but works without tmux.
 
 > The default is `auto`, which picks tmux when available. If you're hitting this on auto, tmux isn't on your PATH. Install it or switch to explicit `tmux` once installed.
@@ -82,7 +82,7 @@ After dismissal, re-launch and watch the terminal output. That's where the under
 
 **What it means**: This is intentional, not a bug (issue #2304). Vanilla agents read their instructions from work items they pull via `wait_for_work`. The Session Chat panel is a viewport, not the input. The input box is disabled with an upfront banner.
 
-**Fix**: Click **Convert to work item** (the button next to the disabled input). It opens an ad-hoc Quick Pick that creates a todo or issue with your typed text as the description, then the agent picks it up on its next poll. See [section 3a](03-workflows-and-flows.md#3a-vanilla-session--terminal-driven) for the full vanilla-vs-chat-first split.
+**Fix**: Click **Convert to work item** (the button next to the disabled input). It opens an ad-hoc Quick Pick that creates a todo or issue with your typed text as the description, then the agent picks it up on its next poll. See [section 3a](workflows-and-flows.md#3a-vanilla-session--terminal-driven) for the full vanilla-vs-chat-first split.
 
 ---
 
