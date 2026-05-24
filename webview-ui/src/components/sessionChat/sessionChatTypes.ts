@@ -29,6 +29,20 @@ export interface LogEntry {
   src?: string;
 }
 
+/**
+ * Per-launch session mode (#2329). Mirrors the host `SESSION_MODES`
+ * value set in `src/commands/sessionCommands.ts`. The webview uses
+ * this to drive mode-aware UI (today: hides Current Task + Activity
+ * rail blocks when `'chat_first'` because those blocks read from
+ * work-item state that chat-first agents never populate).
+ *
+ * Fallback for sessions whose mode is unknown is always `'vanilla'`
+ * (host-side `resolveSessionMode`) — preserves pre-#2329 behavior
+ * for older launches and reattached-without-launchModeStore-entry
+ * sessions.
+ */
+export type SessionMode = 'vanilla' | 'vibeflow' | 'chat_first';
+
 export interface SessionMeta {
   sessionId: string;
   personaName: string;
@@ -38,6 +52,8 @@ export interface SessionMeta {
   status: 'active' | 'stale' | 'inactive';
   taskTitle: string;
   taskStatus: string;
+  /** Per-launch session mode (#2329). Defaults to 'vanilla'. */
+  sessionMode: SessionMode;
 }
 
 // One row of the @mention picker (todo #1614). Host resolves the
