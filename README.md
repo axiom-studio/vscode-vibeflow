@@ -12,6 +12,10 @@ Backed by the VibeFlow platform: features, todos, issues, governance, attachment
 
 If you already use [`vibeflow-cli`](https://github.com/axiom-studio/vibeflow-cli), the extension reads `~/.vibeflow-cli/config.yaml` on startup — or click **Install Latest** in Settings → CLI Interface to download the binary in one step.
 
+## Full user guide
+
+A complete user-facing guide lives in [`docs/user-guide/`](docs/user-guide/README.md) — eight documents covering install, every view and command, end-to-end flow diagrams, chat-first mode deep dive, full settings reference, troubleshooting, glossary, and FAQ. Read it when you want more than the highlights.
+
 ## Features
 
 ### Agent fleet
