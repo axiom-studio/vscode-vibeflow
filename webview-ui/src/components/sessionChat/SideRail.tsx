@@ -56,20 +56,35 @@ export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Pr
         </div>
       </div>
 
-      {/* Current task — collapsible */}
-      <CurrentTaskCard taskTitle={meta.taskTitle} taskStatus={meta.taskStatus} />
+      {/*
+        Current task + Activity blocks are work-item-driven (Current Task
+        reads `meta.taskTitle` seeded from `session.last_message`; Activity
+        reads `logs` populated from `collectSessionLogs` which scans for
+        work items claimed by this session). Chat-first agents don't claim
+        work items — they run from chat-panel `createPrompt` messages — so
+        both blocks render empty placeholders that just take up space.
+        Skip-rendering them (NOT just hiding via CSS) in chat-first mode
+        keeps the rail compact: persona header at top, Actions at bottom.
+        See issue #2329 for the design call.
+      */}
+      {meta.sessionMode !== 'chat_first' && (
+        <>
+          {/* Current task — collapsible */}
+          <CurrentTaskCard taskTitle={meta.taskTitle} taskStatus={meta.taskStatus} />
 
-      {/* Progress ledger */}
-      <div className="rail-section rail-ledger-section">
-        <div className="rail-section-title">Activity</div>
-        <div className="rail-logs">
-          {recentLogs.length === 0 ? (
-            <div className="rail-logs-empty">No activity yet.</div>
-          ) : recentLogs.map((entry, i) => (
-            <ActivityRow key={`${i}-${entry.time ?? ''}`} entry={entry} />
-          ))}
-        </div>
-      </div>
+          {/* Progress ledger */}
+          <div className="rail-section rail-ledger-section">
+            <div className="rail-section-title">Activity</div>
+            <div className="rail-logs">
+              {recentLogs.length === 0 ? (
+                <div className="rail-logs-empty">No activity yet.</div>
+              ) : recentLogs.map((entry, i) => (
+                <ActivityRow key={`${i}-${entry.time ?? ''}`} entry={entry} />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Actions */}
       <div className="rail-section rail-actions">

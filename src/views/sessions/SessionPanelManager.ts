@@ -11,6 +11,17 @@ import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types
 import { openCommitDiff, openWorkspaceRelativePath } from './chatActions.js';
 import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
+import type { ContextProxy } from '../../core/ContextProxy.js';
+import { lookupLaunchMode } from '../../sessions/launchModeStore.js';
+
+/**
+ * Session-mode union recognized by the webview. Mirrors the `SESSION_MODES`
+ * value set in `src/commands/sessionCommands.ts` (vanilla / vibeflow /
+ * chat_first). `vanilla` is the safe fallback for sessions that pre-date
+ * the launchModeStore tracking (e.g. reattached after a workspace state
+ * wipe) so existing behavior is preserved.
+ */
+type SessionMode = 'vanilla' | 'vibeflow' | 'chat_first';
 
 /**
  * Single log entry as the webview consumes it. Mirrors the shape we already
@@ -182,6 +193,16 @@ export class SessionPanelManager implements vscode.Disposable {
      * the wiring in extension.ts always passes one in.
      */
     private readonly assetCache?: AssetCache,
+    /**
+     * Workspace ContextProxy (#2329). Used to look up the per-launch
+     * session mode via launchModeStore so the React side rail can hide
+     * Current Task + Activity blocks for chat-first sessions (those
+     * blocks are work-item-driven and chat-first agents don't claim
+     * work items). Optional for backward compatibility with call sites
+     * that don't have a ContextProxy handy — fallback resolves all
+     * sessions as `vanilla`, preserving pre-#2329 behavior.
+     */
+    private readonly contextProxy?: ContextProxy,
   ) {
     if (this.streamRegistry) {
       this.streamSubscriptions.push(
@@ -393,10 +414,11 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   private async refreshPanel(session: VibeFlowSession, panel: vscode.WebviewPanel): Promise<void> {
+    const sessionMode = this.resolveSessionMode(session);
     if (this.projectId === undefined) {
       this.postToWebview(panel, {
         type: 'update',
-        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting()),
+        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting(), sessionMode),
       });
       return;
     }
@@ -407,7 +429,7 @@ export class SessionPanelManager implements vscode.Disposable {
     ]);
     this.postToWebview(panel, {
       type: 'update',
-      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting()),
+      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting(), sessionMode),
     });
   }
 
@@ -1232,6 +1254,33 @@ export class SessionPanelManager implements vscode.Disposable {
     return merged.slice(0, 100).reverse();
   }
 
+  /**
+   * Resolve a session's launch mode (#2329) by looking up the
+   * launchModeStore. Falls back to `'vanilla'` if the store has no
+   * entry — covers sessions launched before the tracking shipped,
+   * sessions where workspace state was wiped, and call sites that
+   * didn't pass a ContextProxy. Preserves pre-#2329 behavior in
+   * every fallback case (rail blocks visible).
+   */
+  private resolveSessionMode(session: VibeFlowSession): SessionMode {
+    if (!this.contextProxy) { return 'vanilla'; }
+    const workDir = session.git_worktree_path
+      || session.working_directory
+      || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      || '';
+    if (!workDir) { return 'vanilla'; }
+    const recorded = lookupLaunchMode(
+      this.contextProxy,
+      session.persona_key,
+      session.git_branch,
+      workDir,
+    );
+    if (recorded === 'chat_first' || recorded === 'vibeflow' || recorded === 'vanilla') {
+      return recorded;
+    }
+    return 'vanilla';
+  }
+
   private getHtml(webview: vscode.Webview, session: VibeFlowSession): string {
     const nonce = getNonce();
     const personaName = session.persona_name ?? session.persona_key;
@@ -1243,6 +1292,7 @@ export class SessionPanelManager implements vscode.Disposable {
       ? new Date(session.last_message_at).toLocaleTimeString()
       : '';
     const diffView = this.readDiffViewSetting();
+    const sessionMode = this.resolveSessionMode(session);
     // Avatar portraits live on the axiomcloud server (same source the
     // dashboard's agent topology uses). Pass the base URL through so the
     // chat header / message bubbles render the persona portrait instead
@@ -1292,6 +1342,7 @@ export class SessionPanelManager implements vscode.Disposable {
   data-vf-task-status="${escapeHtml(taskStatus)}"
   data-vf-diff-view="${escapeHtml(diffView)}"
   data-vf-server-url="${escapeHtml(serverUrl)}"
+  data-vf-session-mode="${escapeHtml(sessionMode)}"
 >
   <div id="root"></div>
   <script nonce="${nonce}" src="${scriptUri}"></script>
@@ -1329,6 +1380,7 @@ function toReactUpdatePayload(
   session: VibeFlowSession,
   logs: PanelLog[],
   chatDiffView: 'unified' | 'split',
+  sessionMode: SessionMode,
 ): {
   session: {
     sessionId: string;
@@ -1339,6 +1391,7 @@ function toReactUpdatePayload(
     status: 'active' | 'stale' | 'inactive';
     taskTitle: string;
     taskStatus: string;
+    sessionMode: SessionMode;
   };
   logs: { text: string; time?: string; src?: string }[];
   chatDiffView: 'unified' | 'split';
@@ -1358,6 +1411,7 @@ function toReactUpdatePayload(
       taskStatus: session.last_message_at
         ? new Date(session.last_message_at).toLocaleTimeString()
         : '',
+      sessionMode,
     },
     logs: logs.map(l => ({
       text: l.content,
