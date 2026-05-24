@@ -5,6 +5,7 @@ import { TerminalRegistry, type TerminalMode } from './TerminalRegistry.js';
 import { personaDisplayName } from './personas.js';
 import { lookupLaunchMode, recordLaunchMode } from './launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
+import { TmuxBacking, buildHeadlessTmuxName } from './tmuxBacking.js';
 
 export interface PhantomSession {
   persona: string;
@@ -36,6 +37,9 @@ export class SessionReattacher {
     const rootPath = workspaceFolder.uri.fsPath;
     const phantoms: PhantomSession[] = [];
     const prefix = '.vibeflow-session-';
+    // Cache one TmuxBacking instance for the whole sweep — stateless
+    // verb dispatcher, cheap to construct but pointless to recreate.
+    const tmuxBacking = new TmuxBacking();
 
     try {
       const files = await fs.promises.readdir(rootPath);
@@ -63,6 +67,31 @@ export class SessionReattacher {
           if (liveSessionIds && !liveSessionIds.has(sessionId)) {
             try { await fs.promises.rm(filePath, { force: true }); } catch { /* ignore */ }
             continue;
+          }
+
+          // Skip phantoms whose tmux pane is still alive — the agent
+          // is still running there (tmux's whole point per #1615), so
+          // reattaching would spawn a DUPLICATE process polling against
+          // the same session_id. The existing `killSession` path
+          // already uses this same hasSession + buildHeadlessTmuxName
+          // pair (post-#2324) to avoid duplicate spawns; the reattach
+          // path now honors it too. User-reported via agent-prompt
+          // 317f7014 (2026-05-24): "if tmux sessions are running — is
+          // this required?"
+          //
+          // Naming: buildHeadlessTmuxName is deterministic across IDE
+          // restarts as long as (persona, branch, workDir) match, so a
+          // tmux pane launched in the previous window resolves to the
+          // same name we'd compute now. Best-effort — hasSession
+          // returning false (tmux unavailable, no pane) just falls
+          // through to the existing "is a phantom" treatment.
+          try {
+            const headlessName = buildHeadlessTmuxName(persona, gitBranch, rootPath);
+            const alive = await tmuxBacking.hasSession(headlessName);
+            if (alive) { continue; }
+          } catch {
+            // hasSession throws on tmux-not-installed / Windows / etc.
+            // Treat as "not alive" — preserve pre-#317f7014 behavior.
           }
 
           phantoms.push({ persona, sessionId, filePath });
