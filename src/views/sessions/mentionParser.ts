@@ -1,11 +1,10 @@
 /**
- * Pure-function helpers for the @mention autocomplete picker
- * (todo #1614 — Chat-First Mode #5).
+ * Pure-function helpers for the @mention autocomplete picker.
  *
- * Same dual-life discipline as `chatRenderer.ts`: host-side TS
- * is the source of truth; the webview's nonced `<script>` inlines
- * a JS port of these primitives because CSP forbids cross-process
- * module loading at runtime.
+ * Canonical location for BOTH host and webview. The webview's
+ * `mentionParser.ts` shim re-exports from here so changes land
+ * in one place. Webview-ui/tsconfig.json `include` adds this
+ * path so the webview Vite/tsc graph picks it up.
  *
  * Wire-shape parity with axiomcloud: sent prompts embed mentions
  * as `[<type>:<id> "<name>"]`. axiomcloud's existing
@@ -143,10 +142,9 @@ export function formatMentionToken(kind: MentionKind, id: string | number, name:
 export function applyMention(value: string, state: MentionState, token: string): { next: string; caret: number } {
   if (!state.active) { return { next: value, caret: value.length }; }
   const before = value.slice(0, state.tokenStart);
-  // Compute the END of the @-token in the source string. We need
-  // to walk forward from `tokenStart + 1` until whitespace or
-  // string-end so we don't accidentally swallow what's after the
-  // cursor when the user has already typed past it.
+  // Walk forward from `tokenStart + 1` to find the end of the
+  // @-token so we don't swallow content the user has typed past
+  // the cursor.
   let end = state.tokenStart + 1;
   while (end < value.length) {
     const ch = value[end];
@@ -154,13 +152,9 @@ export function applyMention(value: string, state: MentionState, token: string):
     end++;
   }
   const after = value.slice(end);
-  const trailing = (after.length === 0 || /^[ \n\t]/.test(after)) ? '' : ' ';
-  const inserted = token + trailing;
-  const next = before + inserted + (trailing === '' && after.length > 0 ? ' ' : '') + after.replace(/^/, '');
-  // Simpler: compute the caret cleanly.
-  const simpleNext = before + token + (after.startsWith(' ') ? '' : ' ') + after;
+  const next = before + token + (after.startsWith(' ') ? '' : ' ') + after;
   const caret = before.length + token.length + (after.startsWith(' ') ? 0 : 1);
-  return { next: simpleNext, caret };
+  return { next, caret };
 }
 
 /**

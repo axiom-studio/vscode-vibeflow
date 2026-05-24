@@ -20,6 +20,7 @@
   "include": [
     "src",
     "../src/core/webviewMessages.ts",
-    "../src/api/types.ts"
+    "../src/api/types.ts",
+    "../src/views/sessions/mentionParser.ts"
   ]
 }
