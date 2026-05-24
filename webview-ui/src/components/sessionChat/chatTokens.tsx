@@ -38,7 +38,12 @@ import { Fragment, type ReactNode, type MouseEvent } from 'react';
  * which supports lookbehind groups. Vite's esbuild target also
  * preserves them. Safe to use.
  */
-const RE_COMMIT = /(?<![#A-Za-z0-9])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9])/g;
+// Hyphens added to both lookbehind and lookahead so UUID fragments
+// (e.g. `80998aa-42ec-4d21-b8c4-6989d27...` prompt ids) don't have
+// their 7-hex-char segments rendered as clickable commit hashes.
+// A real commit hash in prose is bounded by punctuation / whitespace,
+// never by `-<hex>` on either side. Issue #2326.
+const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
 const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
 /**
  * Chat attachment token (#1670): `[asset:123 "filename.ext"]`.
