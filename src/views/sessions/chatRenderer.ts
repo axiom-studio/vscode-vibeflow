@@ -69,7 +69,11 @@ const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{
  * literal in code). Length floor of 7 matches `git --abbrev=7`
  * minimum default; we accept up to 40 (full sha1).
  */
-const RE_COMMIT = /(?<![#A-Za-z0-9])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9])/g;
+// Hyphens in lookbehind/lookahead so UUID fragments (e.g. prompt ids
+// like `80998aa-42ec-4d21-b8c4-6989d27...`) don't have their 7-hex
+// segments mis-recognized as commit hashes. Mirrors the parallel
+// fix in `chatTokens.tsx:41` for the webview-side copy. Issue #2326.
+const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
 
 /**
  * Tokenize a chat message body into structured segments.
