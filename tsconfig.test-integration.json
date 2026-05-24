@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "outDir": "out/test",
+    "rootDir": "src",
+    "sourceMap": true,
+    "types": ["mocha", "node"],
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": [
+    "src/test/**/*.ts",
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "out",
+    "webview-ui"
+  ]
+}
