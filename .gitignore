@@ -18,6 +18,7 @@ Thumbs.db
 
 # IDE
 .idea/
+.claude/
 
 # Session files (local agent state)
 .vibeflow-session-*
