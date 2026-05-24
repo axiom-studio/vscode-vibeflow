@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useDeferredValue, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import { MessageBubble } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
@@ -50,6 +50,14 @@ export function SessionChatView() {
   const initialMeta = readInitialMeta();
   const [meta, setMeta] = useState<SessionMeta>(initialMeta);
   const [messages, setMessages] = useState<ChatPrompt[]>([]);
+  // `useDeferredValue` (#2330): lets React paint a textarea keystroke
+  // immediately and re-render the transcript on the NEXT idle paint
+  // when there are many messages. The textarea's draft state lives in
+  // `draft` (set in the textarea's onChange) — that stays priority;
+  // the transcript-list re-render lags behind by one frame, which is
+  // imperceptible for the user typing but eliminates the dropped-frame
+  // path when the message list is long.
+  const deferredMessages = useDeferredValue(messages);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -439,7 +447,17 @@ export function SessionChatView() {
               personaColor={personaColor}
             />
           ) : (
-            messages.map(msg => (
+            /*
+              Transcript rendering is the hot loop on every keystroke into
+              the chat textarea (each <MessageBubble> runs react-markdown
+              + rehype-highlight even with memo if msg refs change). React 19
+              `useDeferredValue` marks the messages prop as low-priority so
+              the textarea paint can run first; the transcript catches up on
+              the next idle paint. Memo on MessageBubble (see fix 1/3) keeps
+              the deferred re-render cheap when only a few bubbles changed.
+              Refs #2330 (chat input lag investigation).
+            */
+            deferredMessages.map(msg => (
               <MessageBubble
                 key={msg.id}
                 msg={msg}
