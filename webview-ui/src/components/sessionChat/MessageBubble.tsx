@@ -110,7 +110,7 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
             rehypePlugins={[rehypeHighlight]}
             components={markdownComponents(diffView)}
           >
-            {msg.prompt_text || ''}
+            {stripAgentFooter(msg.prompt_text || '')}
           </ReactMarkdown>
         </div>
 
@@ -163,6 +163,34 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
       </div>
     </div>
   );
+}
+
+/**
+ * Strip the host-emitted agent-targeted footer from the user-visible
+ * chat. SessionPanelManager.ts::annotateChatTextForAgent appends a
+ * single italic line at the end of any message that has `[asset:N]`
+ * tokens, instructing the LLM how to fetch the file:
+ *
+ *   _Agents: fetch via the `list_attachments` MCP tool with
+ *   entity_type='project' ... or directly via /rest/v1/vibeflow/assets/<id>/download ..._
+ *
+ * That line is useful to the agent on the other side of `createPrompt`
+ * (it tells the LLM what tool to call) but reads like leaked instructions
+ * in the user's own transcript. The host keeps emitting the full footer
+ * so the agent still sees it; this filter only affects the webview render.
+ *
+ * The content of the footer contains `_` characters (in `list_attachments`,
+ * `entity_type`, `asset_id`), so we can't naively match the closing italic
+ * with `[^_]*?`. Instead we anchor on the closing `_` immediately followed
+ * by optional whitespace + end-of-string, with `.*` greedily consuming the
+ * single-line content (default flag: `.` doesn't match newlines, so this
+ * won't run away into multi-line content).
+ *
+ * Anchored at end-of-string because `annotateChatTextForAgent` always
+ * appends the footer last. Issue #2333.
+ */
+function stripAgentFooter(text: string): string {
+  return text.replace(/\n\n_Agents: .*_\s*$/, '');
 }
 
 /**
