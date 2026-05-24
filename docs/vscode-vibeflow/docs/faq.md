@@ -4,7 +4,7 @@
 
 **TL;DR**: Short answers to ~25 things people actually ask. Each answer points at the deeper doc when there's more to say.
 
-> See [07-glossary.md](07-glossary.md) for any term in **bold**.
+> See [glossary.md](glossary.md) for any term in **bold**.
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### Do I need the `vibeflow-cli` to use the extension?
 
-No. The extension handles session launching, lifecycle, and UI on its own. The **`vibeflow-cli`** is a separate terminal-only tool that pre-dates the extension. You only need it if you set `vibeflow.cli.enabled=true` to hand off session management to the CLI's TUI. About 5% of users do that. If you've never heard of the CLI, leave the setting off. The extension is the full experience. See [05-settings-reference.md](05-settings-reference.md#cli-interface) for the handoff details.
+No. The extension handles session launching, lifecycle, and UI on its own. The **`vibeflow-cli`** is a separate terminal-only tool that pre-dates the extension. You only need it if you set `vibeflow.cli.enabled=true` to hand off session management to the CLI's TUI. About 5% of users do that. If you've never heard of the CLI, leave the setting off. The extension is the full experience. See [settings-reference.md](settings-reference.md#cli-interface) for the handoff details.
 
 ### Do I need a VibeFlow Cloud account?
 
@@ -36,7 +36,7 @@ This is a question about the VibeFlow Cloud product, not the extension. Pricing 
 
 ### Why are there so many personas? Can I just run one Developer?
 
-Yes, you can run only a Developer, and many people start that way. The persona system is opt-in scope: each persona is a separate session you choose to launch. A minimal setup is *one Developer session*, and you act as everyone else (PM, QA, Security). A realistic team is *Architect + Developer + QA*. The nine-persona setup is the upper bound for teams that want full role separation and automatic review gates. Pick the subset that matches how you work. See [03-workflows-and-flows.md](03-workflows-and-flows.md#5-multi-persona-handoff) for the handoff dynamics.
+Yes, you can run only a Developer, and many people start that way. The persona system is opt-in scope: each persona is a separate session you choose to launch. A minimal setup is *one Developer session*, and you act as everyone else (PM, QA, Security). A realistic team is *Architect + Developer + QA*. The nine-persona setup is the upper bound for teams that want full role separation and automatic review gates. Pick the subset that matches how you work. See [workflows-and-flows.md](workflows-and-flows.md#5-multi-persona-handoff) for the handoff dynamics.
 
 ### What's the difference between a Developer and a Principal Engineer?
 
@@ -52,7 +52,7 @@ Yes, and that's the normal case. Your Architect and Developer agents both target
 
 ### Why does my Architect agent keep filing follow-up todos instead of doing the work?
 
-Because that's the Architect's job. The Architect (Morgan) is a *code agent*, but its primary output is a plan plus a set of implementation todos for the Developer. If you want the Architect to *implement*, either give it a todo already in `ready_to_implement` status (skipping the planning gate), or run a Developer session. Architects pick items in `planning` / `architecture_review_complete` first. See [03-workflows-and-flows.md](03-workflows-and-flows.md#4-work-item-lifecycle--from-idea-to-closed) for the state machine.
+Because that's the Architect's job. The Architect (Morgan) is a *code agent*, but its primary output is a plan plus a set of implementation todos for the Developer. If you want the Architect to *implement*, either give it a todo already in `ready_to_implement` status (skipping the planning gate), or run a Developer session. Architects pick items in `planning` / `architecture_review_complete` first. See [workflows-and-flows.md](workflows-and-flows.md#4-work-item-lifecycle--from-idea-to-closed) for the state machine.
 
 ---
 
@@ -68,7 +68,7 @@ A **feature** is a container, a piece of work big enough to hold multiple todos.
 
 ### Who decides when a work item is "done"?
 
-The implementing agent flips the status to `done` when it has committed code and tests pass, but `done` is *not* closed. After `done`, the item enters the review pipeline: **security review** (Sophie or you), then **QA review** (Quinn or you). Only after both gates pass does the item move to `closed`. So "done" means "the implementer thinks they're finished"; "closed" means "two human-or-agent reviewers agreed." See [03-workflows-and-flows.md](03-workflows-and-flows.md#4-work-item-lifecycle--from-idea-to-closed).
+The implementing agent flips the status to `done` when it has committed code and tests pass, but `done` is *not* closed. After `done`, the item enters the review pipeline: **security review** (Sophie or you), then **QA review** (Quinn or you). Only after both gates pass does the item move to `closed`. So "done" means "the implementer thinks they're finished"; "closed" means "two human-or-agent reviewers agreed." See [workflows-and-flows.md](workflows-and-flows.md#4-work-item-lifecycle--from-idea-to-closed).
 
 ### Why do work items go through security review and QA review?
 
@@ -84,11 +84,11 @@ The extension and CLI don't expose a "skip review" toggle. There's no command to
 
 ### What's the difference between Vanilla and Chat-First mode?
 
-**Vanilla** sessions are terminal-driven: the agent reads work items from the queue, the terminal is the primary surface, and the Session Chat panel is a read-only transcript with a disabled input. **Chat-First** sessions are chat-driven: the agent runs hidden, the chat panel input is enabled, and you steer the agent by typing. Chat-First *requires* YOLO (skip-permissions) mode, since the agent edits files without asking, so it shows a consent modal on first launch. Use Vanilla until you understand the consent model. Switch to Chat-First when you want a pair-programming feel. See [03-workflows-and-flows.md](03-workflows-and-flows.md#3-multi-turn-chat--vanilla-session-vs-chat-first-session) for the full distinction.
+**Vanilla** sessions are terminal-driven: the agent reads work items from the queue, the terminal is the primary surface, and the Session Chat panel is a read-only transcript with a disabled input. **Chat-First** sessions are chat-driven: the agent runs hidden, the chat panel input is enabled, and you steer the agent by typing. Chat-First *requires* YOLO (skip-permissions) mode, since the agent edits files without asking, so it shows a consent modal on first launch. Use Vanilla until you understand the consent model. Switch to Chat-First when you want a pair-programming feel. See [workflows-and-flows.md](workflows-and-flows.md#3-multi-turn-chat--vanilla-session-vs-chat-first-session) for the full distinction.
 
 ### Why does my chat say "Working…" and never finish?
 
-A few known causes: the headless backing process exited without emitting a stream-json `result` event, the provider CLI is missing from PATH, or a session-state mismatch is preventing the per-turn respawn from picking up the captured `session_id`. The "Working…" indicator only clears when the stream produces a terminal event. See [06-troubleshooting.md](06-troubleshooting.md) for the symptom matrix and fixes. Chat-stuck is the most-debugged path in the codebase.
+A few known causes: the headless backing process exited without emitting a stream-json `result` event, the provider CLI is missing from PATH, or a session-state mismatch is preventing the per-turn respawn from picking up the captured `session_id`. The "Working…" indicator only clears when the stream produces a terminal event. See [troubleshooting.md](troubleshooting.md) for the symptom matrix and fixes. Chat-stuck is the most-debugged path in the codebase.
 
 ### Why is the chat input disabled when I open a vanilla session's chat panel?
 
@@ -108,7 +108,7 @@ When you type `@` in any chat input, the picker offers `@symbol` (LSP workspace-
 
 ### What's a git worktree and why does VibeFlow use them?
 
-A **worktree** is a second working directory checked out to a different branch in the same repository. VibeFlow uses worktrees so a Developer agent can work on `feature/foo` while you (or another agent) work on `main`. No `git stash`, no checkout shuffling. The worktree lives at `.claude/worktrees/<branch>` by default (configurable via `vibeflow.worktree.baseDir`). The launch wizard offers to create one if `vibeflow.worktree.autoCreate=true`. See [03-workflows-and-flows.md](03-workflows-and-flows.md#6-worktree-workflow-multi-branch-parallelism) for the full flow.
+A **worktree** is a second working directory checked out to a different branch in the same repository. VibeFlow uses worktrees so a Developer agent can work on `feature/foo` while you (or another agent) work on `main`. No `git stash`, no checkout shuffling. The worktree lives at `.claude/worktrees/<branch>` by default (configurable via `vibeflow.worktree.baseDir`). The launch wizard offers to create one if `vibeflow.worktree.autoCreate=true`. See [workflows-and-flows.md](workflows-and-flows.md#6-worktree-workflow-multi-branch-parallelism) for the full flow.
 
 ### What happens to the worktree when I kill the session?
 
@@ -144,11 +144,11 @@ No, and the extension goes out of its way to prevent you from doing so. `.mcp.js
 
 ### The extension installed but no views appeared. Now what?
 
-Open the Activity Bar (the strip of icons on the far left of VS Code) and look for the VibeFlow icon. The views are scoped to the VibeFlow container; they don't show up in Explorer. If the icon is missing, your VS Code version may be below 1.93 (check `Help > About`). Still nothing? See [06-troubleshooting.md](06-troubleshooting.md) for the activation diagnostic checklist.
+Open the Activity Bar (the strip of icons on the far left of VS Code) and look for the VibeFlow icon. The views are scoped to the VibeFlow container; they don't show up in Explorer. If the icon is missing, your VS Code version may be below 1.93 (check `Help > About`). Still nothing? See [troubleshooting.md](troubleshooting.md) for the activation diagnostic checklist.
 
 ### I'm getting "401 Unauthorized" from the server.
 
-Your API key is wrong, expired, or pointing at the wrong server. Run **VibeFlow: Setup** again, double-check the server URL (default is `https://cloud.axiomstudio.ai`; if you're self-hosting, the URL is different), and paste a fresh key from **Account > API Keys** in the VibeFlow Cloud UI. If you get 401 with a freshly-generated key, your account may not have access to the project. Check the project's member list. Full diagnosis tree in [06-troubleshooting.md](06-troubleshooting.md).
+Your API key is wrong, expired, or pointing at the wrong server. Run **VibeFlow: Setup** again, double-check the server URL (default is `https://cloud.axiomstudio.ai`; if you're self-hosting, the URL is different), and paste a fresh key from **Account > API Keys** in the VibeFlow Cloud UI. If you get 401 with a freshly-generated key, your account may not have access to the project. Check the project's member list. Full diagnosis tree in [troubleshooting.md](troubleshooting.md).
 
 ### Can I run the extension offline?
 

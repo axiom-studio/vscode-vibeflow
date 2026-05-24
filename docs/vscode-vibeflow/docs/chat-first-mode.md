@@ -1,10 +1,10 @@
 # Chat-First Mode
 
-**Who this is for**: You've finished [01-getting-started.md](01-getting-started.md), you've launched at least one agent in a terminal, and now you're asking *"what's the difference between running an agent in a terminal vs this 'chat-first' thing?"* This page is the long-form answer. Both technical and non-technical readers welcome.
+**Who this is for**: You've finished [getting-started.md](getting-started.md), you've launched at least one agent in a terminal, and now you're asking *"what's the difference between running an agent in a terminal vs this 'chat-first' thing?"* This page is the long-form answer. Both technical and non-technical readers welcome.
 
 **TL;DR**: Chat-First Mode lets you talk to a VibeFlow agent the way you talk to Copilot Chat or Cursor. Type a message, the agent answers, type a follow-up, it keeps going. No work item required to start a conversation. Under the hood it always runs in YOLO (skip-permissions) mode and prefers `tmux` as its runtime backing. It's the most powerful way to use the extension, and also the most opinionated.
 
-> Unfamiliar term? See [07-glossary.md](07-glossary.md).
+> Unfamiliar term? See [glossary.md](glossary.md).
 
 ---
 
@@ -191,7 +191,7 @@ Work items the chat-first session created persist on the server. They aren't tie
 
 ## 10. Troubleshooting
 
-Detailed failure modes live in [06-troubleshooting.md](06-troubleshooting.md). Quick pointers:
+Detailed failure modes live in [troubleshooting.md](troubleshooting.md). Quick pointers:
 
 - **"Chat says 'Working…' forever."** Almost always issue **#2305**. `vibeflow.session.headlessBacking` is `vscode` and you've sent a second turn. Switch the setting to `auto` (or `tmux`), kill the session, relaunch.
 - **"Agent didn't see my second message."** Same root cause.

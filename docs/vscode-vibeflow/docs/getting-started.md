@@ -4,7 +4,7 @@
 
 **TL;DR**: Install the extension, run **VibeFlow: Setup** (3 steps: server, API key, project), then click **+ Launch Session** in the Agent Fleet view. Pick *Developer + Claude + Vanilla* for your first run. Type a question in the Session Chat panel, click **Convert to work item**, and watch the agent claim and answer it.
 
-> Unfamiliar word? Every new term is bolded the first time and defined in [07-glossary.md](07-glossary.md).
+> Unfamiliar word? Every new term is bolded the first time and defined in [glossary.md](glossary.md).
 
 ---
 
@@ -120,11 +120,11 @@ That's the loop. Everything else in VibeFlow (multiple personas, governance gate
 
 You've got a working agent. From here, branch out depending on what you want to learn next:
 
-- **What every view does, in one page**: [02-feature-tour.md](02-feature-tour.md)
-- **How the pieces fit together (with diagrams)**: [03-workflows-and-flows.md](03-workflows-and-flows.md). The onboarding flow you just walked through is Section 1.
-- **When something doesn't behave like this page promised**: [06-troubleshooting.md](06-troubleshooting.md)
-- **Talking to the agent like Copilot instead of through work items**: [04-chat-first-mode.md](04-chat-first-mode.md). Read this *after* you're comfortable with Vanilla mode, since Chat-First runs the agent with skip-permissions.
-- **Tuning settings**: [05-settings-reference.md](05-settings-reference.md)
-- **Lost on terminology**: [07-glossary.md](07-glossary.md)
+- **What every view does, in one page**: [feature-tour.md](feature-tour.md)
+- **How the pieces fit together (with diagrams)**: [workflows-and-flows.md](workflows-and-flows.md). The onboarding flow you just walked through is Section 1.
+- **When something doesn't behave like this page promised**: [troubleshooting.md](troubleshooting.md)
+- **Talking to the agent like Copilot instead of through work items**: [chat-first-mode.md](chat-first-mode.md). Read this *after* you're comfortable with Vanilla mode, since Chat-First runs the agent with skip-permissions.
+- **Tuning settings**: [settings-reference.md](settings-reference.md)
+- **Lost on terminology**: [glossary.md](glossary.md)
 
 Welcome aboard.
