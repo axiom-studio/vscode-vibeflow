@@ -358,7 +358,7 @@ export async function launchSession(
         const external = detectExternalAuth('GEMINI_API_KEY');
         if (!external) {
           vscode.window.showErrorMessage(
-            'VibeFlow: Cannot launch Gemini session — no GEMINI_API_KEY found in VS Code secret store, shell environment, or ~/.gemini/credentials. Configure it via Settings → Providers (or run `gcloud auth application-default login`) and retry.',
+            'VibeFlow: Cannot launch Gemini session — no GEMINI_API_KEY found. We checked: VS Code secret store, shell environment ($GEMINI_API_KEY), ~/.gemini/credentials (gemini auth login), ~/.config/gcloud/application_default_credentials.json (gcloud ADC), and ~/.config/gcloud/legacy_credentials. Configure it via Settings → Providers, or run `gemini auth login` / `gcloud auth application-default login` and retry.',
           );
           return;
         }

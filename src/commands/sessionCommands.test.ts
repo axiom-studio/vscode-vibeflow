@@ -100,6 +100,48 @@ describe('detectExternalAuth', () => {
     expect(r?.source).toMatch(/shell environment/i);
     delete process.env.GEMINI_API_KEY;
   });
+
+  // Added 2026-05-24 (user-reported via agent-prompt 8db1893f) — the
+  // pre-fix detect only checked ~/.gemini/credentials, but the help
+  // message told users to run `gcloud auth application-default login`
+  // which writes to ~/.config/gcloud/. Users following the help text
+  // ended up at the "no API key found" error anyway.
+
+  it('returns gcloud-ADC source when ~/.config/gcloud/application_default_credentials.json exists', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vfauth-'));
+    fs.mkdirSync(path.join(tmpDir, '.config', 'gcloud'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.config', 'gcloud', 'application_default_credentials.json'),
+      '{}',
+    );
+    process.env.HOME = tmpDir;
+    const r = detectExternalAuth('GEMINI_API_KEY');
+    expect(r).not.toBeNull();
+    expect(r?.source).toMatch(/application_default_credentials\.json/);
+  });
+
+  it('returns gcloud-legacy source when ~/.config/gcloud/legacy_credentials/ exists', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vfauth-'));
+    fs.mkdirSync(path.join(tmpDir, '.config', 'gcloud', 'legacy_credentials'), { recursive: true });
+    process.env.HOME = tmpDir;
+    const r = detectExternalAuth('GEMINI_API_KEY');
+    expect(r).not.toBeNull();
+    expect(r?.source).toMatch(/legacy_credentials/);
+  });
+
+  it('~/.gemini/credentials takes precedence over gcloud ADC (most specific wins)', () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vfauth-'));
+    fs.mkdirSync(path.join(tmpDir, '.gemini'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '.gemini', 'credentials'), 'gemini-cli');
+    fs.mkdirSync(path.join(tmpDir, '.config', 'gcloud'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '.config', 'gcloud', 'application_default_credentials.json'),
+      '{}',
+    );
+    process.env.HOME = tmpDir;
+    const r = detectExternalAuth('GEMINI_API_KEY');
+    expect(r?.source).toContain('~/.gemini/credentials');
+  });
 });
 
 describe('validateProviderKey', () => {
