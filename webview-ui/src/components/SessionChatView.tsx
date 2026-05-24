@@ -152,6 +152,18 @@ export function SessionChatView() {
   // Issue a host query whenever the kind+query signature changes while
   // the picker is open. Skipping when `kind` is undefined (kind chooser
   // is purely client-side — no host involvement until a kind is picked).
+  //
+  // **Debounced by 200ms** (#2330 fix 3/3): a fast typist after picking
+  // a kind otherwise fires one postMessage round-trip per keystroke,
+  // each hitting the VibeFlow Cloud REST endpoint via
+  // `client.listDocuments / listFeatures / ...`. The host responds
+  // asynchronously, but the postMessage write itself + the React
+  // re-render triggered by `setMentionLoading(true)` block the keystroke.
+  // 200ms is "feels instant" for a typist (~3-5 chars per debounce
+  // window typically) while collapsing N postMessages into 1. The
+  // monotonic `requestId` echo already drops stale results if a query
+  // races; the debounce just stops them from being issued in the first
+  // place. Reverting THIS commit alone restores per-keystroke fetch.
   useEffect(() => {
     if (!mentionState.active || mentionState.kind === undefined) {
       // Picker closed or still on kind chooser — clear any prior items.
@@ -161,14 +173,23 @@ export function SessionChatView() {
     }
     const signature = `${mentionState.kind} ${mentionState.query}`;
     if (signature === lastQuerySignatureRef.current) { return; }
-    lastQuerySignatureRef.current = signature;
-    const requestId = ++requestSeqRef.current;
-    latestRequestIdRef.current = requestId;
+    // Capture the kind+query NOW; the closure that runs after the
+    // debounce window may see a stale mentionState if the user has
+    // since typed more characters (in which case THIS effect run will
+    // be superseded by a new one whose timeout cancels this one).
+    const kind = mentionState.kind;
+    const query = mentionState.query;
     setMentionLoading(true);
-    vscode.postMessage({
-      type: 'chatMentionQuery',
-      payload: { requestId, kind: mentionState.kind, query: mentionState.query },
-    });
+    const timer = window.setTimeout(() => {
+      lastQuerySignatureRef.current = signature;
+      const requestId = ++requestSeqRef.current;
+      latestRequestIdRef.current = requestId;
+      vscode.postMessage({
+        type: 'chatMentionQuery',
+        payload: { requestId, kind, query },
+      });
+    }, 200);
+    return () => window.clearTimeout(timer);
   }, [mentionState.active, mentionState.kind, mentionState.query, mentionItems.length, mentionLoading]);
 
   function commitMention(index: number) {
