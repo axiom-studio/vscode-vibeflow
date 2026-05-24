@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -37,8 +37,23 @@ interface Props {
  * Distinct visual treatment for the two sources without crowding the
  * panel with full bubbles — see Roo-Code / Continue / Cursor: agent
  * content reads better as a "post" than a "bubble".
+ *
+ * **Memoized** (`React.memo` default shallow equality, #2330): the
+ * transcript is rendered as a plain `messages.map(... => <MessageBubble>)`
+ * (NOT virtualized today), so on every parent state change every visible
+ * bubble would re-render — including a full re-pass of
+ * `react-markdown` + `rehype-highlight` for agent bodies. Default
+ * shallow-compare works here because: the host produces a NEW `msg`
+ * reference whenever any field changes (no in-place mutation —
+ * `mergeAppend` upserts by replacing the entry), `personaName` /
+ * `personaAvatarUrl` / `diffView` are stable across keystrokes, and
+ * `onRespond` is stable too (it's the `respond` callback from
+ * SessionChatView which is created once per render-cycle with stable
+ * deps — see SessionChatView). If a future change to `onRespond` makes
+ * it non-stable, this memo will degrade silently to "always re-render";
+ * worth a `useCallback` audit if profile data ever points back here.
  */
-export function MessageBubble({ msg, personaName, personaAvatarUrl, diffView, onRespond }: Props) {
+function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -374,3 +389,11 @@ function formatTime(iso: string): string {
     return '';
   }
 }
+
+/**
+ * Memoized export — see the MessageBubbleImpl doc-comment for the
+ * shallow-equality rationale (#2330). Wraps the impl so all current
+ * import sites (`import { MessageBubble }`) keep working unchanged.
+ */
+export const MessageBubble = memo(MessageBubbleImpl);
+
