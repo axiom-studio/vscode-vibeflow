@@ -23,6 +23,14 @@
   overflow: hidden; /* clip the off-screen rail cleanly */
 }
 
+/* Chat-first mode (#2329): no rail rendered at all (SessionChatView
+   skip-renders <SideRail> + the Show/Hide details toggle). Collapse
+   the grid to a single column so chat fills the whole panel — without
+   this the 340px track stays empty on the right. */
+.session-chat-root.no-rail {
+  grid-template-columns: 1fr;
+}
+
 /* Rail slide animation — iOS-drawer ease. Mounted always so its
  * scroll position survives the toggle.
  */
