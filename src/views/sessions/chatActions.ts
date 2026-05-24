@@ -103,7 +103,29 @@ export async function openWorkspaceRelativePath(rel: string, line?: number, colu
       editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    vscode.window.showWarningMessage(`Could not open ${resolved.path}: ${msg}`);
+    // File not found at workspace-root-relative path. The agent often
+    // refers to a deeply-nested file by its bare basename in chat (e.g.
+    // "SessionPanelManager.ts" intending `src/views/sessions/SessionPanelManager.ts`).
+    // Fall back to Quick Open prefilled with the basename so the user
+    // can fuzzy-pick in 1-2 keystrokes instead of seeing an error toast.
+    // User-reported via agent-prompt e8f02fd4 (2026-05-24).
+    const basename = resolved.path.replace(/^.*[/\\]/, '');
+    if (basename && basename !== resolved.path) {
+      // The chat link was a non-trivial path (had slashes) but the
+      // file genuinely wasn't there. Surface the error — fuzzy-fallback
+      // would be confusing when the user typed a specific path.
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showWarningMessage(`Could not open ${resolved.path}: ${msg}`);
+      return;
+    }
+    // Bare basename — fall back to Quick Open. `query` is set via the
+    // command's second arg (a string). VS Code prefills the picker with
+    // it; user hits Enter to open the top match or types to narrow.
+    try {
+      await vscode.commands.executeCommand('workbench.action.quickOpen', basename);
+    } catch {
+      const msg = err instanceof Error ? err.message : String(err);
+      vscode.window.showWarningMessage(`Could not open ${resolved.path}: ${msg}`);
+    }
   }
 }
