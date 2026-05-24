@@ -699,20 +699,36 @@ export async function launchSession(
         // pane is unreliable when the pane is also showing the
         // TUI). Trade-off the user explicitly opted into.
         const tmuxName = buildHeadlessTmuxName(persona, branch, workDir);
-        const command = buildLaunchCommand(binary, personaProviderKey, sessionMode);
-        const fullCommand = initPrompt
-          ? `${command} ${shellQuote(initPrompt)}`
-          : command;
-        await tmuxBacking.start({
-          name: tmuxName,
-          workDir,
-          command: fullCommand,
-          env: fullEnv,
-        });
-        vscode.window.showInformationMessage(
-          `VibeFlow: ${persona} launched in tmux session "${tmuxName}" on socket "vibeflow-headless". ` +
-          `Attach from any terminal: tmux -L vibeflow-headless attach -t ${tmuxName}`,
-        );
+        // Reuse semantic: if a tmux session for this (persona, branch,
+        // workDir) is already alive, don't spawn a duplicate — that
+        // surfaces as `tmux new-session: duplicate session` and aborts
+        // the launch with a raw error. Tmux backing's design intent IS
+        // "agent survives IDE restart" (#1615), so the right move on a
+        // relaunch is to skip the spawn and let the chat-panel opener
+        // attach to the existing agent's backend session. Issue #2324.
+        if (await tmuxBacking.hasSession(tmuxName)) {
+          vscode.window.showInformationMessage(
+            `VibeFlow: Reusing existing ${persona} session in tmux ("${tmuxName}"). ` +
+            `To start fresh, kill the existing first: tmux -L vibeflow-headless kill-session -t ${tmuxName}`,
+          );
+          // Skip new-session — the existing agent is already polling and
+          // the chat panel opener will pick up its backend session record.
+        } else {
+          const command = buildLaunchCommand(binary, personaProviderKey, sessionMode);
+          const fullCommand = initPrompt
+            ? `${command} ${shellQuote(initPrompt)}`
+            : command;
+          await tmuxBacking.start({
+            name: tmuxName,
+            workDir,
+            command: fullCommand,
+            env: fullEnv,
+          });
+          vscode.window.showInformationMessage(
+            `VibeFlow: ${persona} launched in tmux session "${tmuxName}" on socket "vibeflow-headless". ` +
+            `Attach from any terminal: tmux -L vibeflow-headless attach -t ${tmuxName}`,
+          );
+        }
       } else if (sessionMode === 'chat_first' && adapter) {
         // Pin the workspace `.mcp.json` so headless agents (Claude
         // especially — see todo #1621) can register the VibeFlow MCP
