@@ -66,12 +66,14 @@ The Phase 5-A test cohort focuses on the highest-leverage pure-function modules 
 
 What runs today (`src/test/integration/suite/`):
 - `activation.test.ts` — extension is present + activates within 60s; every advertised `vibeflow.*` command is registered; every advertised view is reachable via its generated `<viewId>.focus` command. **Catches**: any regression in `activate()` that drops a command, drops a view, or fails to fire (#1975's P5-B2 refactor will be guarded by this).
+- `activation-order.test.ts` — runtime sibling of `scripts/check-security-guards.mjs` for the #1947 preflight invariant. Today: smoke-tests the OK branch (extension survives activation under the default valid serverUrl). The REJECT branch (insecure serverUrl → tryAutoConnect skipped) is documented in-file as a deferred gap — requires a deactivate/reactivate harness that doesn't play nicely with @vscode/test-electron's single-process model. The structural defense in check-security-guards.mjs covers the source-code-shape regression class; this test covers "extension didn't crash on the OK branch."
 
 What's NOT in the cohort yet (filed as follow-ups):
-- **chat-panel postMessage round-trip** — open a session chat panel, assert webview HTML mounts, `ready` → `state` round-trip works, `chatSend` returns a `messages` update.
-- **mention dispatch** — fire `chatMentionQuery` with `kind='document'`, assert `chatMentionResults` reply with `requestId` echo within 2s.
-- **diff overlay** — register `vibeflow-diff` scheme, open a URI, assert `TextDocumentContentProvider` returns content.
-- **activation-order assertion** — log-scrape or instrumentation-hook to assert `validateServerUrl(cachedServerUrl)` runs BEFORE `tryAutoConnect` (the #1947 invariant). Would have caught the `e0ef3ad` silent regression.
+- **chat-panel postMessage round-trip** — open a session chat panel, assert webview HTML mounts, `ready` → `state` round-trip works, `chatSend` returns a `messages` update. Blocked on a `setClientFactoryForTests` seam in `api/client.ts` to stub backend calls.
+- **mention dispatch** — fire `chatMentionQuery` with `kind='document'`, assert `chatMentionResults` reply with `requestId` echo within 2s. Same backend-mock prerequisite as chat-panel.
+- **diff overlay** — register `vibeflow-diff` scheme, open a URI, assert `TextDocumentContentProvider` returns content. Doesn't need backend mocking.
+- **wizard-flow** — scripted `vscode.window.showQuickPick` + `showInputBox` stubs that feed test inputs to `vibeflow.launchSession`. Needed to make #1978 (P5-B1b wizard split) autonomously verifiable.
+- **REJECT-branch activation-order** — re-activate harness that lets the test mutate config + replay activate(). Would close the only remaining gap in the #1947 runtime coverage.
 - **polling-coordinator behavior** — added as part of P5-C (the polling-coordinator refactor itself); P5-A2 sets up the runner that C plugs into.
 
 Each of these unblocks a specific bounce-class:
