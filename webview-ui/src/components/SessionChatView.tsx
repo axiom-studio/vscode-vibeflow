@@ -67,6 +67,14 @@ export function SessionChatView() {
   // Side rail visibility — collapse to give chat the full width.
   // Persisted within the panel's life only; reload starts expanded.
   const [railOpen, setRailOpen] = useState(true);
+  // Pane content captured from the tmux session backing this chat
+  // (chat-first / tmux-backed only). Surfaces interactive provider
+  // prompts that the agent is blocked on but that don't reach the
+  // MCP boundary as events — e.g. gemini-cli quota / auth modals,
+  // claude permission re-confirms. See user prompt 07aed58c
+  // (2026-05-25). Host refreshes this on the same 5s chat-poll tick.
+  const [tmuxOutput, setTmuxOutput] = useState<string | null>(null);
+  const [tmuxOpen, setTmuxOpen] = useState(true);
   // User preference for how ```diff fences render inline in chat.
   // Seeded from the body data attribute the host stamps in getHtml,
   // live-updated when the host pushes an `update` carrying chatDiffView
@@ -301,6 +309,11 @@ export function SessionChatView() {
           if (m.payload.chatDiffView === 'unified' || m.payload.chatDiffView === 'split') {
             setDiffView(m.payload.chatDiffView);
           }
+          // tmuxOutput is intentionally treated as "last known"; the
+          // host omits the field for non-tmux-backed sessions. Setting
+          // null clears the banner if a session transitions back to a
+          // pane-less state mid-life (rare but possible after rebind).
+          setTmuxOutput(typeof m.payload.tmuxOutput === 'string' ? m.payload.tmuxOutput : null);
           break;
       }
     }
@@ -522,6 +535,26 @@ export function SessionChatView() {
             <button onClick={() => setError(null)} aria-label="Dismiss">
               <XIcon size={13} />
             </button>
+          </div>
+        )}
+
+        {tmuxOutput && (
+          <div className={`chat-tmux-banner${tmuxOpen ? '' : ' collapsed'}`}>
+            <button
+              type="button"
+              className="chat-tmux-banner-header"
+              onClick={() => setTmuxOpen(o => !o)}
+              aria-expanded={tmuxOpen}
+              title="Live tail of the terminal pane backing this session. Read-only — actions still go through the chat box."
+            >
+              <span className="chat-tmux-banner-title">Terminal pane</span>
+              <span className="chat-tmux-banner-hint">
+                {tmuxOpen ? 'Hide' : 'Show'}
+              </span>
+            </button>
+            {tmuxOpen && (
+              <pre className="chat-tmux-banner-body">{tmuxOutput}</pre>
+            )}
           </div>
         )}
 
