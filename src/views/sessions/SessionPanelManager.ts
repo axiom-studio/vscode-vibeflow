@@ -8,7 +8,7 @@ import { escapeHtml } from '../../utils/html.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
-import { openCommitDiff, openWorkspaceRelativePath, validateHashes, validatePaths } from './chatActions.js';
+import { openCommitDiff, openWorkspaceRelativePath } from './chatActions.js';
 import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
@@ -347,29 +347,6 @@ export class SessionPanelManager implements vscode.Disposable {
         }
         case 'chatOpenCommit': {
           await openCommitDiff(msg.payload.hash);
-          break;
-        }
-        case 'chatValidateTokens': {
-          // #2341 — webview-side regex over-matches (URL.hostname,
-          // dotted identifiers, etc.) and previously masked the
-          // problem with brittle existence-heuristic regexes. Confirm
-          // against git + fs and partition. ALWAYS reply with every
-          // token the webview sent — anything we omit hangs in
-          // `pending` on the webview side forever.
-          const { hashes, paths } = msg.payload as { hashes: string[]; paths: string[] };
-          const [hashRes, pathRes] = await Promise.all([
-            validateHashes(hashes || []),
-            validatePaths(paths || []),
-          ]);
-          this.postToWebview(panel, {
-            type: 'chatTokensValidated',
-            payload: {
-              validHashes: hashRes.valid,
-              invalidHashes: hashRes.invalid,
-              validPaths: pathRes.valid,
-              invalidPaths: pathRes.invalid,
-            },
-          });
           break;
         }
         case 'openDiff': {
