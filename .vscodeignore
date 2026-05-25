@@ -19,6 +19,17 @@ esbuild.mjs
 docs/**
 .vibeflow-session-*
 .mcp.json
+# .gemini/ — gemini-cli tool config. Contains an Authorization: Bearer
+# <jwt> for the vibeflow MCP endpoint (same shape as .mcp.json above).
+# .gitignore covers the git path but `vsce package` reads from disk, so
+# this MUST also be excluded here or the JWT ships in the .vsix. #2340.
+.gemini/**
+# Dev-only diagnostic scripts that may sit at the repo root during
+# debugging. None are runtime extension code; excluding by glob so the
+# next one a developer drops doesn't accidentally ship.
+init_*.mjs
+debug_*.mjs
+*.bak
 .idea/**
 CLAUDE.md
 AGENTS.md
