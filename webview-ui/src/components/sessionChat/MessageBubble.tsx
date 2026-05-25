@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -8,8 +8,7 @@ import 'highlight.js/styles/github-dark.css';
 import type { ChatPrompt, SessionMode } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
 import { PersonaAvatar } from './PersonaAvatar';
-import { collectChatTokens, enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
-import { requestTokenValidation, useTokenValidity, type TokenValidity } from './chatTokenValidation';
+import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
 import { AssetCard } from './AssetCard';
 import { getVsCodeApi } from '../../vscodeApi';
 
@@ -89,24 +88,6 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
     && sessionMode !== 'chat_first'
     && isStale(msg.created_at, PENDING_HINT_THRESHOLD_MS);
 
-  // Discover commit/path candidates in this message and ask the host
-  // to confirm them against git + the filesystem. Strict rendering:
-  // tokens stay plain text until `chatTokensValidated` arrives, so a
-  // false positive (`URL.hostname`, a stale hash) never flashes as a
-  // clickable button. `useTokenValidity` scopes the re-render to THIS
-  // bubble — a result for another message won't re-pass react-markdown
-  // here, preserving the #2330 memo intent. #2341.
-  const tokens = useMemo(
-    () => collectChatTokens(
-      `${stripAgentFooter(msg.prompt_text || '')}\n${msg.response_text || ''}`,
-    ),
-    [msg.prompt_text, msg.response_text],
-  );
-  const tokenValidity = useTokenValidity(tokens);
-  useEffect(() => {
-    if (tokens.length > 0) { requestTokenValidation(tokens); }
-  }, [tokens]);
-
   return (
     <div className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}>
       <PersonaAvatar
@@ -127,7 +108,7 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeHighlight]}
-            components={markdownComponents(diffView, tokenValidity)}
+            components={markdownComponents(diffView)}
           >
             {stripAgentFooter(msg.prompt_text || '')}
           </ReactMarkdown>
@@ -139,7 +120,7 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
-              components={markdownComponents(diffView, tokenValidity)}
+              components={markdownComponents(diffView)}
             >
               {msg.response_text}
             </ReactMarkdown>
@@ -226,12 +207,7 @@ function stripAgentFooter(text: string): string {
  * whole diff into the default code-block padding/scroll container
  * and breaks the split-view's horizontal layout.
  */
-function markdownComponents(
-  diffView: 'unified' | 'split',
-  validity: TokenValidity,
-): Components {
-  const enhance = (children: ReactNode) =>
-    enhanceLeafText(children, chatTokenDispatch, validity);
+function markdownComponents(diffView: 'unified' | 'split'): Components {
   return {
     a({ href, children }) {
       return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
@@ -252,7 +228,7 @@ function markdownComponents(
       // Fenced code with a known language stays opaque so rehype-highlight's
       // syntax coloring isn't interrupted by token buttons inside source code.
       if (!lang) {
-        return <code className={className} {...props}>{enhance(children)}</code>;
+        return <code className={className} {...props}>{enhanceLeafText(children, chatTokenDispatch)}</code>;
       }
       return <code className={className} {...props}>{children}</code>;
     },
@@ -278,46 +254,46 @@ function markdownComponents(
     // without an override there, the inner text would be a child of
     // a React element and our walker would skip it.
     p({ children, ...props }) {
-      return <p {...props}>{enhance(children)}</p>;
+      return <p {...props}>{enhanceLeafText(children, chatTokenDispatch)}</p>;
     },
     li({ children, ...props }) {
-      return <li {...props}>{enhance(children)}</li>;
+      return <li {...props}>{enhanceLeafText(children, chatTokenDispatch)}</li>;
     },
     td({ children, ...props }) {
-      return <td {...props}>{enhance(children)}</td>;
+      return <td {...props}>{enhanceLeafText(children, chatTokenDispatch)}</td>;
     },
     th({ children, ...props }) {
-      return <th {...props}>{enhance(children)}</th>;
+      return <th {...props}>{enhanceLeafText(children, chatTokenDispatch)}</th>;
     },
     blockquote({ children, ...props }) {
-      return <blockquote {...props}>{enhance(children)}</blockquote>;
+      return <blockquote {...props}>{enhanceLeafText(children, chatTokenDispatch)}</blockquote>;
     },
     h1({ children, ...props }) {
-      return <h1 {...props}>{enhance(children)}</h1>;
+      return <h1 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h1>;
     },
     h2({ children, ...props }) {
-      return <h2 {...props}>{enhance(children)}</h2>;
+      return <h2 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h2>;
     },
     h3({ children, ...props }) {
-      return <h3 {...props}>{enhance(children)}</h3>;
+      return <h3 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h3>;
     },
     h4({ children, ...props }) {
-      return <h4 {...props}>{enhance(children)}</h4>;
+      return <h4 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h4>;
     },
     h5({ children, ...props }) {
-      return <h5 {...props}>{enhance(children)}</h5>;
+      return <h5 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h5>;
     },
     h6({ children, ...props }) {
-      return <h6 {...props}>{enhance(children)}</h6>;
+      return <h6 {...props}>{enhanceLeafText(children, chatTokenDispatch)}</h6>;
     },
     strong({ children, ...props }) {
-      return <strong {...props}>{enhance(children)}</strong>;
+      return <strong {...props}>{enhanceLeafText(children, chatTokenDispatch)}</strong>;
     },
     em({ children, ...props }) {
-      return <em {...props}>{enhance(children)}</em>;
+      return <em {...props}>{enhanceLeafText(children, chatTokenDispatch)}</em>;
     },
     del({ children, ...props }) {
-      return <del {...props}>{enhance(children)}</del>;
+      return <del {...props}>{enhanceLeafText(children, chatTokenDispatch)}</del>;
     },
   };
 }
