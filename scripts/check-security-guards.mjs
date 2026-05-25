@@ -61,6 +61,18 @@ check(
   /async\s+connect[\s\S]{0,1200}validateServerUrl\s*\(/,
 );
 
+// --- Issue #2340 Regression Guard (Gemini bearer-token gitignore) ---
+
+// Guard — .gitignore must ignore `.gemini/` so the gemini-side tool
+// config (which contains an Authorization: Bearer <jwt> to the vibeflow
+// MCP endpoint) cannot be accidentally committed by `git add -A` or an
+// auto-staging tool. Mirrors the .mcp.json rule for the claude side.
+check(
+  '.gitignore',
+  'Issue #2340 .gemini/ gitignored (gemini-side MCP bearer token)',
+  /^\.gemini(\/|$)/m,
+);
+
 if (failures.length > 0) {
   console.error('Security-guard regression detected (issue #1947):');
   for (const f of failures) console.error(f);
@@ -69,4 +81,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('[check-security-guards] ok — all three #1947 defense layers present.');
+console.log('[check-security-guards] ok — all three #1947 defense layers + #2340 present.');
