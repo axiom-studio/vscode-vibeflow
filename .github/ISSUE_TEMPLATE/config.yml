@@ -1,0 +1,10 @@
+# Disable blank issues so users have to pick a template.
+# Adds two extra-help links at the bottom of the "new issue" picker.
+blank_issues_enabled: false
+contact_links:
+  - name: Support
+    url: mailto:support@axiomstudio.ai
+    about: Account, billing, or anything that's not a code bug.
+  - name: Security report
+    url: https://github.com/axiom-studio/vscode-vibeflow/blob/main/SECURITY.md
+    about: Found a vulnerability? Please use the SECURITY.md flow, not a public issue.
