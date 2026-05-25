@@ -253,19 +253,6 @@ export type SessionPanelHostMessage =
       payload:
         | { id: number; uri: string }
         | { id: number; error: string };
-    }
-  // Reply to a `chatValidateTokens` request (#2341). MUST partition
-  // every token the webview sent; on error, return unknowns as
-  // invalid so nothing hangs in `pending`. Paths echoed back as the
-  // exact strings the webview sent — they're the cache keys.
-  | {
-      type: 'chatTokensValidated';
-      payload: {
-        validHashes: string[];
-        invalidHashes: string[];
-        validPaths: string[];
-        invalidPaths: string[];
-      };
     };
 
 /**
@@ -300,14 +287,6 @@ export type SessionPanelClientMessage =
   // User clicked a `[a-f0-9]{7,40}` hash in a chat message. Host
   // invokes `git.diff` for that commit (todo #1613, sub-feature 5).
   | { type: 'chatOpenCommit'; payload: { hash: string } }
-  // Confirm commit hashes + file paths against git + filesystem
-  // (#2341). Webview-side regex over-matches (dotted identifiers
-  // look like file paths) — the host partitions each token into
-  // valid/invalid and the webview's strict render gate uses the
-  // result to upgrade matches to clickable. MUST reply with every
-  // token sent (treat unknowns as invalid on error) so nothing
-  // hangs in `pending` on the webview side.
-  | { type: 'chatValidateTokens'; payload: { hashes: string[]; paths: string[] } }
   // The @mention picker is asking the host to fetch suggestions
   // (todo #1614). `kind` is one of MENTION_KINDS from
   // mentionParser.ts; `query` is the post-colon filter string.
