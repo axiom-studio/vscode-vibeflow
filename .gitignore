@@ -31,6 +31,13 @@ Thumbs.db
 # Must never be committed.
 .mcp.json
 
+# Gemini-side tool config — `.gemini/settings.json` contains an
+# Authorization: Bearer <jwt> for the vibeflow MCP endpoint, same as
+# .mcp.json above. Mirror the rule: ignore the whole tool config dir
+# (same convention as .claude/ on line 25). Build-time guard lives in
+# scripts/check-security-guards.mjs to catch a future revert.
+.gemini/
+
 # Agent doc files written by the extension into a workspace at activation
 # (claude/codex/cursor/gemini). Source-of-truth lives under media/agentdocs/.
 /AGENTS.md
