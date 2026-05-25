@@ -88,6 +88,16 @@ export type ChatHostMessage =
         // Optional so older host builds (without the diff-view setting wired)
         // don't break the type. Falls back to the body data attribute.
         chatDiffView?: 'unified' | 'split';
+        /**
+         * Stripped tail of the tmux pane content for chat-first /
+         * tmux-backed sessions. Surfaces interactive provider prompts
+         * (gemini-cli quota / auth modal, claude permission re-confirm,
+         * etc.) that the agent process is blocked on but that DON'T
+         * cross the MCP boundary as events — see user prompt 07aed58c
+         * (2026-05-25). Omitted when the session isn't tmux-backed OR
+         * the pane is unavailable / empty.
+         */
+        tmuxOutput?: string;
       };
     };
 

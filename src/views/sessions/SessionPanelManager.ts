@@ -13,6 +13,7 @@ import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
 import { lookupLaunchMode } from '../../sessions/launchModeStore.js';
+import { TmuxBacking, buildHeadlessTmuxName } from '../../sessions/tmuxBacking.js';
 
 /**
  * Session-mode union recognized by the webview. Mirrors the `SESSION_MODES`
@@ -416,20 +417,30 @@ export class SessionPanelManager implements vscode.Disposable {
   private async refreshPanel(session: VibeFlowSession, panel: vscode.WebviewPanel): Promise<void> {
     const sessionMode = this.resolveSessionMode(session);
     if (this.projectId === undefined) {
+      const tmuxOutput = await this.captureTmuxTail(session);
       this.postToWebview(panel, {
         type: 'update',
-        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting(), sessionMode),
+        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting(), sessionMode, tmuxOutput),
       });
       return;
     }
 
-    const [logs] = await Promise.all([
+    const [logs, tmuxOutput] = await Promise.all([
       this.collectSessionLogs(this.projectId, session.session_id),
-      this.pollChatUpdates(this.projectId, session.session_id, panel),
+      this.pollChatUpdates(this.projectId, session.session_id, panel)
+        .then(() => this.captureTmuxTail(session)),
     ]);
+    // Track last-captured tail per session so the webview can show a
+    // changed indicator (and skip re-render when unchanged). Keyed by
+    // session_id; cleared in dispose along with chatState etc.
+    if (tmuxOutput !== undefined) {
+      this.lastTmuxCapture.set(session.session_id, tmuxOutput);
+    } else {
+      this.lastTmuxCapture.delete(session.session_id);
+    }
     this.postToWebview(panel, {
       type: 'update',
-      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting(), sessionMode),
+      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting(), sessionMode, tmuxOutput),
     });
   }
 
@@ -1255,6 +1266,62 @@ export class SessionPanelManager implements vscode.Disposable {
   }
 
   /**
+   * Shared TmuxBacking instance — stateless verb dispatcher, cheap
+   * to keep around. Used by `captureTmuxTail` for the chat-panel
+   * bubble-up feature: when an agent is tmux-backed and hits an
+   * interactive provider prompt (gemini-cli quota / auth modal,
+   * claude permission re-confirm, etc.), the user has no signal in
+   * the chat panel that the agent is blocked — see user prompt
+   * 07aed58c (2026-05-25).
+   */
+  private tmuxBacking = new TmuxBacking();
+
+  /**
+   * Per-session last-captured-tail. Tracked so the webview can
+   * decide whether the pane content changed since last refresh
+   * without doing string comparison on every render.
+   */
+  private lastTmuxCapture = new Map<string, string>();
+
+  /**
+   * Best-effort pane capture for chat-first sessions whose backing
+   * is tmux (the default since #2306). Returns the last ~30 lines
+   * of stripped pane content, or `undefined` when:
+   *   - mode isn't chat_first (vscode-backed sessions stream
+   *     stream-json into the chat already; no need to bubble)
+   *   - no workspace folder (can't compute tmux name)
+   *   - tmux pane doesn't exist (agent died, never started, or
+   *     was launched with a different mode in a prior session)
+   *   - tmux unavailable (Windows, not installed)
+   *
+   * Cheap (~1ms tmux exec) and tolerant — any failure returns
+   * undefined and the webview shows nothing extra.
+   */
+  private async captureTmuxTail(session: VibeFlowSession): Promise<string | undefined> {
+    if (this.resolveSessionMode(session) !== 'chat_first') { return undefined; }
+    const workDir = session.git_worktree_path
+      || session.working_directory
+      || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      || '';
+    if (!workDir) { return undefined; }
+    const name = buildHeadlessTmuxName(session.persona_key, session.git_branch, workDir);
+    try {
+      const alive = await this.tmuxBacking.hasSession(name);
+      if (!alive) { return undefined; }
+      const full = await this.tmuxBacking.capture(name);
+      // Last ~30 lines is enough to show the active TUI screen for
+      // gemini-cli / claude-cli interstitials without dragging the
+      // entire scrollback through every poll. Right-trim trailing
+      // blanks (tmux pads to the pane height).
+      const lines = full.split('\n');
+      const tail = lines.slice(-30).join('\n').replace(/\s+$/, '');
+      return tail || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Resolve a session's launch mode (#2329) by looking up the
    * launchModeStore. Falls back to `'vanilla'` if the store has no
    * entry — covers sessions launched before the tracking shipped,
@@ -1365,6 +1432,7 @@ export class SessionPanelManager implements vscode.Disposable {
     this.panels.clear();
     this.pollTimers.clear();
     this.chatState.clear();
+    this.lastTmuxCapture.clear();
     this.streamLive.clear();
     this.pendingPromptUser.clear();
   }
@@ -1381,6 +1449,7 @@ function toReactUpdatePayload(
   logs: PanelLog[],
   chatDiffView: 'unified' | 'split',
   sessionMode: SessionMode,
+  tmuxOutput: string | undefined,
 ): {
   session: {
     sessionId: string;
@@ -1395,6 +1464,7 @@ function toReactUpdatePayload(
   };
   logs: { text: string; time?: string; src?: string }[];
   chatDiffView: 'unified' | 'split';
+  tmuxOutput?: string;
 } {
   const status: 'active' | 'stale' | 'inactive' = session.active
     ? (session.stale ? 'stale' : 'active')
@@ -1419,6 +1489,7 @@ function toReactUpdatePayload(
       src: l.source ? `${l.source.type} #${l.source.id}` : undefined,
     })),
     chatDiffView,
+    ...(tmuxOutput ? { tmuxOutput } : {}),
   };
 }
 
