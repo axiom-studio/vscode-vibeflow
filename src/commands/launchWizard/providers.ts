@@ -71,7 +71,7 @@ export function detectExternalAuth(envName: string): { source: string } | null {
       return { source: '~/.gemini/credentials (local Gemini auth)' };
     }
     // 2. `gcloud auth application-default login` (ADC) writes here.
-    //    Our pre-1.0.4 detect missed this even though the error message
+    //    Our pre-1.0.3 detect missed this even though the error message
     //    explicitly told users to run that command — confusing.
     //    User-reported via agent-prompt 8db1893f (2026-05-24).
     const gcloudAdcPath = path.join(home, '.config', 'gcloud', 'application_default_credentials.json');

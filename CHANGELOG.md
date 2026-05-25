@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.0.4 (2026-05-24)
+## 1.0.3 (2026-05-26)
 
-A reliability + UX pass on the Session Chat panel — most of the post-1.0.3 effort went into fixing the rough edges that surfaced as people actually used chat-first sessions for multi-turn work. Plus a Phase 5 quality push (test scaffolding, integration tests, a meaningful refactor of `sessionCommands.ts`) and a new user-facing documentation suite.
+A reliability + UX pass on the Session Chat panel. Most of the effort went into fixing the rough edges that surfaced as people actually used chat-first sessions for multi-turn work. Plus a quality push (test scaffolding, integration tests, a meaningful refactor of `sessionCommands.ts`) and a new user-facing documentation suite.
 
 ### Fixed — Session Chat
 
@@ -43,10 +43,6 @@ A reliability + UX pass on the Session Chat panel — most of the post-1.0.3 eff
 ### Chore
 
 - **`.vscodeignore` tightened.** Excludes the integration-test compile output (`out/**`), test configs (`tsconfig.test*.json`, `vitest.config.ts`), internal `TESTING.md`, and dev scripts (`scripts/**`). Cuts the published `.vsix` size roughly in half — internal test JS is no longer dead weight in the marketplace download.
-
-## 1.0.3 (2026-05-22)
-
-Re-cut of 1.0.2 with customer-identifying mentions scrubbed from the release notes. Same code as 1.0.2; CHANGELOG copy is the only change.
 
 ## 1.0.2 (2026-05-20)
 
