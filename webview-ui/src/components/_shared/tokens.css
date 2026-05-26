@@ -69,4 +69,83 @@
    * file away. */
   --vf-border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
   --vf-border-subtle: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+
+  /* ── Typography ────────────────────────────────────────────────────
+   *
+   * Three font roles, separated so each surface can pick the right one:
+   *
+   *   --vf-font-display → Panel headings + hero metrics + section
+   *     labels. Modern system-UI sans. SF Pro Variable on macOS,
+   *     Segoe UI Variable on Win 11, "Inter" if present (most modern
+   *     Linux distros + GitHub Codespaces ship it), generic
+   *     `system-ui` last. Deliberately differentiated from the user's
+   *     editor font so editor-area panels feel like *this product*
+   *     rather than "another VS Code webview chrome".
+   *
+   *   --vf-font-body → User's selected editor font. Use for body
+   *     prose in surfaces that should match the surrounding editor —
+   *     primarily the Session Chat transcript, which renders agent /
+   *     user text that reads better at the user's chosen font /
+   *     ligature / weight preferences.
+   *
+   *   --vf-font-mono → User's selected editor monospace. Code blocks,
+   *     commit hashes, file paths, version numbers. NEVER use a
+   *     custom monospace — coders have strong preferences here and
+   *     overriding them is hostile.
+   *
+   * NEVER hardcode `"Inter"`, `"Geist"`, `system-ui`, etc. in
+   * component CSS. Always reference these tokens so a future swap is
+   * one file away. */
+  --vf-font-display:
+    "SF Pro Display", "SF Pro", -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable", "Segoe UI", "Helvetica Neue",
+    "Inter", system-ui, sans-serif;
+  --vf-font-body: var(--vscode-font-family);
+  --vf-font-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+
+  /* Type scale — 7 steps. Each step has a clearly different role
+   * (not "11 vs 12 because I tweaked it"). Use these everywhere
+   * instead of inline `fontSize: 9.5` magic numbers.
+   *
+   *   xs   → micro labels (kbd hints, status pills)
+   *   sm   → secondary text (timestamps, descriptions)
+   *   base → standard body text
+   *   md   → emphasised body (selected list item, message author)
+   *   lg   → small headings (subsection titles, card titles)
+   *   xl   → section headings (panel section dividers)
+   *   2xl  → display (panel hero titles, empty-state names)
+   *
+   * Optical rule: when in doubt, drop a step rather than add. Tight
+   * type hierarchies read as more confident than loose ones. */
+  --vf-text-xs:   11px;
+  --vf-text-sm:   12px;
+  --vf-text-base: 13px;
+  --vf-text-md:   14px;
+  --vf-text-lg:   16px;
+  --vf-text-xl:   20px;
+  --vf-text-2xl:  28px;
+
+  /* Weight — three steps. Variable fonts allow more, but in a UI
+   * three roles cover everything: text / emphasis / display. */
+  --vf-weight-normal:   400;
+  --vf-weight-medium:   500;
+  --vf-weight-semibold: 600;
+
+  /* Tracking — display text gets negative tracking (the
+   * "tracking-tight" Tailwind convention). Body text stays at the
+   * font's natural tracking. Caps get positive tracking for
+   * legibility (status pills, tags). */
+  --vf-tracking-tight:  -0.011em;  /* display headings: subtle squeeze */
+  --vf-tracking-normal: 0;          /* body */
+  --vf-tracking-caps:   0.04em;     /* uppercase status labels */
+}
+
+/* Display-text utility. Apply to non-heading elements that should
+ * carry the display voice (hero metrics, empty-state names, section
+ * labels that aren't semantic headings). Headings (h1-h4) in
+ * editor-area panel scopes get this automatically via index.css. */
+.vf-display {
+  font-family: var(--vf-font-display);
+  letter-spacing: var(--vf-tracking-tight);
+  text-wrap: balance;
 }
