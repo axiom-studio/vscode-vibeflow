@@ -477,6 +477,13 @@ export function SessionChatView() {
               personaName={meta.personaName}
               personaAvatarUrl={personaAvatar}
               personaColor={personaColor}
+              onUseExample={(text) => {
+                setDraft(text);
+                // Defer focus to next frame so the textarea exists in the
+                // DOM after the empty state unmounts on the first send;
+                // before that, the user just gets the pre-filled draft.
+                requestAnimationFrame(() => textareaRef.current?.focus());
+              }}
             />
           ) : (
             /*
@@ -495,6 +502,7 @@ export function SessionChatView() {
                 msg={msg}
                 personaName={meta.personaName}
                 personaAvatarUrl={personaAvatar}
+                personaColor={personaColor}
                 diffView={diffView}
                 sessionMode={meta.sessionMode}
                 onRespond={respond}
@@ -705,12 +713,23 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function EmptyState({ personaName, personaAvatarUrl, personaColor }: {
+function EmptyState({ personaName, personaAvatarUrl, personaColor, onUseExample }: {
   personaName: string;
   personaAvatarUrl?: string;
   personaColor?: string;
+  /** Pre-fill the chat textarea with an example prompt + focus it. */
+  onUseExample: (text: string) => void;
 }) {
   const glyph = personaName.trim().charAt(0).toUpperCase() || 'A';
+  // Cold-start prompts. Deliberately concrete (a real task, a real
+  // question, a real ask) rather than generic ("Help me with...") so
+  // the user sees the shape of useful asks at a glance. Persona-agnostic
+  // so the same three work across Developer / Architect / QA / etc.
+  const examples = [
+    `What are you working on?`,
+    `Pick up the next ready issue.`,
+    `Review the diff on this branch.`,
+  ];
   return (
     <div className="chat-empty">
       <PersonaAvatar
@@ -722,6 +741,18 @@ function EmptyState({ personaName, personaAvatarUrl, personaColor }: {
       <div className="chat-empty-title">{personaName}</div>
       <div className="chat-empty-sub">
         Say hello or ask {personaName} to start on a work item.
+      </div>
+      <div className="chat-empty-chips" role="group" aria-label="Example prompts">
+        {examples.map((text) => (
+          <button
+            key={text}
+            type="button"
+            className="chat-empty-chip"
+            onClick={() => onUseExample(text)}
+          >
+            {text}
+          </button>
+        ))}
       </div>
       <div className="chat-empty-hints">
         <div>Press <kbd>Enter</kbd> to send · <kbd>Shift</kbd>+<kbd>Enter</kbd> for newline</div>
