@@ -255,39 +255,49 @@
 }
 
 /* ============================== Message rows ============================== */
+/* Row layout:
+ *   Single column. The persona/user identity is signalled by a 2px
+ *   left stripe (::before pseudo) — not by a 32px round avatar repeated
+ *   on every message. Two wins:
+ *     1. Recovers 44px of horizontal content space per row (32px avatar
+ *        + 12px gap), giving prose more room to breathe in narrow VS
+ *        Code panels.
+ *     2. Color-coded scanning is faster than face-matching at the row
+ *        density a chat transcript reaches (dense IDE, not a marketing
+ *        DM thread). Persona portrait still appears in the empty state
+ *        and the side rail — so persona recognition isn't lost, it just
+ *        stops being redundantly repeated. #2346 (Phase 2 chat skin).
+ *
+ *   The stripe color is plumbed via a CSS variable (`--msg-stripe-color`)
+ *   that the row's inline style sets from `PERSONA_COLORS[personaKey]`
+ *   for agent messages. User messages override the variable with the
+ *   VS Code button color for a consistent "you" treatment regardless
+ *   of which agent the chat is with.
+ */
 .msg-row {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: var(--vf-sp-3);
-  padding: 14px 0;
+  position: relative;
+  padding: var(--vf-sp-3) 0 var(--vf-sp-3) var(--vf-sp-4);
   border-bottom: var(--vf-border);
 }
 
 .msg-row:last-child { border-bottom: none; }
 
-.msg-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: -0.5px;
-  user-select: none;
-  flex-shrink: 0;
-  overflow: hidden;
+.msg-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--vf-sp-3);
+  bottom: var(--vf-sp-3);
+  width: 2px;
+  border-radius: var(--vf-r-pill);
+  background: var(--msg-stripe-color, var(--vscode-textLink-foreground));
+  transition: opacity var(--vf-t-quick) ease-out;
 }
 
-.msg-user .msg-avatar {
+/* User messages always use the button color for their stripe, so the
+   "you" treatment is identical across personas. */
+.msg-user::before {
   background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.msg-agent .msg-avatar {
-  background: var(--vscode-textLink-foreground);
-  color: var(--vscode-editor-background);
 }
 
 .msg-body {
@@ -328,22 +338,26 @@
   color: var(--vscode-editor-background);
 }
 
-/* Animated "Working… {elapsed}" indicator for pending prompts.
- * Replaces the static `pending` chip — pill-shaped so it reads
- * differently from the rectangular status chips. Warning-toned
- * via color-mix so the affordance reads in all themes. */
+/* Animated "Working … {elapsed}" indicator for pending prompts.
+ *
+ * Pre-Phase-2 this was a yellow-tinted rounded pill with border — the
+ * default SaaS / AI loading affordance, which made the chat look like
+ * every other AI tool. The pill chrome (background, border, padding)
+ * carried no information; only the dot animation + elapsed counter do.
+ *
+ * Phase 2 strips the chrome and aligns the indicator inline with the
+ * author + time row at the same baseline. The breathing-dots animation
+ * carries the "live" signal; the muted descriptionForeground color
+ * keeps it secondary to the author name. #2346.
+ */
 .msg-working {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: var(--vf-r-pill);
-  background: color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 14%, transparent);
-  color: var(--vscode-editorWarning-foreground, #ffc107);
-  border: 1px solid color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 28%, transparent);
-  letter-spacing: 0.02em;
+  gap: var(--vf-sp-1);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  letter-spacing: 0.01em;
   white-space: nowrap;
   line-height: 1.4;
 }
@@ -654,6 +668,56 @@
   max-width: 420px;
   margin-bottom: 20px;
   line-height: 1.55;
+}
+
+/* Cold-start example prompts. Clicking a chip pre-fills the chat
+ * textarea (and focuses it) so the user doesn't have to come up with
+ * their first message. Three is the right number — one feels too
+ * prescriptive, five+ becomes a menu. #2346 (Phase 2).
+ *
+ * Visual treatment: rounded outline pill (matches the chat-header-toggle
+ * shape and the attachment chip family), neutral by default, lifts to
+ * the input/foreground tint on hover. Click feedback via the standard
+ * `:active { transform: scale(0.97) }` pattern used across the panel.
+ */
+.chat-empty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--vf-sp-2);
+  max-width: 480px;
+  margin-bottom: var(--vf-sp-4);
+}
+
+.chat-empty-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--vf-sp-1) var(--vf-sp-3);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: var(--vf-border-subtle);
+  border-radius: var(--vf-r-pill);
+  cursor: pointer;
+  transition: background var(--vf-t-micro) ease-out,
+              border-color var(--vf-t-micro) ease-out,
+              transform var(--vf-t-micro) ease-out;
+}
+
+.chat-empty-chip:hover {
+  background: color-mix(in oklab, var(--vscode-foreground) 6%, transparent);
+  border-color: color-mix(in oklab, var(--vscode-foreground) 28%, transparent);
+}
+
+.chat-empty-chip:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.chat-empty-chip:active {
+  transform: scale(0.97);
 }
 
 .chat-empty-hints {
