@@ -56,7 +56,7 @@ body[data-vf-mode="document"] {
 }
 
 /*
- * Editor-area panel typography (Phase 3, #2347).
+ * Editor-area panel typography (Phase 3, #2347 — scoped fix in #2348).
  *
  * Apply the display font to semantic headings inside editor-area
  * panels — gives the surfaces their own voice (modern system-UI
@@ -69,11 +69,18 @@ body[data-vf-mode="document"] {
  * of the VS Code sidebar chrome where the user's editor font is the
  * right baseline.
  *
- * Session Chat is included because its empty state + side rail have
- * panel-title chrome that benefits from display. The chat transcript
- * body itself still uses the editor font (set on `.msg-content` in
- * sessionChat.css) so agent / user messages render in the user's
- * preferred coding font with their preferred ligatures.
+ * IMPORTANT — markdown content exclusion:
+ *   `:not(.msg-content :scope)` would be the right CSS but isn't
+ *   widely supported. Instead we scope each rule to a specific
+ *   panel-chrome class (`.chat-empty-title`, etc.) explicitly. The
+ *   bulk auto-apply only targets `<h*>` elements OUTSIDE chat message
+ *   bodies — markdown headings inside agent / user message bodies
+ *   continue to inherit the editor font so the whole message reads as
+ *   one continuous voice rather than display-font heading + editor-font
+ *   body. The Phase 3 commit accidentally applied display to ALL h-tags
+ *   in `body[data-vf-mode="session-chat"]` including markdown — fixed
+ *   by EXCLUDING `session-chat` from the bulk rule and applying
+ *   display via specific chat-chrome classes in sessionChat.css instead.
  */
 body[data-vf-mode="dashboard"] h1,
 body[data-vf-mode="dashboard"] h2,
@@ -91,10 +98,6 @@ body[data-vf-mode="workitem"] h1,
 body[data-vf-mode="workitem"] h2,
 body[data-vf-mode="workitem"] h3,
 body[data-vf-mode="workitem"] h4,
-body[data-vf-mode="session-chat"] h1,
-body[data-vf-mode="session-chat"] h2,
-body[data-vf-mode="session-chat"] h3,
-body[data-vf-mode="session-chat"] h4,
 body[data-vf-mode="compliance"] h1,
 body[data-vf-mode="compliance"] h2,
 body[data-vf-mode="compliance"] h3,
