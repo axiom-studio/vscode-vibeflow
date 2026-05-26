@@ -56,6 +56,55 @@ body[data-vf-mode="document"] {
 }
 
 /*
+ * Editor-area panel typography (Phase 3, #2347).
+ *
+ * Apply the display font to semantic headings inside editor-area
+ * panels — gives the surfaces their own voice (modern system-UI
+ * sans) instead of inheriting whatever the user picked as their
+ * editor font (often Cascadia / Fira / monospace coding faces that
+ * read fine for code but generic for UI chrome).
+ *
+ * Sidebar webviews (Activity Feed, Project Items, Work Items tree)
+ * intentionally do NOT get this — they should feel like extensions
+ * of the VS Code sidebar chrome where the user's editor font is the
+ * right baseline.
+ *
+ * Session Chat is included because its empty state + side rail have
+ * panel-title chrome that benefits from display. The chat transcript
+ * body itself still uses the editor font (set on `.msg-content` in
+ * sessionChat.css) so agent / user messages render in the user's
+ * preferred coding font with their preferred ligatures.
+ */
+body[data-vf-mode="dashboard"] h1,
+body[data-vf-mode="dashboard"] h2,
+body[data-vf-mode="dashboard"] h3,
+body[data-vf-mode="dashboard"] h4,
+body[data-vf-mode="settings"] h1,
+body[data-vf-mode="settings"] h2,
+body[data-vf-mode="settings"] h3,
+body[data-vf-mode="settings"] h4,
+body[data-vf-mode="kanban"] h1,
+body[data-vf-mode="kanban"] h2,
+body[data-vf-mode="kanban"] h3,
+body[data-vf-mode="kanban"] h4,
+body[data-vf-mode="workitem"] h1,
+body[data-vf-mode="workitem"] h2,
+body[data-vf-mode="workitem"] h3,
+body[data-vf-mode="workitem"] h4,
+body[data-vf-mode="session-chat"] h1,
+body[data-vf-mode="session-chat"] h2,
+body[data-vf-mode="session-chat"] h3,
+body[data-vf-mode="session-chat"] h4,
+body[data-vf-mode="compliance"] h1,
+body[data-vf-mode="compliance"] h2,
+body[data-vf-mode="compliance"] h3,
+body[data-vf-mode="compliance"] h4 {
+  font-family: var(--vf-font-display);
+  letter-spacing: var(--vf-tracking-tight);
+  text-wrap: balance;
+}
+
+/*
  * Document viewer layout. The scroll container is the full-width
  * outer wrapper (`.vf-commentable-document` for editable docs with
  * comments; `.vf-doc-scroll` for read-only references). The scrollbar
