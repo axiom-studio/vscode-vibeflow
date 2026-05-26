@@ -1,0 +1,72 @@
+/*
+ * Design tokens — opinionated scales for the vibeflow webview surfaces.
+ *
+ * Imported once at the top of `webview-ui/src/index.css` so every panel
+ * (Session Chat, Settings, Dashboard, Kanban, Compliance, Documents,
+ * Activity Feed, Work Item) inherits them via the cascade.
+ *
+ * ## Why these exist
+ *
+ * Pre-tokens, `sessionChat.css` alone had 39 unique pixel values
+ * (1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 14, 16, 18, 20, ..., 480),
+ * 7 unique border-radii (3, 4, 6, 8, 14, 50%, 999px), and 6 unique
+ * transition timings (100, 120, 150, 180, 200, 220ms) — the visual
+ * signature of "iterated until it looked right" rather than "designed
+ * a scale". Tokens collapse the chaos to a small, opinionated system.
+ *
+ * ## Editing rules
+ *
+ *   1. Add a new token only when a real, repeated need exists across
+ *      ≥2 components. One-off values stay inline (with a comment).
+ *   2. NEVER add fractional steps (e.g. `--vf-sp-1-5`). If 4px and 8px
+ *      don't fit, the layout itself is wrong, not the scale.
+ *   3. Easing: there is ONE curve. Don't add a second.
+ *   4. VS Code theme colors (`--vscode-*`) are NOT redefined here —
+ *      those come live from the user's selected theme.
+ */
+
+:root {
+  /* Spacing — geometric-ish, 4px base, doubles + golden-section breaks.
+   * Use for padding, gap, margin. Fixed component dimensions (e.g.
+   * avatar size, rail width) intentionally stay inline as named-purpose
+   * values, not as spacing tokens. */
+  --vf-sp-1: 4px;    /* hairline gaps (icon-text, chip internal) */
+  --vf-sp-2: 8px;    /* tight (button internal, chip strip) */
+  --vf-sp-3: 12px;   /* default (most internal padding, list rows) */
+  --vf-sp-4: 16px;   /* comfortable (card padding, section gaps) */
+  --vf-sp-5: 24px;   /* loose (panel padding, between groups) */
+  --vf-sp-6: 32px;   /* section breaks */
+  --vf-sp-7: 48px;   /* major layout gaps */
+
+  /* Border radius — three steps. `--vf-r-sm` for chips/inline tags,
+   * `--vf-r-md` for buttons/inputs/cards, `--vf-r-pill` for status
+   * pills + avatars (50% is treated as a special case of pill). */
+  --vf-r-sm: 4px;
+  --vf-r-md: 8px;
+  --vf-r-pill: 999px;
+
+  /* Motion — four steps, all on ONE curve.
+   *   micro  → button-press, hover-state, color transitions
+   *   quick  → dropdowns, tooltips, small popovers
+   *   panel  → side rail collapse, accordion expand
+   *   sheet  → drawer / modal in/out
+   * Cap at `panel` (240ms) for keyboard-initiated actions —
+   * `sheet` is for pointer/touch-initiated panel motion only. */
+  --vf-t-micro: 120ms;
+  --vf-t-quick: 180ms;
+  --vf-t-panel: 240ms;
+  --vf-t-sheet: 320ms;
+
+  /* Easing — Ionic Framework's iOS drawer curve. Strong ease-out at
+   * the start (instant visual feedback), gentle settle at the end
+   * (no abrupt stop). Matches the curve the side rail was already
+   * using ad-hoc at `cubic-bezier(0.32, 0.72, 0, 1)`. */
+  --vf-ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Hairlines — 1px borders that respect the active theme. Use these
+   * instead of `border: 1px solid var(--vscode-panel-border)` so a
+   * future tweak (e.g. dual-tone borders for light vs dark) is one
+   * file away. */
+  --vf-border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+  --vf-border-subtle: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+}
