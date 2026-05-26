@@ -141,9 +141,15 @@
   display: block;
 }
 
+/* Chat-header persona name — display voice. This is the panel's
+ * persistent identity label (stays sticky during scroll), so it
+ * earns the display treatment even though it isn't a semantic
+ * heading. #2347 (Phase 3). */
 .chat-header-name {
-  font-weight: 600;
-  font-size: 13px;
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-weight-semibold);
+  font-size: var(--vf-text-base);
+  letter-spacing: var(--vf-tracking-tight);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -656,11 +662,18 @@
   overflow: hidden;
 }
 
+/* Empty-state persona name — display voice. The persona is the
+ * panel's hero element when there are no messages; carrying the
+ * display font here makes the cold-start surface feel intentional
+ * rather than generic. #2347 (Phase 3). */
 .chat-empty-title {
-  font-size: 20px;
-  font-weight: 700;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-text-xl);
+  font-weight: var(--vf-weight-semibold);
+  letter-spacing: var(--vf-tracking-tight);
   color: var(--vscode-foreground);
-  margin-bottom: 8px;
+  margin-bottom: var(--vf-sp-2);
+  text-wrap: balance;
 }
 
 .chat-empty-sub {
