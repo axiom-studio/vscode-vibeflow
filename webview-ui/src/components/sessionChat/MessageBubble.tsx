@@ -10,6 +10,7 @@ import { DiffBlock } from './DiffBlock';
 import { PersonaAvatar } from './PersonaAvatar';
 import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
 import { AssetCard } from './AssetCard';
+import { InfoIcon } from '../_shared/icons';
 import { getVsCodeApi } from '../../vscodeApi';
 
 interface Props {
@@ -129,7 +130,9 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
 
         {showStalePendingHint && (
           <div className="msg-pending-hint" role="note">
-            <span className="msg-pending-hint-icon" aria-hidden="true">ⓘ</span>
+            <span className="msg-pending-hint-icon" aria-hidden="true">
+              <InfoIcon size={13} />
+            </span>
             <span>
               The agent is running autonomously — it picks up tracked todos and
               issues via <code>wait_for_work</code> and won&apos;t reply to
