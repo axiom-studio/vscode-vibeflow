@@ -417,20 +417,42 @@ export function SessionChatView() {
             />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="chat-header-name">{meta.personaName}</div>
-              <div className="chat-header-meta">
-                {meta.model && (
-                  <>
-                    <span>{meta.model}</span>
-                    <span className="divider" aria-hidden />
-                  </>
-                )}
-                <span className="chat-header-branch">
-                  <GitBranchIcon size={11} />
-                  <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>{meta.branch}</span>
-                </span>
-                <span className="divider" aria-hidden />
-                <span style={{ textTransform: 'capitalize' }}>{meta.status}</span>
-              </div>
+              {/*
+                Header meta line is verbose by default (model · branch ·
+                status) — useful in vanilla/vibeflow sessions where the
+                rail also shows that data and the header chip is a
+                redundant glance.
+
+                In chat-first mode there's no rail, the agent is purely
+                conversational, and branch/model don't change mid-chat.
+                Collapsing the meta to a single subdued status pill keeps
+                the header focused on persona identity without burdening
+                a wide chat panel with breadcrumb noise. #2348.
+              */}
+              {meta.sessionMode === 'chat_first' ? (
+                <div className="chat-header-meta chat-header-meta-minimal">
+                  <span
+                    className={`chat-header-status chat-header-status-${meta.status}`}
+                    aria-hidden
+                  />
+                  <span style={{ textTransform: 'capitalize' }}>{meta.status}</span>
+                </div>
+              ) : (
+                <div className="chat-header-meta">
+                  {meta.model && (
+                    <>
+                      <span>{meta.model}</span>
+                      <span className="divider" aria-hidden />
+                    </>
+                  )}
+                  <span className="chat-header-branch">
+                    <GitBranchIcon size={11} />
+                    <span style={{ fontFamily: 'var(--vscode-editor-font-family)' }}>{meta.branch}</span>
+                  </span>
+                  <span className="divider" aria-hidden />
+                  <span style={{ textTransform: 'capitalize' }}>{meta.status}</span>
+                </div>
+              )}
             </div>
           </div>
           {/*
@@ -477,6 +499,7 @@ export function SessionChatView() {
               personaName={meta.personaName}
               personaAvatarUrl={personaAvatar}
               personaColor={personaColor}
+              sessionMode={meta.sessionMode}
               onUseExample={(text) => {
                 setDraft(text);
                 // Defer focus to next frame so the textarea exists in the
@@ -713,25 +736,42 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function EmptyState({ personaName, personaAvatarUrl, personaColor, onUseExample }: {
+function EmptyState({ personaName, personaAvatarUrl, personaColor, sessionMode, onUseExample }: {
   personaName: string;
   personaAvatarUrl?: string;
   personaColor?: string;
+  sessionMode: SessionMeta['sessionMode'];
   /** Pre-fill the chat textarea with an example prompt + focus it. */
   onUseExample: (text: string) => void;
 }) {
   const glyph = personaName.trim().charAt(0).toUpperCase() || 'A';
-  // Cold-start prompts. Deliberately concrete (a real task, a real
-  // question, a real ask) rather than generic ("Help me with...") so
-  // the user sees the shape of useful asks at a glance. Persona-agnostic
-  // so the same three work across Developer / Architect / QA / etc.
-  const examples = [
-    `What are you working on?`,
-    `Pick up the next ready issue.`,
-    `Review the diff on this branch.`,
-  ];
+  // Mode-aware cold-start copy + prompts.
+  //
+  // vanilla / vibeflow modes: agent is terminal-driven and picks up
+  // tracked work items via `wait_for_work`. The chat is for status
+  // queries and work-item-attached questions.
+  //
+  // chat_first: agent IS the chat. No `wait_for_work` polling, no
+  // work-item attachment requirement — every message gets a reply.
+  // Cold-start copy reflects that: "ask anything", not "start on a
+  // work item".
+  const isChatFirst = sessionMode === 'chat_first';
+  const subCopy = isChatFirst
+    ? `Ask ${personaName} anything.`
+    : `Say hello or ask ${personaName} to start on a work item.`;
+  const examples = isChatFirst
+    ? [
+        `Walk me through this codebase.`,
+        `What would you change first?`,
+        `Find the bug in the last commit.`,
+      ]
+    : [
+        `What are you working on?`,
+        `Pick up the next ready issue.`,
+        `Review the diff on this branch.`,
+      ];
   return (
-    <div className="chat-empty">
+    <div className={`chat-empty${isChatFirst ? ' chat-empty-chat-first' : ''}`}>
       <PersonaAvatar
         className="chat-empty-avatar"
         src={personaAvatarUrl}
@@ -739,9 +779,7 @@ function EmptyState({ personaName, personaAvatarUrl, personaColor, onUseExample 
         fallbackColor={personaColor}
       />
       <div className="chat-empty-title">{personaName}</div>
-      <div className="chat-empty-sub">
-        Say hello or ask {personaName} to start on a work item.
-      </div>
+      <div className="chat-empty-sub">{subCopy}</div>
       <div className="chat-empty-chips" role="group" aria-label="Example prompts">
         {examples.map((text) => (
           <button
