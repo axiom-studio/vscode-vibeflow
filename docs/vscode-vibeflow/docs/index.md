@@ -15,6 +15,8 @@ VibeFlow is a backend platform (Projects, Features, Todos, Issues, Documents, Co
 
 If you already know what VibeFlow is from the cloud product, the extension is the same workflow, with the IDE wired in as a first-class surface.
 
+![VibeFlow Dashboard — agent topology and live project metrics inside VS Code](/images/vscode/dashboard.png)
+
 ## How it works
 
 1. **Install + connect**: the extension's 3-step Setup wizard asks for a server URL, an API key, and a project. Auto-detects the project from your workspace's git remote.
