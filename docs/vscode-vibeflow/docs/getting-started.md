@@ -4,6 +4,8 @@
 
 **TL;DR**: Install the extension, run **VibeFlow: Setup** (3 steps: server, API key, project), then click **+ Launch Session** in the Agent Fleet view. Pick *Developer + Claude + Vanilla* for your first run. Type a question in the Session Chat panel, click **Convert to work item**, and watch the agent claim and answer it.
 
+![VibeFlow Dashboard — your AI engineering team at a glance](/images/vscode-1.webp)
+
 > Unfamiliar word? Every new term is bolded the first time and defined in [glossary.md](glossary.md).
 
 ---
