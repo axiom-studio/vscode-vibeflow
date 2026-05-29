@@ -1755,6 +1755,12 @@ button.asset-card { /* reset native button styling */
   line-height: 1.55;
   white-space: pre;
   border-left: 1px solid transparent;
+  /* Clamp each panel to its 50% grid track (a 1fr track defaults to
+     min-width: auto, which with white-space: pre lets a long line expand
+     the cell and bleed into the neighbouring panel). Long lines now scroll
+     within their own column instead of overflowing it. */
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .diff-split-cell + .diff-split-cell {
