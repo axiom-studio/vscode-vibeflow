@@ -73,26 +73,36 @@
     "views": {
       "vibeflow": [
         {
+          "id": "vibeflow.welcome",
+          "name": "Welcome",
+          "type": "tree",
+          "when": "!vibeflow.configured"
+        },
+        {
           "id": "vibeflow.agentFleet",
           "name": "Agent Fleet",
-          "type": "tree"
+          "type": "tree",
+          "when": "vibeflow.configured"
         },
         {
           "id": "vibeflow.workItems",
           "name": "Work Items",
-          "type": "tree"
+          "type": "tree",
+          "when": "vibeflow.configured"
         },
         {
           "id": "vibeflow.projectItems",
           "name": "Project Items",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
         },
         {
           "id": "vibeflow.documents",
           "name": "Documents",
           "type": "tree",
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
         }
       ],
       "vibeflowMonitor": [
@@ -104,6 +114,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "vibeflow.welcome",
+        "contents": "Welcome to VibeFlow!\n\nConnect to your VibeFlow server to manage your agent fleet, work items, project items, and documents.\n\n[Get Started](command:vibeflow.setup)\n\nYou'll be asked for your server URL, API key, and project."
+      }
+    ],
     "chatParticipants": [
       {
         "id": "vibeflow.chat",
