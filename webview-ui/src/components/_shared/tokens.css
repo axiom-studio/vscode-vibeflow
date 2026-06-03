@@ -1,0 +1,151 @@
+/*
+ * Design tokens — opinionated scales for the vibeflow webview surfaces.
+ *
+ * Imported once at the top of `webview-ui/src/index.css` so every panel
+ * (Session Chat, Settings, Dashboard, Kanban, Compliance, Documents,
+ * Activity Feed, Work Item) inherits them via the cascade.
+ *
+ * ## Why these exist
+ *
+ * Pre-tokens, `sessionChat.css` alone had 39 unique pixel values
+ * (1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13, 14, 16, 18, 20, ..., 480),
+ * 7 unique border-radii (3, 4, 6, 8, 14, 50%, 999px), and 6 unique
+ * transition timings (100, 120, 150, 180, 200, 220ms) — the visual
+ * signature of "iterated until it looked right" rather than "designed
+ * a scale". Tokens collapse the chaos to a small, opinionated system.
+ *
+ * ## Editing rules
+ *
+ *   1. Add a new token only when a real, repeated need exists across
+ *      ≥2 components. One-off values stay inline (with a comment).
+ *   2. NEVER add fractional steps (e.g. `--vf-sp-1-5`). If 4px and 8px
+ *      don't fit, the layout itself is wrong, not the scale.
+ *   3. Easing: there is ONE curve. Don't add a second.
+ *   4. VS Code theme colors (`--vscode-*`) are NOT redefined here —
+ *      those come live from the user's selected theme.
+ */
+
+:root {
+  /* Spacing — geometric-ish, 4px base, doubles + golden-section breaks.
+   * Use for padding, gap, margin. Fixed component dimensions (e.g.
+   * avatar size, rail width) intentionally stay inline as named-purpose
+   * values, not as spacing tokens. */
+  --vf-sp-1: 4px;    /* hairline gaps (icon-text, chip internal) */
+  --vf-sp-2: 8px;    /* tight (button internal, chip strip) */
+  --vf-sp-3: 12px;   /* default (most internal padding, list rows) */
+  --vf-sp-4: 16px;   /* comfortable (card padding, section gaps) */
+  --vf-sp-5: 24px;   /* loose (panel padding, between groups) */
+  --vf-sp-6: 32px;   /* section breaks */
+  --vf-sp-7: 48px;   /* major layout gaps */
+
+  /* Border radius — three steps. `--vf-r-sm` for chips/inline tags,
+   * `--vf-r-md` for buttons/inputs/cards, `--vf-r-pill` for status
+   * pills + avatars (50% is treated as a special case of pill). */
+  --vf-r-sm: 4px;
+  --vf-r-md: 8px;
+  --vf-r-pill: 999px;
+
+  /* Motion — four steps, all on ONE curve.
+   *   micro  → button-press, hover-state, color transitions
+   *   quick  → dropdowns, tooltips, small popovers
+   *   panel  → side rail collapse, accordion expand
+   *   sheet  → drawer / modal in/out
+   * Cap at `panel` (240ms) for keyboard-initiated actions —
+   * `sheet` is for pointer/touch-initiated panel motion only. */
+  --vf-t-micro: 120ms;
+  --vf-t-quick: 180ms;
+  --vf-t-panel: 240ms;
+  --vf-t-sheet: 320ms;
+
+  /* Easing — Ionic Framework's iOS drawer curve. Strong ease-out at
+   * the start (instant visual feedback), gentle settle at the end
+   * (no abrupt stop). Matches the curve the side rail was already
+   * using ad-hoc at `cubic-bezier(0.32, 0.72, 0, 1)`. */
+  --vf-ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* Hairlines — 1px borders that respect the active theme. Use these
+   * instead of `border: 1px solid var(--vscode-panel-border)` so a
+   * future tweak (e.g. dual-tone borders for light vs dark) is one
+   * file away. */
+  --vf-border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+  --vf-border-subtle: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
+
+  /* ── Typography ────────────────────────────────────────────────────
+   *
+   * Three font roles, separated so each surface can pick the right one:
+   *
+   *   --vf-font-display → Panel headings + hero metrics + section
+   *     labels. Modern system-UI sans. SF Pro Variable on macOS,
+   *     Segoe UI Variable on Win 11, "Inter" if present (most modern
+   *     Linux distros + GitHub Codespaces ship it), generic
+   *     `system-ui` last. Deliberately differentiated from the user's
+   *     editor font so editor-area panels feel like *this product*
+   *     rather than "another VS Code webview chrome".
+   *
+   *   --vf-font-body → User's selected editor font. Use for body
+   *     prose in surfaces that should match the surrounding editor —
+   *     primarily the Session Chat transcript, which renders agent /
+   *     user text that reads better at the user's chosen font /
+   *     ligature / weight preferences.
+   *
+   *   --vf-font-mono → User's selected editor monospace. Code blocks,
+   *     commit hashes, file paths, version numbers. NEVER use a
+   *     custom monospace — coders have strong preferences here and
+   *     overriding them is hostile.
+   *
+   * NEVER hardcode `"Inter"`, `"Geist"`, `system-ui`, etc. in
+   * component CSS. Always reference these tokens so a future swap is
+   * one file away. */
+  --vf-font-display:
+    "SF Pro Display", "SF Pro", -apple-system, BlinkMacSystemFont,
+    "Segoe UI Variable", "Segoe UI", "Helvetica Neue",
+    "Inter", system-ui, sans-serif;
+  --vf-font-body: var(--vscode-font-family);
+  --vf-font-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+
+  /* Type scale — 7 steps. Each step has a clearly different role
+   * (not "11 vs 12 because I tweaked it"). Use these everywhere
+   * instead of inline `fontSize: 9.5` magic numbers.
+   *
+   *   xs   → micro labels (kbd hints, status pills)
+   *   sm   → secondary text (timestamps, descriptions)
+   *   base → standard body text
+   *   md   → emphasised body (selected list item, message author)
+   *   lg   → small headings (subsection titles, card titles)
+   *   xl   → section headings (panel section dividers)
+   *   2xl  → display (panel hero titles, empty-state names)
+   *
+   * Optical rule: when in doubt, drop a step rather than add. Tight
+   * type hierarchies read as more confident than loose ones. */
+  --vf-text-xs:   11px;
+  --vf-text-sm:   12px;
+  --vf-text-base: 13px;
+  --vf-text-md:   14px;
+  --vf-text-lg:   16px;
+  --vf-text-xl:   20px;
+  --vf-text-2xl:  28px;
+
+  /* Weight — three steps. Variable fonts allow more, but in a UI
+   * three roles cover everything: text / emphasis / display. */
+  --vf-weight-normal:   400;
+  --vf-weight-medium:   500;
+  --vf-weight-semibold: 600;
+
+  /* Tracking — display text gets negative tracking (the
+   * "tracking-tight" Tailwind convention). Body text stays at the
+   * font's natural tracking. Caps get positive tracking for
+   * legibility (status pills, tags). */
+  --vf-tracking-tight:  -0.011em;  /* display headings: subtle squeeze */
+  --vf-tracking-normal: 0;          /* body */
+  --vf-tracking-caps:   0.04em;     /* uppercase status labels */
+}
+
+/* Display-text utility. Apply to non-heading elements that should
+ * carry the display voice (hero metrics, empty-state names, section
+ * labels that aren't semantic headings). Headings (h1-h4) in
+ * editor-area panel scopes get this automatically via index.css. */
+.vf-display {
+  font-family: var(--vf-font-display);
+  letter-spacing: var(--vf-tracking-tight);
+  text-wrap: balance;
+}
