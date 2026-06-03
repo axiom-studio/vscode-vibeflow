@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./components/_shared/tokens.css";
 
 /*
  * Map VSCode theme tokens to Tailwind-consumable CSS variables.
@@ -52,6 +53,58 @@ body[data-vf-mode="session-chat"],
 body[data-vf-mode="compliance"],
 body[data-vf-mode="document"] {
   --feed-bg: var(--vscode-editor-background);
+}
+
+/*
+ * Editor-area panel typography (Phase 3, #2347 — scoped fix in #2348).
+ *
+ * Apply the display font to semantic headings inside editor-area
+ * panels — gives the surfaces their own voice (modern system-UI
+ * sans) instead of inheriting whatever the user picked as their
+ * editor font (often Cascadia / Fira / monospace coding faces that
+ * read fine for code but generic for UI chrome).
+ *
+ * Sidebar webviews (Activity Feed, Project Items, Work Items tree)
+ * intentionally do NOT get this — they should feel like extensions
+ * of the VS Code sidebar chrome where the user's editor font is the
+ * right baseline.
+ *
+ * IMPORTANT — markdown content exclusion:
+ *   `:not(.msg-content :scope)` would be the right CSS but isn't
+ *   widely supported. Instead we scope each rule to a specific
+ *   panel-chrome class (`.chat-empty-title`, etc.) explicitly. The
+ *   bulk auto-apply only targets `<h*>` elements OUTSIDE chat message
+ *   bodies — markdown headings inside agent / user message bodies
+ *   continue to inherit the editor font so the whole message reads as
+ *   one continuous voice rather than display-font heading + editor-font
+ *   body. The Phase 3 commit accidentally applied display to ALL h-tags
+ *   in `body[data-vf-mode="session-chat"]` including markdown — fixed
+ *   by EXCLUDING `session-chat` from the bulk rule and applying
+ *   display via specific chat-chrome classes in sessionChat.css instead.
+ */
+body[data-vf-mode="dashboard"] h1,
+body[data-vf-mode="dashboard"] h2,
+body[data-vf-mode="dashboard"] h3,
+body[data-vf-mode="dashboard"] h4,
+body[data-vf-mode="settings"] h1,
+body[data-vf-mode="settings"] h2,
+body[data-vf-mode="settings"] h3,
+body[data-vf-mode="settings"] h4,
+body[data-vf-mode="kanban"] h1,
+body[data-vf-mode="kanban"] h2,
+body[data-vf-mode="kanban"] h3,
+body[data-vf-mode="kanban"] h4,
+body[data-vf-mode="workitem"] h1,
+body[data-vf-mode="workitem"] h2,
+body[data-vf-mode="workitem"] h3,
+body[data-vf-mode="workitem"] h4,
+body[data-vf-mode="compliance"] h1,
+body[data-vf-mode="compliance"] h2,
+body[data-vf-mode="compliance"] h3,
+body[data-vf-mode="compliance"] h4 {
+  font-family: var(--vf-font-display);
+  letter-spacing: var(--vf-tracking-tight);
+  text-wrap: balance;
 }
 
 /*

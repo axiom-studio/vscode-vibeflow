@@ -304,6 +304,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // =============================================
 
   /**
+   * Toggle the `vibeflow.configured` context key that gates the activity-bar
+   * views: when false the Welcome / Get Started view is shown; when true the
+   * four sections (Agent Fleet, Work Items, Project Items, Documents) are
+   * shown. Driven by connect/disconnect so it always tracks real state.
+   */
+  function setConfiguredContext(configured: boolean): void {
+    void vscode.commands.executeCommand('setContext', 'vibeflow.configured', configured);
+  }
+
+  /**
    * Connect all views to a detected project.
    * Called after successful setup or on activation with stored credentials.
    */
@@ -352,6 +362,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // onDidChangeTreeData subscription below keeps it fresh.
     feedStateController.setProjectActive(true);
     feedStateController.setActiveSessionCount(sessionsProvider.getActiveSessionCount());
+
+    // Setup is complete (key + project) → flip the gate so the activity-bar
+    // shows the 4 sections instead of the Welcome / Get Started view.
+    setConfiguredContext(true);
   }
 
   /**
@@ -384,6 +398,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     feedStateController.setProjectActive(false);
     feedStateController.setActiveSessionCount(0);
     // TreeViews will show placeholder/empty state on next refresh
+
+    // No project connected → show the Welcome / Get Started gate.
+    setConfiguredContext(false);
   }
 
   /**
@@ -696,6 +713,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // =============================================
   // REGISTER VIEWS
   // =============================================
+
+  // Default the gate to "not configured" so the Welcome / Get Started view
+  // is shown until tryAutoConnect (or a manual Setup) connects a project.
+  // connectToProject / disconnect keep this in sync thereafter.
+  setConfiguredContext(false);
+
+  // The Welcome view is a contribution-only surface: its content comes from
+  // the `viewsWelcome` entry in package.json (the Get Started button). It
+  // still needs a registered data provider, so give it one that yields no
+  // tree items — that keeps the view "empty" and lets the welcome render.
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('vibeflow.welcome', {
+      getChildren: () => [],
+      getTreeItem: (element: vscode.TreeItem) => element,
+    }),
+  );
 
   const sessionsView = vscode.window.createTreeView('vibeflow.agentFleet', {
     treeDataProvider: sessionsProvider,

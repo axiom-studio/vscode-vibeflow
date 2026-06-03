@@ -7,9 +7,9 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import type { ChatPrompt, SessionMode } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
-import { PersonaAvatar } from './PersonaAvatar';
 import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
 import { AssetCard } from './AssetCard';
+import { InfoIcon } from '../_shared/icons';
 import { getVsCodeApi } from '../../vscodeApi';
 
 interface Props {
@@ -19,10 +19,17 @@ interface Props {
    * Optional persona portrait — `{serverUrl}/persona/professional/...jpg`.
    * Shared mapping lives in `personaAvatars.ts` so the chat and the
    * dashboard's agent topology render the same images for each persona.
-   * Falls back to a single-letter glyph when undefined (offline, unknown
-   * persona, etc.).
+   * Kept on the props for the empty state + side rail use; the row
+   * itself no longer renders a 32px circular avatar on every message.
    */
   personaAvatarUrl?: string;
+  /**
+   * Persona color from `PERSONA_COLORS[personaKey]`. Drives the 2px
+   * vertical stripe on the agent message row (the visual replacement
+   * for the round avatar pattern). User messages ignore this and use
+   * `--vscode-button-background` for their own stripe.
+   */
+  personaColor: string;
   /** User's preferred inline diff layout, threaded down from SessionChatView. */
   diffView: 'unified' | 'split';
   /**
@@ -62,7 +69,7 @@ interface Props {
  * it non-stable, this memo will degrade silently to "always re-render";
  * worth a `useCallback` audit if profile data ever points back here.
  */
-function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessionMode, onRespond }: Props) {
+function MessageBubbleImpl({ msg, personaName, personaColor, diffView, sessionMode, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -88,13 +95,18 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
     && sessionMode !== 'chat_first'
     && isStale(msg.created_at, PENDING_HINT_THRESHOLD_MS);
 
+  // The persona color is plumbed in as a CSS variable so the `::before`
+  // stripe (defined in sessionChat.css under `.msg-row`) can paint
+  // without each row needing a unique class. User-message rows ignore
+  // this — their stripe color is hard-coded to the VS Code button color
+  // for a consistent "you" treatment. #2346 (Phase 2 chat skin).
+  const rowStyle = !isUser ? { '--msg-stripe-color': personaColor } as React.CSSProperties : undefined;
+
   return (
-    <div className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}>
-      <PersonaAvatar
-        className="msg-avatar"
-        src={isUser ? undefined : personaAvatarUrl}
-        fallbackGlyph={avatarGlyph(isUser, personaName)}
-      />
+    <div
+      className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}
+      style={rowStyle}
+    >
       <div className="msg-body">
         <div className="msg-header">
           <span className="msg-author">{author}</span>
@@ -129,7 +141,9 @@ function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, diffView, sessi
 
         {showStalePendingHint && (
           <div className="msg-pending-hint" role="note">
-            <span className="msg-pending-hint-icon" aria-hidden="true">ⓘ</span>
+            <span className="msg-pending-hint-icon" aria-hidden="true">
+              <InfoIcon size={13} />
+            </span>
             <span>
               The agent is running autonomously — it picks up tracked todos and
               issues via <code>wait_for_work</code> and won&apos;t reply to
@@ -424,12 +438,6 @@ function formatElapsed(ms: number): string {
   const hours = Math.floor(totalMin / 60);
   const remMin = totalMin % 60;
   return remMin > 0 ? `${hours}h ${remMin}m` : `${hours}h`;
-}
-
-function avatarGlyph(isUser: boolean, personaName: string): string {
-  if (isUser) { return 'U'; }
-  // First letter of persona, uppercase.
-  return personaName.trim().charAt(0).toUpperCase() || 'A';
 }
 
 function formatTime(iso: string): string {
