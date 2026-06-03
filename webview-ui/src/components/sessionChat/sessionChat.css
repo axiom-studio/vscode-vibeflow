@@ -33,14 +33,20 @@
 
 /* Rail slide animation — iOS-drawer ease. Mounted always so its
  * scroll position survives the toggle.
+ *
+ * `transform-origin: right center` so the rail collapses from the
+ * edge it's anchored to (right side of the panel) instead of from
+ * its own center — keeps the visual relationship between the rail
+ * and the chat column it's attached to.
  */
 .side-rail {
-  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: transform var(--vf-t-panel) var(--vf-ease);
+  transform-origin: right center;
   will-change: transform;
 }
 
 .chat-column {
-  transition: margin 220ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: margin var(--vf-t-panel) var(--vf-ease);
 }
 
 /* Rail collapsed: chat fills full width. Rail itself stays mounted
@@ -83,7 +89,7 @@
      the scroller overflowing. Same fix below for .side-rail. */
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid var(--vscode-panel-border);
+  border-right: var(--vf-border);
 }
 
 /* Chat-column header — persona breadcrumb + rail-collapse toggle.
@@ -93,9 +99,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--vf-sp-3);
   padding: 10px 18px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: var(--vf-border);
   background: var(--vscode-editor-background);
   flex-shrink: 0;
 }
@@ -135,9 +141,15 @@
   display: block;
 }
 
+/* Chat-header persona name — display voice. This is the panel's
+ * persistent identity label (stays sticky during scroll), so it
+ * earns the display treatment even though it isn't a semantic
+ * heading. #2347 (Phase 3). */
 .chat-header-name {
-  font-weight: 600;
-  font-size: 13px;
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-weight-semibold);
+  font-size: var(--vf-text-base);
+  letter-spacing: var(--vf-tracking-tight);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,6 +166,37 @@
 .chat-header-meta .dot {
   margin: 0 6px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* Chat-first header meta (#2348): single status indicator + label.
+ * The colored dot is a 6px circle drawn via background — keyed to
+ * session status so it carries information at a glance without
+ * stealing focus from the persona name above it. */
+.chat-header-meta-minimal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+}
+
+.chat-header-status {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--vf-r-pill);
+  flex-shrink: 0;
+}
+
+.chat-header-status-active {
+  background: var(--vscode-terminal-ansiGreen, #4ec86e);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--vscode-terminal-ansiGreen, #4ec86e) 18%, transparent);
+}
+
+.chat-header-status-stale {
+  background: var(--vscode-editorWarning-foreground, #ffc107);
+}
+
+.chat-header-status-inactive {
+  background: color-mix(in oklab, var(--vscode-foreground) 35%, transparent);
 }
 
 /* Hairline vertical divider — replaces the · glyph separator in the
@@ -174,7 +217,7 @@
 .chat-header-meta .chat-header-branch {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--vf-sp-1);
 }
 
 /* Toggle button chevron flips direction based on collapsed state.
@@ -189,20 +232,20 @@
 .chat-header-toggle-chevron {
   display: inline-flex;
   align-items: center;
-  transition: transform 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  transition: transform var(--vf-t-quick) var(--vf-ease);
 }
 
 .chat-header-toggle {
   background: transparent;
-  border: 1px solid var(--vscode-panel-border);
+  border: var(--vf-border);
   color: var(--vscode-foreground);
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--vf-r-pill);
   cursor: pointer;
   font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--vf-t-micro) ease, border-color var(--vf-t-micro) ease;
 }
 
 .chat-header-toggle:hover {
@@ -213,18 +256,18 @@
 .chat-load-older {
   text-align: center;
   padding: 8px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: var(--vf-border);
 }
 
 .chat-load-older button {
   background: transparent;
-  border: 1px solid var(--vscode-panel-border);
+  border: var(--vf-border);
   color: var(--vscode-textLink-foreground);
   padding: 6px 14px;
-  border-radius: 999px;
+  border-radius: var(--vf-r-pill);
   cursor: pointer;
   font-size: 12px;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--vf-t-micro) ease, border-color var(--vf-t-micro) ease;
 }
 
 .chat-load-older button:hover {
@@ -232,11 +275,37 @@
   border-color: var(--vscode-focusBorder);
 }
 
+/* Scroller padding is symmetric L/R so the content column reads as
+ * visually centered. Combined with `.msg-row`'s own left padding
+ * (which holds the 2px persona stripe), the effective text column
+ * sits with equal breathing room on both sides. Pre-#2348 the scroller
+ * was 28px L/R but .msg-row added 16px more on the LEFT only, shifting
+ * the column right by 16px — visible in chat-first where there's no
+ * rail to anchor against. */
 .chat-scroller {
   flex: 1;
   overflow-y: auto;
-  padding: 24px 28px 16px;
+  padding: var(--vf-sp-5) var(--vf-sp-5) var(--vf-sp-4);
   scroll-behavior: smooth;
+}
+
+/* Chat-first mode (#2348): with no rail competing for the eye, the
+ * chat column IS the panel. Increase horizontal breathing room so
+ * long prose lines don't run too wide (>~85ch becomes hard to read),
+ * and give the surface a slightly more cinematic feel. Capped at
+ * 820px content width — beyond that, line lengths exceed the comfort
+ * range and the panel starts to feel like a document rather than a
+ * conversation. */
+.session-chat-root.no-rail .chat-scroller {
+  padding-left: var(--vf-sp-6);
+  padding-right: var(--vf-sp-6);
+}
+.session-chat-root.no-rail .chat-scroller > * {
+  max-width: 820px;
+  /* Left-align the chat column (keep the 820px readable cap via the
+     auto right margin) instead of centering it in the scroller. */
+  margin-left: 0;
+  margin-right: auto;
 }
 
 .chat-scroller::-webkit-scrollbar { width: 10px; }
@@ -249,39 +318,55 @@
 }
 
 /* ============================== Message rows ============================== */
+/* Row layout:
+ *   Single column. The persona/user identity is signalled by a 2px
+ *   left stripe (::before pseudo) — not by a 32px round avatar repeated
+ *   on every message. Two wins:
+ *     1. Recovers 44px of horizontal content space per row (32px avatar
+ *        + 12px gap), giving prose more room to breathe in narrow VS
+ *        Code panels.
+ *     2. Color-coded scanning is faster than face-matching at the row
+ *        density a chat transcript reaches (dense IDE, not a marketing
+ *        DM thread). Persona portrait still appears in the empty state
+ *        and the side rail — so persona recognition isn't lost, it just
+ *        stops being redundantly repeated. #2346 (Phase 2 chat skin).
+ *
+ *   The stripe color is plumbed via a CSS variable (`--msg-stripe-color`)
+ *   that the row's inline style sets from `PERSONA_COLORS[personaKey]`
+ *   for agent messages. User messages override the variable with the
+ *   VS Code button color for a consistent "you" treatment regardless
+ *   of which agent the chat is with.
+ */
 .msg-row {
-  display: grid;
-  grid-template-columns: 32px 1fr;
-  gap: 12px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  position: relative;
+  padding: var(--vf-sp-3) 0 var(--vf-sp-3) var(--vf-sp-4);
+  border-bottom: var(--vf-border);
 }
 
 .msg-row:last-child { border-bottom: none; }
 
-.msg-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: -0.5px;
-  user-select: none;
-  flex-shrink: 0;
-  overflow: hidden;
+.msg-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--vf-sp-3);
+  bottom: var(--vf-sp-3);
+  width: 2px;
+  border-radius: var(--vf-r-pill);
+  background: var(--msg-stripe-color, var(--vscode-textLink-foreground));
+  transition: opacity var(--vf-t-quick) ease-out;
 }
 
-.msg-user .msg-avatar {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-.msg-agent .msg-avatar {
-  background: var(--vscode-textLink-foreground);
-  color: var(--vscode-editor-background);
+/* User-message stripe: a neutral foreground tint rather than the
+ * theme's button color (#2348). The button color is typically a bright
+ * brand blue, which on the developer persona (cyan `#4fc1ff`) reads
+ * as visually similar — both blues at a glance. A muted foreground
+ * tint ALWAYS contrasts against the saturated persona colors and
+ * makes the "you vs them" distinction read instantly. Color-mix on
+ * foreground keeps it theme-aware (dim in dark, dim in light) without
+ * conditional CSS. */
+.msg-user::before {
+  background: color-mix(in oklab, var(--vscode-foreground) 55%, transparent);
 }
 
 .msg-body {
@@ -313,7 +398,7 @@
   text-transform: uppercase;
   letter-spacing: 0.6px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   font-weight: 600;
 }
 
@@ -322,22 +407,26 @@
   color: var(--vscode-editor-background);
 }
 
-/* Animated "Working… {elapsed}" indicator for pending prompts.
- * Replaces the static `pending` chip — pill-shaped so it reads
- * differently from the rectangular status chips. Warning-toned
- * via color-mix so the affordance reads in all themes. */
+/* Animated "Working … {elapsed}" indicator for pending prompts.
+ *
+ * Pre-Phase-2 this was a yellow-tinted rounded pill with border — the
+ * default SaaS / AI loading affordance, which made the chat look like
+ * every other AI tool. The pill chrome (background, border, padding)
+ * carried no information; only the dot animation + elapsed counter do.
+ *
+ * Phase 2 strips the chrome and aligns the indicator inline with the
+ * author + time row at the same baseline. The breathing-dots animation
+ * carries the "live" signal; the muted descriptionForeground color
+ * keeps it secondary to the author name. #2346.
+ */
 .msg-working {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 14%, transparent);
-  color: var(--vscode-editorWarning-foreground, #ffc107);
-  border: 1px solid color-mix(in oklab, var(--vscode-editorWarning-foreground, #ffc107) 28%, transparent);
-  letter-spacing: 0.02em;
+  gap: var(--vf-sp-1);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  letter-spacing: 0.01em;
   white-space: nowrap;
   line-height: 1.4;
 }
@@ -355,17 +444,34 @@
 }
 
 .msg-working-dots > span {
-  opacity: 0.2;
-  animation: msg-working-blink 1.4s ease-in-out infinite;
+  opacity: 0.25;
+  animation: msg-working-breathe 1.6s var(--vf-ease) infinite;
 }
 
 .msg-working-dots > span:nth-child(1) { animation-delay: 0ms; }
-.msg-working-dots > span:nth-child(2) { animation-delay: 160ms; }
-.msg-working-dots > span:nth-child(3) { animation-delay: 320ms; }
+.msg-working-dots > span:nth-child(2) { animation-delay: 180ms; }
+.msg-working-dots > span:nth-child(3) { animation-delay: 360ms; }
 
-@keyframes msg-working-blink {
-  0%, 60%, 100% { opacity: 0.2; }
-  30% { opacity: 1; }
+/* Smooth opacity oscillation — no pinned plateaus, so the dots
+ * feel like they're breathing rather than blinking. Min opacity
+ * 0.25 (not 0) so the dots never visually disappear — softer than
+ * the prior 0/1 hard-toggle that read as "flickering". */
+@keyframes msg-working-breathe {
+  0%   { opacity: 0.25; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.25; }
+}
+
+/* Respect the user's reduced-motion preference (Emil rule, #2348).
+ * The breathing dots still need to convey "live" so we don't drop
+ * the animation entirely — we hold the dots at a steady mid-opacity
+ * instead of oscillating. The text counter still ticks each second
+ * for users who want explicit progress confirmation. */
+@media (prefers-reduced-motion: reduce) {
+  .msg-working-dots > span {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 .msg-working-time {
@@ -382,7 +488,7 @@
 .msg-pending-hint {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--vf-sp-2);
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -393,17 +499,23 @@
   line-height: 1.45;
 }
 
+/* Wrapper around the inline InfoIcon SVG. `display: inline-flex` so
+ * the icon aligns with the text baseline of the warning copy next to
+ * it; `margin-top` nudges the optical center to match the first text
+ * line's cap height (SVG bounding box doesn't have text metrics). */
 .msg-pending-hint-icon {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: flex-start;
   color: var(--vscode-editorWarning-foreground, #ffc107);
-  font-size: 13px;
   line-height: 1.45;
+  margin-top: 1px;
 }
 
 .msg-pending-hint code {
   background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
   padding: 0 4px;
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
 }
@@ -443,7 +555,7 @@
   font-family: var(--vscode-editor-font-family);
   font-size: 0.92em;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
 }
 .msg-content pre {
@@ -455,7 +567,7 @@
   font-family: var(--vscode-editor-font-family);
   font-size: 13px;
   line-height: 1.5;
-  border: 1px solid var(--vscode-panel-border);
+  border: var(--vf-border);
 }
 .msg-content pre code {
   background: transparent;
@@ -482,7 +594,7 @@
 }
 .msg-content th, .msg-content td,
 .msg-response th, .msg-response td {
-  border: 1px solid var(--vscode-panel-border);
+  border: var(--vf-border);
   padding: 6px 10px;
   text-align: left;
   vertical-align: top;
@@ -495,7 +607,7 @@
 .msg-content hr,
 .msg-response hr {
   border: none;
-  border-top: 1px solid var(--vscode-panel-border);
+  border-top: var(--vf-border);
   margin: 16px 0;
 }
 
@@ -512,7 +624,7 @@
   font-family: var(--vscode-editor-font-family);
   font-size: 0.92em;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   border: 1px solid color-mix(in oklab, var(--vscode-textLink-foreground) 30%, transparent);
   background: color-mix(in oklab, var(--vscode-textLink-foreground) 10%, transparent);
   color: var(--vscode-textLink-foreground);
@@ -520,7 +632,7 @@
   text-decoration: none;
   line-height: inherit;
   vertical-align: baseline;
-  transition: background 120ms ease-out, border-color 120ms ease-out;
+  transition: background var(--vf-t-micro) ease-out, border-color var(--vf-t-micro) ease-out;
 }
 .chat-commit-hash:hover,
 .chat-path-ref:hover {
@@ -540,7 +652,7 @@
 /* Reply form for pending agent prompts */
 .msg-reply-form {
   display: flex;
-  gap: 8px;
+  gap: var(--vf-sp-2);
   margin-top: 6px;
 }
 
@@ -550,7 +662,7 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-  border-radius: 4px;
+  border-radius: var(--vf-r-sm);
   font-family: inherit;
   font-size: 13px;
 }
@@ -565,7 +677,7 @@
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--vf-r-sm);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -582,7 +694,7 @@
   padding: 10px 14px;
   border-left: 3px solid var(--vscode-textLink-foreground);
   background: var(--vscode-editor-background);
-  border-radius: 4px;
+  border-radius: var(--vf-r-sm);
   font-size: 13.5px;
   line-height: 1.5;
 }
@@ -613,23 +725,48 @@
 .chat-empty-avatar {
   width: 72px;
   height: 72px;
-  border-radius: 50%;
+  border-radius: var(--vf-r-pill);
   background: var(--vscode-textLink-foreground);
   color: var(--vscode-editor-background);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 32px;
-  font-weight: 700;
-  margin-bottom: 16px;
+  font-weight: var(--vf-weight-semibold);
+  margin-bottom: var(--vf-sp-4);
   overflow: hidden;
 }
 
+/* Chat-first mode (#2348): no rail to compete for attention, so the
+ * empty state can be more cinematic. Larger avatar (96px vs 72px) +
+ * tighter title tracking + breathing room around the chip grid.
+ * The persona is the panel's hero element — let it lead. */
+.chat-empty-chat-first .chat-empty-avatar {
+  width: 96px;
+  height: 96px;
+  font-size: 42px;
+  margin-bottom: var(--vf-sp-5);
+}
+.chat-empty-chat-first .chat-empty-title {
+  font-size: var(--vf-text-2xl);
+}
+.chat-empty-chat-first .chat-empty-sub {
+  font-size: var(--vf-text-md);
+  margin-bottom: var(--vf-sp-5);
+}
+
+/* Empty-state persona name — display voice. The persona is the
+ * panel's hero element when there are no messages; carrying the
+ * display font here makes the cold-start surface feel intentional
+ * rather than generic. #2347 (Phase 3). */
 .chat-empty-title {
-  font-size: 20px;
-  font-weight: 700;
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-text-xl);
+  font-weight: var(--vf-weight-semibold);
+  letter-spacing: var(--vf-tracking-tight);
   color: var(--vscode-foreground);
-  margin-bottom: 8px;
+  margin-bottom: var(--vf-sp-2);
+  text-wrap: balance;
 }
 
 .chat-empty-sub {
@@ -637,6 +774,56 @@
   max-width: 420px;
   margin-bottom: 20px;
   line-height: 1.55;
+}
+
+/* Cold-start example prompts. Clicking a chip pre-fills the chat
+ * textarea (and focuses it) so the user doesn't have to come up with
+ * their first message. Three is the right number — one feels too
+ * prescriptive, five+ becomes a menu. #2346 (Phase 2).
+ *
+ * Visual treatment: rounded outline pill (matches the chat-header-toggle
+ * shape and the attachment chip family), neutral by default, lifts to
+ * the input/foreground tint on hover. Click feedback via the standard
+ * `:active { transform: scale(0.97) }` pattern used across the panel.
+ */
+.chat-empty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--vf-sp-2);
+  max-width: 480px;
+  margin-bottom: var(--vf-sp-4);
+}
+
+.chat-empty-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--vf-sp-1) var(--vf-sp-3);
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: var(--vf-border-subtle);
+  border-radius: var(--vf-r-pill);
+  cursor: pointer;
+  transition: background var(--vf-t-micro) ease-out,
+              border-color var(--vf-t-micro) ease-out,
+              transform var(--vf-t-micro) ease-out;
+}
+
+.chat-empty-chip:hover {
+  background: color-mix(in oklab, var(--vscode-foreground) 6%, transparent);
+  border-color: color-mix(in oklab, var(--vscode-foreground) 28%, transparent);
+}
+
+.chat-empty-chip:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.chat-empty-chip:active {
+  transform: scale(0.97);
 }
 
 .chat-empty-hints {
@@ -656,7 +843,7 @@
   color: var(--vscode-foreground);
   background: var(--vscode-keybindingLabel-background, color-mix(in oklab, var(--vscode-foreground) 10%, transparent));
   border: 1px solid var(--vscode-keybindingLabel-border, color-mix(in oklab, var(--vscode-foreground) 18%, transparent));
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--vscode-foreground) 6%, transparent);
 }
 
@@ -686,7 +873,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: 1px solid var(--vscode-panel-border);
+  border: var(--vf-border);
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   cursor: pointer;
@@ -695,7 +882,9 @@
   align-items: center;
   justify-content: center;
   z-index: 4;
-  transition: transform 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out;
+  transition: transform var(--vf-t-quick) ease-out,
+              background var(--vf-t-quick) ease-out,
+              border-color var(--vf-t-quick) ease-out;
 }
 
 .chat-scroll-down:hover {
@@ -740,13 +929,13 @@
  * inside the visual chrome without a double-line. */
 .chat-input-area {
   padding: 14px 28px 10px;
-  border-top: 1px solid var(--vscode-panel-border);
+  border-top: var(--vf-border);
   background: var(--vscode-editor-background);
 }
 
 .chat-input-row {
   display: flex;
-  gap: 8px;
+  gap: var(--vf-sp-2);
   align-items: flex-end;
 }
 
@@ -758,7 +947,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--vf-sp-1);
   user-select: none;
 }
 
@@ -770,12 +959,12 @@
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
-  border-radius: 8px;
+  border-radius: var(--vf-r-md);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.5;
   resize: vertical;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--vf-t-micro) ease, box-shadow var(--vf-t-micro) ease;
 }
 
 .chat-textarea:focus {
@@ -799,7 +988,7 @@
   background: var(--vscode-button-background);
   color: var(--vscode-button-foreground);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--vf-r-md);
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
@@ -807,7 +996,7 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  transition: background 150ms ease-out, transform 150ms ease-out;
+  transition: background var(--vf-t-quick) ease-out, transform var(--vf-t-quick) ease-out;
 }
 
 .chat-send:hover:not(:disabled) {
@@ -837,10 +1026,10 @@
   background: transparent;
   color: var(--vscode-foreground);
   border: 1px solid color-mix(in oklab, var(--vscode-foreground) 14%, transparent);
-  border-radius: 8px;
+  border-radius: var(--vf-r-md);
   cursor: pointer;
   opacity: 0.75;
-  transition: background 150ms ease-out, opacity 150ms ease-out, transform 150ms ease-out;
+  transition: background var(--vf-t-quick) ease-out, opacity var(--vf-t-quick) ease-out, transform var(--vf-t-quick) ease-out;
 }
 .chat-attach:hover {
   background: color-mix(in oklab, var(--vscode-foreground) 8%, transparent);
@@ -858,7 +1047,7 @@
   outline: 2px dashed color-mix(in oklab, var(--vscode-textLink-foreground) 60%, transparent);
   outline-offset: -2px;
   background: color-mix(in oklab, var(--vscode-textLink-foreground) 8%, transparent);
-  border-radius: 8px;
+  border-radius: var(--vf-r-md);
 }
 
 .chat-attachment-strip {
@@ -928,7 +1117,7 @@
   opacity: 0.6;
   cursor: pointer;
   border-radius: 50%;
-  transition: opacity 120ms ease-out, background 120ms ease-out;
+  transition: opacity var(--vf-t-micro) ease-out, background var(--vf-t-micro) ease-out;
 }
 .chat-attachment-dismiss:hover {
   opacity: 1;
@@ -972,7 +1161,7 @@
   vertical-align: middle;
   cursor: pointer;
   font-family: inherit;
-  transition: background 120ms ease-out, border-color 120ms ease-out;
+  transition: background var(--vf-t-micro) ease-out, border-color var(--vf-t-micro) ease-out;
 }
 button.asset-card { /* reset native button styling */
   appearance: none;
@@ -1031,7 +1220,7 @@ button.asset-card { /* reset native button styling */
   background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
-  border-radius: 8px;
+  border-radius: var(--vf-r-md);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 4px 0;
   z-index: 20;
@@ -1057,7 +1246,7 @@ button.asset-card { /* reset native button styling */
   width: 100%;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--vf-sp-3);
   padding: 6px 12px;
   background: transparent;
   color: inherit;
@@ -1104,13 +1293,13 @@ button.asset-card { /* reset native button styling */
   min-height: 0;
   overflow: hidden;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-  border-left: 1px solid var(--vscode-panel-border);
-  transition: width 200ms ease;
+  border-left: var(--vf-border);
+  transition: width var(--vf-t-panel) ease;
 }
 
 .rail-section {
   padding: 16px 18px;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: var(--vf-border);
 }
 
 .rail-section:last-child { border-bottom: none; }
@@ -1127,7 +1316,7 @@ button.asset-card { /* reset native button styling */
 /* Header — avatar + persona/model/branch */
 .rail-header {
   display: flex;
-  gap: 12px;
+  gap: var(--vf-sp-3);
   align-items: center;
 }
 
@@ -1179,7 +1368,7 @@ button.asset-card { /* reset native button styling */
 .rail-status {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--vf-sp-1);
   text-transform: capitalize;
   font-weight: 600;
 }
@@ -1260,13 +1449,13 @@ button.asset-card { /* reset native button styling */
 
 .rail-log-row {
   padding: 8px 0;
-  border-bottom: 1px solid var(--vscode-panel-border);
+  border-bottom: var(--vf-border);
   display: flex;
   flex-direction: column;
   gap: 2px;
   cursor: pointer;
-  transition: background 100ms ease;
-  border-radius: 4px;
+  transition: background var(--vf-t-micro) ease;
+  border-radius: var(--vf-r-sm);
   padding-left: 6px;
   padding-right: 6px;
   margin: 0 -6px;
@@ -1310,7 +1499,7 @@ button.asset-card { /* reset native button styling */
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   margin-bottom: 2px;
@@ -1324,7 +1513,7 @@ button.asset-card { /* reset native button styling */
 /* Action buttons */
 .rail-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--vf-sp-2);
 }
 
 .rail-btn {
@@ -1335,7 +1524,7 @@ button.asset-card { /* reset native button styling */
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
-  transition: background 120ms ease, transform 80ms ease;
+  transition: background var(--vf-t-micro) ease, transform var(--vf-t-micro) ease;
 }
 
 .rail-btn:active { transform: translateY(1px); }
@@ -1378,7 +1567,7 @@ button.asset-card { /* reset native button styling */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--vf-sp-2);
   padding: 6px 10px;
   background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
   border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
@@ -1430,11 +1619,11 @@ button.asset-card { /* reset native button styling */
   font-size: 11px;
   padding: 3px 9px;
   border: 1px solid var(--vscode-button-border, transparent);
-  border-radius: 3px;
+  border-radius: var(--vf-r-sm);
   background: var(--vscode-button-secondaryBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   cursor: pointer;
-  transition: background 100ms;
+  transition: background var(--vf-t-micro) ease;
 }
 
 .diff-open-btn:hover {
@@ -1566,6 +1755,12 @@ button.asset-card { /* reset native button styling */
   line-height: 1.55;
   white-space: pre;
   border-left: 1px solid transparent;
+  /* Clamp each panel to its 50% grid track (a 1fr track defaults to
+     min-width: auto, which with white-space: pre lets a long line expand
+     the cell and bleed into the neighbouring panel). Long lines now scroll
+     within their own column instead of overflowing it. */
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .diff-split-cell + .diff-split-cell {
