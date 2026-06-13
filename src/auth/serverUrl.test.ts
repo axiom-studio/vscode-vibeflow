@@ -38,7 +38,15 @@ describe('validateServerUrl — accepts (ok branches)', () => {
     expect(r.ok).toBe(true);
   });
 
-  it.todo('accepts http://[::1] (IPv6 loopback) — see issue #2327; Node URL.hostname keeps brackets so the existing allowlist misses');
+  it('accepts http://[::1] (IPv6 loopback)', () => {
+    const r = validateServerUrl('http://[::1]');
+    expect(r.ok).toBe(true);
+  });
+
+  it('accepts http://[::1]:3000', () => {
+    const r = validateServerUrl('http://[::1]:3000');
+    expect(r.ok).toBe(true);
+  });
 
   it('strips surrounding whitespace before validating', () => {
     const r = validateServerUrl('  https://example.com  ');
