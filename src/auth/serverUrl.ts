@@ -21,6 +21,12 @@ export interface ValidationResult {
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1']);
 
+/** Node's URL.hostname keeps brackets around IPv6 literals (e.g. `[::1]`). */
+function isLocalHostname(hostname: string): boolean {
+  const normalized = hostname.replace(/^\[(.+)\]$/, '$1');
+  return LOCAL_HOSTNAMES.has(normalized);
+}
+
 export function validateServerUrl(raw: string): ValidationResult {
   const trimmed = raw.trim();
   if (!trimmed) {
@@ -37,9 +43,7 @@ export function validateServerUrl(raw: string): ValidationResult {
     return { ok: true, url };
   }
 
-  if (url.protocol === 'http:' && LOCAL_HOSTNAMES.has(url.hostname)) {
-    // Local dev — HTTP is acceptable. Note: url.hostname strips brackets
-    // around `[::1]`, so the literal '::1' check above is correct.
+  if (url.protocol === 'http:' && isLocalHostname(url.hostname)) {
     return { ok: true, url };
   }
 
