@@ -390,6 +390,22 @@ export class SessionPanelManager implements vscode.Disposable {
         case 'chatOpenAsset':
           await this.handleChatOpenAsset(msg.payload.id, msg.payload.name);
           break;
+        case 'ready': {
+          // The webview just mounted and registered its `message` listener.
+          // Re-deliver the initial transcript NOW that we know it's listening.
+          // The panel-creation-time refreshPanel() (end of showPanel) may have
+          // posted chatTranscript before the listener existed — VS Code's
+          // postMessage buffering covers that, but Cursor's service-worker-gated
+          // webview bootstrap can land the listener after our post and drop it,
+          // pinning the loading skeleton forever (no later poll re-sends a full
+          // transcript once `initialized`). Clearing chatState forces
+          // pollChatUpdates back into its initial branch, which posts a fresh
+          // chatTranscript (or chatError) that releases the skeleton. Idempotent
+          // in VS Code, where the first transcript already arrived.
+          this.chatState.delete(session.session_id);
+          await this.refreshPanel(session, panel);
+          break;
+        }
         default:
           assertNever(msg);
       }
