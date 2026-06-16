@@ -1,13 +1,16 @@
-# VibeFlow for VS Code — build & publish
+# VibeFlow — build & publish
 #
-# Publishing targets push the extension to the Open VSX Registry.
-# See docs/publishing.md for the full walkthrough (accounts, tokens, namespaces).
+# Publishing targets push the extension to two registries:
+#   - Open VSX Registry      (Cursor, VS Codium, Gitpod, Theia, …)
+#   - VS Code Marketplace    (Microsoft, for VS Code proper)
+# See docs/publishing.md for the full walkthrough (accounts, tokens, publishers).
 #
-# Token: targets read the access token from the OVSX_PAT environment variable
-# so it never appears on the command line or in shell history:
+# Tokens are read from the environment so they never appear on the command line
+# or in shell history:
 #
 #     export OVSX_PAT=<token from https://open-vsx.org/user-settings/tokens>
-#     make publish
+#     export VSCE_PAT=<Azure DevOps PAT, Marketplace > Manage scope>
+#     make publish-all
 
 PUBLISHER := AxiomStudio
 NAME      := vscode-vibeflow
@@ -17,10 +20,11 @@ VSIX      := $(NAME)-$(VERSION).vsix
 .DEFAULT_GOAL := help
 
 .PHONY: help install build check package \
-        openvsx-namespace openvsx-publish publish clean
+        openvsx-namespace openvsx-publish publish \
+        vscode-publish publish-all clean
 
 help:
-	@echo "VibeFlow for VS Code — make targets"
+	@echo "VibeFlow — make targets"
 	@echo ""
 	@echo "  make install            Install dependencies (yarn install)"
 	@echo "  make build              Build webview + extension"
@@ -30,7 +34,12 @@ help:
 	@echo "  Open VSX (needs OVSX_PAT in the environment):"
 	@echo "  make openvsx-namespace  Create the '$(PUBLISHER)' namespace (one-time)"
 	@echo "  make openvsx-publish    Package and publish $(VSIX) to Open VSX"
-	@echo "  make publish            Full flow: namespace + package + publish"
+	@echo "  make publish            Open VSX full flow: namespace + package + publish"
+	@echo ""
+	@echo "  VS Code Marketplace (needs VSCE_PAT in the environment):"
+	@echo "  make vscode-publish     Package and publish $(VSIX) to the VS Code Marketplace"
+	@echo ""
+	@echo "  make publish-all        Publish the same $(VSIX) to BOTH registries"
 	@echo ""
 	@echo "  make clean              Remove built .vsix files"
 	@echo ""
@@ -62,6 +71,18 @@ openvsx-publish: package
 
 # Full first-time flow. After the namespace exists, `make openvsx-publish` is enough.
 publish: openvsx-namespace openvsx-publish
+
+# vsce reads the token from $VSCE_PAT, so it is never passed on the command line.
+# Requires a publisher named '$(PUBLISHER)' to exist at
+# https://marketplace.visualstudio.com/manage (one-time, done in the browser).
+# --packagePath publishes the already-built $(VSIX) instead of repackaging, so
+# the exact same artifact goes to both registries.
+vscode-publish: package
+	@test -n "$(VSCE_PAT)" || { echo "ERROR: VSCE_PAT not set. export VSCE_PAT=<Azure DevOps PAT, Marketplace > Manage scope>"; exit 1; }
+	npx vsce publish --packagePath $(VSIX)
+
+# Publish the SAME built $(VSIX) to both registries. `package` runs once.
+publish-all: openvsx-publish vscode-publish
 
 clean:
 	rm -f $(NAME)-*.vsix
