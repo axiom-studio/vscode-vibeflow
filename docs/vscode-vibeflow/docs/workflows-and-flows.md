@@ -60,7 +60,7 @@ sequenceDiagram
     participant Reg as TerminalRegistry
     participant FS as Filesystem
     participant Term as VS Code Terminal
-    participant Agent as Agent binary<br/>(claude / codex / etc.)
+    participant Agent as Agent binary
 
     User->>Wiz: Launch Session
     Wiz->>Wiz: Preflight: check binary on PATH + API key shape
@@ -147,17 +147,17 @@ sequenceDiagram
     User->>Panel: Type "Add a login button" + Enter
     Panel->>Server: createPrompt(session_id, text)
     Panel->>Reg: sendUserMessage(handleId, text)
-    Reg->>Agent: spawn agent with --resume <session_id><br/>(per-turn respawn — turn 1 just opens fresh)
+    Reg->>Agent: spawn agent with --resume session_id (per-turn respawn)
     Agent->>Agent: read prompt + workspace
     Agent->>Panel: stream-json: tokens, tool calls, diffs
     Panel-->>User: live transcript renders
     Agent->>Server: createPrompt response (the answer)
     Agent-->>Reg: process exits
-    Note over Reg: Per-turn respawn pattern (issue #2305 fix):<br/>each user message starts a fresh agent process<br/>that resumes from session_id
+    Note over Reg: Per-turn respawn: each user message starts a fresh agent process that resumes from session_id
 
     User->>Panel: Type follow-up
     Panel->>Reg: sendUserMessage(handleId, text)
-    Reg->>Agent: spawn with --resume <captured session_id>
+    Reg->>Agent: spawn with --resume captured_session_id
     Agent->>Panel: stream-json again
 ```
 
@@ -182,10 +182,10 @@ stateDiagram-v2
     planning --> ready_to_implement: Plan written, ready for impl
     ready_to_implement --> implementing: Agent claims it
     implementing --> done: Code committed, tests green
-    done --> security_review: enters review pipeline<br/>(security_reviewed=false)
-    security_review --> qa_review: Security Lead approved<br/>(security_reviewed=true)
+    done --> security_review: enters review pipeline
+    security_review --> qa_review: Security Lead approved
     security_review --> ready_to_implement: Security Lead rejected
-    qa_review --> closed: QA Lead approved<br/>(qa_verified=true)
+    qa_review --> closed: QA Lead approved
     qa_review --> ready_to_implement: QA Lead rejected
     closed --> [*]
 ```
@@ -214,11 +214,11 @@ A real workflow often touches multiple personas. Example: you ask for a new feat
 sequenceDiagram
     actor User
     participant Chat as Chat (UI or @vibeflow)
-    participant PM as Product Manager<br/>(Priya)
-    participant Arch as Architect<br/>(Morgan)
-    participant Dev as Developer<br/>(Kai)
-    participant Sec as Security Lead<br/>(Sophie)
-    participant QA as QA Lead<br/>(Quinn)
+    participant PM as PM (Priya)
+    participant Arch as Architect (Morgan)
+    participant Dev as Developer (Kai)
+    participant Sec as Security (Sophie)
+    participant QA as QA (Quinn)
     participant Server as VibeFlow Cloud
 
     User->>Chat: "I want a Slack notification when a build fails"
@@ -232,10 +232,10 @@ sequenceDiagram
     Server-->>Dev: wait_for_work returns it
     Dev->>Dev: implement + write tests + commit
     Dev->>Server: status → done + commit hash
-    Server-->>Sec: wait_for_work returns it<br/>(security_reviewed=false)
+    Server-->>Sec: wait_for_work returns it (security_reviewed=false)
     Sec->>Sec: walk the diff
     Sec->>Server: security_reviewed=true (or reject)
-    Server-->>QA: wait_for_work returns it<br/>(qa_verified=false)
+    Server-->>QA: wait_for_work returns it (qa_verified=false)
     QA->>QA: verify acceptance criteria
     QA->>Server: qa_verified=true (or reject)
     Server-->>User: notification — work item closed
