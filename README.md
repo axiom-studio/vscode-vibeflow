@@ -1,4 +1,4 @@
-# VibeFlow for VS Code
+# VibeFlow
 
 A full AI engineering team — **Developer**, **Architect**, **PM**, **QA**, **Security**, **Principal Engineer**, **DevOps** — inside VS Code. Shared context, persistent decisions, autonomous shipping. Not autocomplete. An AI team that knows your codebase.
 

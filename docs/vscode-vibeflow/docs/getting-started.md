@@ -30,7 +30,7 @@ That's the full prerequisite list. If anything above is missing, pause here and 
 
 1. Open VS Code.
 2. Open the **Extensions** view (`Cmd+Shift+X` / `Ctrl+Shift+X`).
-3. Search for `VibeFlow`. The one you want is published by **AxiomStudio**, display name **VibeFlow for VS Code**.
+3. Search for `VibeFlow`. The one you want is published by **AxiomStudio**, display name **VibeFlow**.
 4. Click **Install**.
 
 You'll see VS Code reload some views, and a walkthrough titled **Get Started with VibeFlow** will pop open automatically. That walkthrough is the in-IDE companion to this doc: five short steps that link directly into the relevant commands. Click through it as you read this page if you like. The two are designed to overlap.

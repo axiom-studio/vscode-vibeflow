@@ -1,4 +1,4 @@
-# VibeFlow for VS Code Documentation
+# VibeFlow Documentation
 
 Welcome to the user guide for the VibeFlow VS Code extension. The extension brings a full multi-persona AI engineering team directly into your IDE: Developer, Architect, Principal Engineer, Product Manager, Project Manager, UX Designer, QA Lead, Security Lead, and Customer agents that share context, write code, review each other, and ship work through a governed lifecycle.
 
