@@ -199,6 +199,8 @@ Open via the gear icon in any view's title bar, or run **VibeFlow: Settings**. F
 
 A visual topology of the agent fleet plus project metrics.
 
+![VibeFlow Dashboard in VS Code — agent topology and project metrics](/images/vscode-1.webp)
+
 - **React Flow agent topology**: session nodes, edges showing which session is on which work item / branch. Drag to pan, scroll to zoom.
 - **Metrics cards**: counts by status, commits today, prompts pending, governance throughput.
 - **Refresh button**: force-pull from server.
@@ -208,6 +210,8 @@ Open via **Open Dashboard** on Agent Fleet's title bar, or `Cmd/Ctrl+Shift+V D`.
 ### Kanban Board panel
 
 A drag-and-drop swimlane board, one column per status. Each card is a todo or issue. Drop a card across columns to move it through the lifecycle (same MCP transition as the right-click menu).
+
+![VibeFlow Kanban Board in VS Code — work items organized by status](/images/vscode-2.webp)
 
 Open via **Open Kanban Board** on Work Items, or `Cmd/Ctrl+Shift+V K`.
 
