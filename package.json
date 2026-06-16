@@ -1,12 +1,12 @@
 {
   "name": "vscode-vibeflow",
-  "displayName": "VibeFlow for VS Code",
+  "displayName": "VibeFlow",
   "description": "Ship faster with a full AI engineering team — Developer, Architect, QA, Security, and PM agents that know your codebase and do the work.",
   "author": {
     "name": "Axiom Studio AI",
     "url": "https://axiomstudio.ai"
   },
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "AxiomStudio",
   "license": "Apache-2.0",
   "repository": {
