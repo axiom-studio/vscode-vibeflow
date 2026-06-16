@@ -1,22 +1,30 @@
-# Publishing to the Open VSX Registry
+# Publishing VibeFlow
 
-How to publish **VibeFlow for VS Code** to [Open VSX](https://open-vsx.org) — the
-vendor-neutral registry used by VS Codium, Cursor, Gitpod, Theia, and other
-non-Microsoft editors.
+How to publish **VibeFlow** to the two extension registries:
 
-Publishing is encoded as `make` targets (see [Makefile](../Makefile)). The
-sections below cover the one-time account setup and the repeatable publish flow.
+- **[Open VSX](https://open-vsx.org)** — the vendor-neutral registry used by
+  Cursor, VS Codium, Gitpod, Theia, and other non-Microsoft editors.
+- **[VS Code Marketplace](https://marketplace.visualstudio.com/)** — Microsoft's
+  registry, used by VS Code proper.
+
+The same `.vsix` artifact is published to both. Publishing is encoded as `make`
+targets (see [Makefile](../Makefile)). The sections below cover the one-time
+setup for each registry and the repeatable publish flow.
 
 | Field | Value |
 |-------|-------|
-| Publisher / namespace | `AxiomStudio` |
+| Publisher (both registries) | `AxiomStudio` |
 | Extension id | `AxiomStudio.vscode-vibeflow` |
-| Registry | https://open-vsx.org |
-| Listing (once published) | https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow |
+| Open VSX listing | https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow |
+| VS Code Marketplace listing | https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow |
+
+> The `publisher` field in `package.json` is `AxiomStudio`. The Open VSX
+> **namespace** and the VS Code Marketplace **publisher** must both be named
+> exactly `AxiomStudio` for publishing to succeed.
 
 ---
 
-## One-time account setup
+## Open VSX: one-time setup
 
 Do this once per publishing account. None of it is repeated for later releases.
 
@@ -48,48 +56,78 @@ matching address — this route ignores GitHub account age.
 
 ---
 
+## VS Code Marketplace: one-time setup
+
+Microsoft's Marketplace authenticates through Azure DevOps. Do this once.
+
+1. **Create an Azure DevOps organization.** Sign in at
+   [dev.azure.com](https://dev.azure.com/) (any Microsoft account) and create an
+   organization if you don't have one.
+2. **Generate a Personal Access Token (PAT).** In Azure DevOps → *User Settings →
+   Personal Access Tokens → New Token*:
+   - **Organization**: *All accessible organizations* (required — Marketplace is
+     cross-org).
+   - **Scopes**: *Marketplace → **Manage*** (custom-defined scopes).
+   - Copy the token — it is shown only once.
+3. **Create the `AxiomStudio` publisher.** Go to the
+   [Marketplace publisher management page](https://marketplace.visualstudio.com/manage),
+   sign in with the same Microsoft account, and create a publisher whose **ID is
+   exactly `AxiomStudio`** (it must match the `publisher` field in
+   `package.json`). Accept the Marketplace Publisher Agreement.
+
+That's it. The PAT is what `vsce` uses to publish; it's read from `$VSCE_PAT`.
+
+---
+
 ## Publishing a release
 
 ### Prerequisites each time
 
-- The access token, exported so the CLI never sees it on the command line:
+- Export both tokens so neither CLI sees a secret on the command line:
 
   ```bash
   export OVSX_PAT=<token from https://open-vsx.org/user-settings/tokens>
+  export VSCE_PAT=<Azure DevOps PAT, Marketplace > Manage scope>
   ```
 
 - The `version` in `package.json` must be **higher than the last published
-  version** — Open VSX rejects re-publishing an existing version. Bump it first
-  (e.g. `yarn version --no-git-tag-version --patch`).
+  version** — both registries reject re-publishing an existing version. Bump it
+  first (e.g. `yarn version --no-git-tag-version --patch`).
 
 ### The commands
 
-First release (creates the namespace, then publishes):
+Publish the same artifact to **both** registries:
 
 ```bash
-make publish
+make publish-all
 ```
 
-Every release after the namespace exists:
+`make publish-all` builds one `.vsix` at the current `package.json` version and
+uploads that exact file to Open VSX and the VS Code Marketplace. Both go live
+within seconds (the Marketplace may take a minute to finish its background scan).
+
+To publish to just one registry:
 
 ```bash
-make openvsx-publish
+make openvsx-publish     # Open VSX only
+make vscode-publish      # VS Code Marketplace only
+make publish             # Open VSX, creating the namespace first (first release)
 ```
-
-`make openvsx-publish` packages a fresh `.vsix` at the current `package.json`
-version and uploads it. The extension goes live within a few seconds.
 
 ### Doing it by hand
 
 The targets wrap these commands — useful if you need to run a step in isolation:
 
 ```bash
-npx ovsx create-namespace AxiomStudio        # one-time; reads $OVSX_PAT
-npx vsce package                              # builds via vscode:prepublish, emits the .vsix
-npx ovsx publish vscode-vibeflow-<version>.vsix   # reads $OVSX_PAT
+npx ovsx create-namespace AxiomStudio              # one-time; reads $OVSX_PAT
+npx vsce package                                   # builds via vscode:prepublish, emits the .vsix
+npx ovsx publish vscode-vibeflow-<version>.vsix    # Open VSX; reads $OVSX_PAT
+npx vsce publish --packagePath vscode-vibeflow-<version>.vsix   # Marketplace; reads $VSCE_PAT
 ```
 
-`vsce` and `ovsx` are run via `npx`, so no global install is required.
+`--packagePath` publishes the already-built `.vsix` rather than repackaging, so
+the *same* artifact lands in both registries. `vsce` and `ovsx` run via `npx`, so
+no global install is required.
 
 ---
 
@@ -98,13 +136,15 @@ npx ovsx publish vscode-vibeflow-<version>.vsix   # reads $OVSX_PAT
 | Target | What it does |
 |--------|--------------|
 | `make package` | Build and produce `vscode-vibeflow-<version>.vsix` |
-| `make openvsx-namespace` | Create the `AxiomStudio` namespace (one-time, tolerant if it exists) |
+| `make openvsx-namespace` | Create the `AxiomStudio` Open VSX namespace (one-time, tolerant if it exists) |
 | `make openvsx-publish` | Package and publish the current version to Open VSX |
-| `make publish` | Full first-time flow: namespace + package + publish |
+| `make publish` | Open VSX first-time flow: namespace + package + publish |
+| `make vscode-publish` | Package and publish the current version to the VS Code Marketplace |
+| `make publish-all` | Build once, publish the same `.vsix` to **both** registries |
 | `make clean` | Remove built `.vsix` files |
 
-All Open VSX targets require `OVSX_PAT` to be set and fail fast with a clear
-message if it is missing.
+Open VSX targets require `OVSX_PAT`; VS Code Marketplace targets require
+`VSCE_PAT`. Each fails fast with a clear message if its token is missing.
 
 ---
 
@@ -112,15 +152,18 @@ message if it is missing.
 
 | Symptom | Cause / fix |
 |---------|-------------|
-| `ERROR: OVSX_PAT not set` | `export OVSX_PAT=<token>` before running a publish target. |
+| `ERROR: OVSX_PAT not set` / `ERROR: VSCE_PAT not set` | `export` the named token before running that publish target. |
 | `namespace '...' may already exist — continuing` | Expected on re-runs; the namespace is created once. Not an error. |
-| `Extension version X.Y.Z is already published` | Bump `version` in `package.json`; you cannot overwrite a published version. |
+| `Extension version X.Y.Z is already published` | Bump `version` in `package.json`; neither registry lets you overwrite a published version. |
 | `vsce` complains about a missing `repository`, `LICENSE`, or icon | Fix the flagged `package.json` field or add the file, then re-run. |
-| Publish succeeds but the listing shows *unverified* | Expected — see [Namespace verification is optional](#namespace-verification-is-optional). |
+| `vsce` error: *Failed request: (401)* | The `VSCE_PAT` is wrong/expired, or its scope isn't *Marketplace → Manage* with *All accessible organizations*. Regenerate it. |
+| `vsce` error: publisher `AxiomStudio` not found / no access | Create the `AxiomStudio` publisher at [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage), or the PAT belongs to an account without rights to it. |
+| Open VSX publish succeeds but the listing shows *unverified* | Expected — see [Namespace verification is optional](#namespace-verification-is-optional). |
 
 ## References
 
 - Open VSX — [Publishing Extensions](https://github.com/EclipseFdn/open-vsx.org/wiki/Publishing-Extensions)
 - Open VSX — [Managing Namespaces](https://github.com/EclipseFdn/open-vsx.org/wiki/Managing-Namespaces)
+- VS Code — [Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
 - [`ovsx` CLI](https://github.com/eclipse/openvsx/blob/master/cli/README.md)
 - [`vsce` CLI](https://github.com/microsoft/vscode-vsce)
