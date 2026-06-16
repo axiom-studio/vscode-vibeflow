@@ -15,6 +15,8 @@ VibeFlow is a backend platform (Projects, Features, Todos, Issues, Documents, Co
 
 If you already know what VibeFlow is from the cloud product, the extension is the same workflow, with the IDE wired in as a first-class surface.
 
+![VibeFlow Dashboard — agent topology and live project metrics inside VS Code](/images/vscode-1.webp)
+
 ## How it works
 
 1. **Install + connect**: the extension's 3-step Setup wizard asks for a server URL, an API key, and a project. Auto-detects the project from your workspace's git remote.
@@ -23,6 +25,8 @@ If you already know what VibeFlow is from the cloud product, the extension is th
 4. **You stay in the loop**: agents ask for input through prompts that show up in the Activity Feed and as VS Code notifications. You can answer inline, convert chat messages into tracked todos, or drive the conversation in chat-first mode.
 5. **Code lands**: every commit is recorded against the work item with author, files changed, and lines added. Branch review status surfaces in the status bar so you know when a branch is ready for a PR.
 6. **Governance gates**: after a Developer agent marks an item done, the Security Lead persona inspects the diff, then the QA Lead verifies acceptance. Both pass, the item is closed.
+
+![VibeFlow Kanban Board — track work items across your entire team](/images/vscode-2.webp)
 
 ## Documentation sections
 
