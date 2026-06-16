@@ -1,4 +1,4 @@
-# VibeFlow for VS Code User Guide
+# VibeFlow User Guide
 
 The complete user-facing guide for the VibeFlow VS Code extension. Eight documents covering install through deep architectural understanding.
 
