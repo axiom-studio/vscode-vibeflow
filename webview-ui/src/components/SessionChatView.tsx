@@ -280,6 +280,10 @@ export function SessionChatView() {
           break;
         case 'chatError':
           setError(m.payload.message);
+          // A terminal error releases the loading skeleton — otherwise an
+          // initial-load failure (host posts chatError, never chatTranscript)
+          // would leave the skeleton covering the error banner forever.
+          setLoading(false);
           break;
         case 'chatPrefill':
           setDraft(m.payload.text);
