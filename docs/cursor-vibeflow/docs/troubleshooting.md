@@ -8,6 +8,32 @@
 
 ---
 
+## I can't find Extensions, the file tree, or the VibeFlow sidebar
+
+**What it means**: You're in Cursor's **Agents Window**, not the **Editor Window**. Since Cursor 3, the default launch surface is agent-first — chat tabs and agent management, not the classic IDE with Extensions, Explorer, and terminal.
+
+**Fix**:
+
+1. `Cmd/Ctrl+Shift+P` → **Open Editor Window** (or `Shift+Cmd+N` on Mac / `Shift+Ctrl+N` on Windows/Linux).
+2. In that Editor Window, open your project folder (**File → Open Folder…**) if you haven't already.
+3. Install VibeFlow from the Extensions panel (`Cmd/Ctrl+Shift+X`).
+
+To make the Editor the default on startup: Cursor Settings → **Agents** → turn off **Open Agents Window on startup**. Or launch with `cursor . --classic` from a terminal. See [getting-started.md §0](getting-started.md#0-cursor-agents-window-vs-editor-window).
+
+---
+
+## Sessions won't start / "No sessions" in the status bar
+
+**What it means**: No workspace folder is open, or Setup didn't link a VibeFlow project to this workspace.
+
+**Fix**:
+
+1. **Open a project folder** in the Editor Window (`File → Open Folder…`). VibeFlow requires a workspace root with a git repo. Sessions will not spawn without one.
+2. Run **VibeFlow: Setup** and complete all three steps (server URL, API key, project).
+3. Confirm the status bar shows your project name and branch, not "No sessions".
+
+---
+
 ## "VibeFlow: Not logged in" or no projects appearing in the sidebar
 
 **What it means**: The extension can't reach VibeFlow Cloud with a valid API key. Either the Setup wizard never finished, or your API key has been revoked or rotated server-side.
