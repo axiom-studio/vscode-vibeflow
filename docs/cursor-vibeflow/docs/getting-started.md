@@ -66,7 +66,7 @@ Cursor's built-in Extensions marketplace is backed by the **[Open VSX Registry](
 
 1. Open Cursor **in the Editor Window** (`Shift+Cmd+N` if you're in the Agents Window).
 2. Open the **Extensions** view (`Cmd+Shift+X` / `Ctrl+Shift+X`).
-3. Search for `VibeFlow`. The one you want is published by **AxiomStudio**, display name **VibeFlow for VS Code**.
+3. Search for `VibeFlow`. The one you want is published by **AxiomStudio**, display name **VibeFlow**.
    > The display name still says "for VS Code." That's expected — it's a single cross-host extension, and the same `.vsix` is the correct one for Cursor. There is no separate "VibeFlow for Cursor" listing.
 4. Click **Install**.
 
