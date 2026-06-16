@@ -2,7 +2,7 @@
 
 **Who this is for**: You've finished [getting-started.md](getting-started.md), you've launched at least one agent in a terminal, and now you're asking *"what's the difference between running an agent in a terminal vs this 'chat-first' thing?"* This page is the long-form answer. Both technical and non-technical readers welcome.
 
-**TL;DR**: Chat-First Mode lets you talk to a VibeFlow agent the way you talk to Copilot Chat or Cursor. Type a message, the agent answers, type a follow-up, it keeps going. No work item required to start a conversation. Under the hood it always runs in YOLO (skip-permissions) mode and prefers `tmux` as its runtime backing. It's the most powerful way to use the extension, and also the most opinionated.
+**TL;DR**: Chat-First Mode lets you talk to a VibeFlow agent the way you talk to Copilot Chat or Cursor. Type a message, the agent answers, type a follow-up, it keeps going. No work item required to start a conversation. Under the hood it always runs in YOLO (skip-permissions) mode and prefers `tmux` as its runtime backing. It's the most powerful way to use the extension.
 
 > Unfamiliar term? See [glossary.md](glossary.md).
 
@@ -10,7 +10,7 @@
 
 ## 1. The two ways agents work in VibeFlow
 
-VibeFlow has two fundamentally different mental models for how a human steers an agent. Both are first-class; neither is going away.
+VibeFlow has two fundamentally different mental models for how a human steers an agent. Both are first-class.
 
 | | **Vanilla / Hybrid** (terminal-driven) | **Chat-First** (chat-driven) |
 |---|---|---|
@@ -21,7 +21,7 @@ VibeFlow has two fundamentally different mental models for how a human steers an
 | Mental model | "Autonomous worker chewing through a backlog" | "Pair programmer I'm typing to" |
 | Best for | Long-running, queued, governed work | Exploratory, ephemeral, conversational work |
 
-**Vanilla** is the default. You file a todo or issue, the agent picks it up, you watch the terminal, you approve permission prompts. Safe, predictable, governable.
+**Vanilla** is the default. You file a todo or issue, the agent picks it up, you watch the terminal, you approve every permission prompts. Safe, predictable, governable.
 
 **Chat-First** flips the input source. The agent doesn't poll a queue. It waits for *you* to type. It speaks back in a panel that looks like Copilot Chat, with rendered diffs and clickable commit hashes. The catch: it has to skip permissions to be usable, and it relies on a non-trivial process-lifecycle pattern to keep the conversation alive.
 

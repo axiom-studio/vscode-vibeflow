@@ -21,7 +21,9 @@ If you already know what VibeFlow is from the cloud product, the extension is th
 
 Read this once; the rest of the guide assumes it.
 
-- **You install it from Open VSX, not the VS Code Marketplace.** Cursor's built-in Extensions panel is backed by the [Open VSX Registry](https://open-vsx.org). VibeFlow is published there under publisher **`AxiomStudio`** (extension id `AxiomStudio.vscode-vibeflow`). Search "VibeFlow" in Cursor's Extensions panel, or install the `.vsix` directly. Full steps in [getting-started.md](getting-started.md#2-install-the-extension).
+- **Cursor has two windows: Agents Window and Editor Window.** Cursor 3 defaults to the Agents Window — an agent-first UI for parallel agents and chat tabs. VibeFlow's extension sidebar, Extensions marketplace, and file tree live in the **Editor Window**. If you only see agent chat tabs and no Extensions panel, run `Cmd/Ctrl+Shift+P` → **Open Editor Window** (`Shift+Cmd+N` on Mac). Full explanation in [getting-started.md §0](getting-started.md#0-cursor-agents-window-vs-editor-window).
+- **Open a project folder before anything else.** VibeFlow binds to a workspace. Without an open folder, sessions will not start. See [getting-started.md §1](getting-started.md#1-open-a-project-folder-required).
+- **You install it from Open VSX, not the VS Code Marketplace.** Cursor's built-in Extensions panel is backed by the [Open VSX Registry](https://open-vsx.org). VibeFlow is published there under publisher **`AxiomStudio`** (extension id `AxiomStudio.vscode-vibeflow`). Search "VibeFlow" in Cursor's Extensions panel, or install the `.vsix` directly. Full steps in [getting-started.md](getting-started.md#3-install-the-extension).
 - **The listing still reads "VibeFlow for VS Code."** There is a single cross-host extension, not a separate Cursor build. The `vscode` in the id and the "for VS Code" display name are historical — it's the right extension for Cursor.
 - **"Cursor" means two different things in this guide.** The **editor** you're running VibeFlow in is Cursor. Separately, **Cursor is also one of VibeFlow's selectable AI providers** (the agent can run against the `cursor` CLI). They're independent: in the Cursor editor you can run agents on *any* provider (Claude, Codex, Gemini, or Cursor), and the Cursor provider works in any host editor. Where it could be ambiguous, this guide says "the Cursor editor" or "the Cursor provider."
 - **VibeFlow runs alongside Cursor's own AI, not instead of it.** Cursor's built-in Chat (`Cmd/Ctrl+L`), inline edit (`Cmd/Ctrl+K`), and Composer/Agent (`Cmd/Ctrl+I`) are a single-assistant toolset. VibeFlow is a *multi-persona, work-item-governed team*. They don't conflict; use both.
@@ -29,12 +31,13 @@ Read this once; the rest of the guide assumes it.
 
 ## How it works
 
-1. **Install + connect**: the extension's 3-step Setup wizard asks for a server URL, an API key, and a project. Auto-detects the project from your workspace's git remote.
-2. **Launch a session**: pick a persona, branch, and provider (Claude, Codex, Gemini, Cursor). A terminal opens with the agent inside, or a chat panel if you picked chat-first mode.
-3. **Agents poll for work**: each persona's session calls `wait_for_work` against the backend, picks up work items targeted at its role and branch, and starts implementing.
-4. **You stay in the loop**: agents ask for input through prompts that show up in the Activity Feed and as Cursor notifications. You can answer inline, convert chat messages into tracked todos, or drive the conversation in chat-first mode.
-5. **Code lands**: every commit is recorded against the work item with author, files changed, and lines added. Branch review status surfaces in the status bar so you know when a branch is ready for a PR.
-6. **Governance gates**: after a Developer agent marks an item done, the Security Lead persona inspects the diff, then the QA Lead verifies acceptance. Both pass, the item is closed.
+1. **Open a project folder**: File → Open Folder in the Editor Window. Sessions require a workspace.
+2. **Install + connect**: the extension's 3-step Setup wizard asks for a server URL, an API key, and a project. Auto-detects the project from your workspace's git remote.
+3. **Launch a session**: pick a persona, branch, and provider (Claude, Codex, Gemini, Cursor). A terminal opens with the agent inside, or a chat panel if you picked chat-first mode (agent runs headless in tmux on socket `vibeflow-headless`).
+4. **Agents poll for work**: each persona's session calls `wait_for_work` against the backend, picks up work items targeted at its role and branch, and starts implementing.
+5. **You stay in the loop**: agents ask for input through prompts that show up in the Activity Feed and as Cursor notifications. You can answer inline, convert chat messages into tracked todos, or drive the conversation in chat-first mode.
+6. **Code lands**: every commit is recorded against the work item with author, files changed, and lines added. Branch review status surfaces in the status bar so you know when a branch is ready for a PR.
+7. **Governance gates**: after a Developer agent marks an item done, the Security Lead persona inspects the diff, then the QA Lead verifies acceptance. Both pass, the item is closed.
 
 ## Documentation sections
 

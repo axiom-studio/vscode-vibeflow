@@ -2,13 +2,47 @@
 
 **Who this is for**: You just installed the VibeFlow extension in Cursor, you've never used it before, and you want a calm, opinionated walkthrough that gets you from zero to "an agent did a thing for me" in about ten minutes. Cursor basics assumed; nothing else.
 
-**TL;DR**: Install the extension from Cursor's Extensions panel (it's served from Open VSX), run **VibeFlow: Setup** (3 steps: server, API key, project), then click **+ Launch Session** in the Agent Fleet view. Pick *Developer + Claude + Vanilla* for your first run. Type a question in the Session Chat panel, click **Convert to work item**, and watch the agent claim and answer it.
+**TL;DR**: **Open a project folder first** (sessions won't start without one). Switch to the **Editor Window** if you're in Cursor's Agents Window — that's where extensions and the VibeFlow sidebar live. Install the extension from the Extensions panel (Open VSX), run **VibeFlow: Setup** (server, API key, project), then click **+ Launch Session**. Pick *Developer + Claude + Vanilla* for your first run.
 
 > Unfamiliar word? Every new term is bolded the first time and defined in [glossary.md](glossary.md).
 
 ---
 
-## 1. Before you begin
+## 0. Cursor: Agents Window vs Editor Window
+
+Cursor 3 ships **two separate windows**. This trips up almost every new user, so read this before anything else.
+
+| | **Agents Window** | **Editor Window** |
+|---|---|---|
+| What it is | Cursor's agent-first UI for running and managing many agents in parallel | The classic VS Code-style IDE: file tree, extensions, terminal, split editors |
+| Best for | Chatting with agents, reviewing diffs, multi-agent orchestration | Installing extensions, editing files, running terminals, using the VibeFlow sidebar |
+| How to open | `Cmd/Ctrl+Shift+P` → **Open Agents Window** | `Cmd/Ctrl+Shift+P` → **Open Editor Window**, or `Shift+Cmd+N` (Mac) / `Shift+Ctrl+N` (Windows/Linux) |
+| Extensions panel | Not available here | `Cmd/Ctrl+Shift+X` — this is where you install VibeFlow |
+| VibeFlow sidebar | Session Chat tabs for chat-first agents; Agent Fleet may be minimal or absent | Full VibeFlow Activity Bar icon with Agent Fleet, Work Items, Project Items, Documents |
+
+**Why you had to "Open Editor Window"**: If Cursor opened in the Agents Window (the default since Cursor 3), you won't see the Extensions marketplace, the Explorer file tree, or the VibeFlow sidebar until you switch. The Agents Window is a different surface — agent tabs and chat panels, not the traditional IDE chrome. Extensions load in the Editor Window. That's why nothing looked right until you ran **Open Editor Window** (`Shift+Cmd+N`).
+
+You can keep **both windows open** side by side: Agents Window for chatting with chat-first personas, Editor Window for code, terminals, and the VibeFlow tree views. Most power users do exactly this.
+
+**Make the Editor the default on startup** (optional): Cursor Settings → **Agents** → turn off **Open Agents Window on startup**. Or launch from a terminal with `cursor . --classic` to skip the Agents Window entirely. See [Cursor's Agents Window docs](https://cursor.com/docs/agent/agents-window).
+
+---
+
+## 1. Open a project folder (required)
+
+**Step 1 is always: open a project.** VibeFlow binds to a workspace folder. Without one, sessions will not start — the launch wizard may open, but the agent has no working directory, no git branch, and no project auto-detection path. You'll see empty sidebars, "No sessions" in the status bar, and failed launches.
+
+1. In the **Editor Window**, run **File → Open Folder…** (or `Cmd/Ctrl+O`) and pick your repo root — the directory that contains `.git`.
+2. Confirm the folder name appears in the status bar and the Explorer shows your files.
+3. Only then install the extension and run Setup.
+
+If you opened Cursor without a folder (empty window, or only the Agents Window with no workspace), go back to the Editor Window, open the folder, and continue.
+
+![VibeFlow with a project open — Agent Fleet, Work Items, and a Principal Engineer chat-first session](../assets/2-Vibeflow-Cursor-Principal-Engineer.png)
+
+---
+
+## 2. Before you begin
 
 You'll need three things up front. Take a minute to confirm each one. Getting them ready now saves a lot of "why is this not working?" later.
 
@@ -16,7 +50,7 @@ You'll need three things up front. Take a minute to confirm each one. Getting th
 |------|-----|
 | **A recent Cursor build** | VibeFlow requires the host's bundled VS Code engine to be **1.93.0 or later** (the extension's `engines.vscode` minimum). Current Cursor releases are built on a newer engine and satisfy this. Check via *Cursor → About* — it reports the VS Code version Cursor is built on. If that number is below 1.93, update Cursor. |
 | **A VibeFlow Cloud account** | This is where your projects, work items, agent sessions, and API keys live. Sign up from your VibeFlow Cloud account dashboard. The team that pointed you at this extension can share the right link. |
-| **An API key for at least one AI provider** | The agent itself runs against an AI model. You only need **one** of: **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), or **Cursor**. Pick whichever you already have access to. Note: the **Cursor provider** here is the agent's model backend and is separate from Cursor-the-editor's own AI — see the callout in section 4. |
+| **An API key for at least one AI provider** | The agent itself runs against an AI model. You only need **one** of: **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), or **Cursor**. Pick whichever you already have access to. Note: the **Cursor provider** here is the agent's model backend and is separate from Cursor-the-editor's own AI — see the callout in section 5. |
 
 **Optional (and skippable for your first run)**: the standalone `vibeflow-cli` binary. Most people never need it, since the extension manages agent sessions on its own. You can wire it in later from **Settings → CLI Interface → Install Latest** if you ever want a terminal-only workflow.
 
@@ -24,17 +58,19 @@ That's the full prerequisite list. If anything above is missing, pause here and 
 
 ---
 
-## 2. Install the extension
+## 3. Install the extension
 
 Cursor's built-in Extensions marketplace is backed by the **[Open VSX Registry](https://open-vsx.org)**, where VibeFlow is published under publisher **AxiomStudio**. There are two ways in.
 
 ### Option A — from Cursor's Extensions panel (recommended)
 
-1. Open Cursor.
+1. Open Cursor **in the Editor Window** (`Shift+Cmd+N` if you're in the Agents Window).
 2. Open the **Extensions** view (`Cmd+Shift+X` / `Ctrl+Shift+X`).
 3. Search for `VibeFlow`. The one you want is published by **AxiomStudio**, display name **VibeFlow for VS Code**.
    > The display name still says "for VS Code." That's expected — it's a single cross-host extension, and the same `.vsix` is the correct one for Cursor. There is no separate "VibeFlow for Cursor" listing.
 4. Click **Install**.
+
+![VibeFlow in Cursor's Extensions panel (Editor Window)](../assets/1-Vibeflow-Cursor.png)
 
 ### Option B — install from a `.vsix` file
 
@@ -48,9 +84,11 @@ Either way, you'll see Cursor reload some views, and a walkthrough titled **Get 
 
 **You'll see next**: a VibeFlow icon in the **Activity Bar** (the leftmost icon strip, where Explorer, Search, and Source Control live). That icon is your entry point to everything.
 
+> **You must be in the Editor Window to install.** The Extensions panel (`Cmd/Ctrl+Shift+X`) does not exist in the Agents Window. If you only see agent chat tabs, press `Shift+Cmd+N` first.
+
 ---
 
-## 3. The Setup wizard (3 steps, about 90 seconds)
+## 4. The Setup wizard (3 steps, about 90 seconds)
 
 If the walkthrough's **Sign in** step didn't auto-launch the wizard, run it manually. Open the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run **VibeFlow: Setup**.
 
@@ -76,7 +114,7 @@ A Quick Pick of every VibeFlow project your account can see. The default selecti
 
 ---
 
-## 4. Your first launch
+## 5. Your first launch
 
 Time to spawn an agent. Click the VibeFlow icon in the Activity Bar. Four views fold open:
 
@@ -93,7 +131,7 @@ For your first session, take the safe path. Choose:
 |-------------|------------------------------|-----|
 | **Branch** | Your current branch (usually `main`) | The agent will only pick up work items targeting this branch. Easy to reason about. |
 | **Persona** | **Developer (Kai)** | The Developer persona writes code. It's the most useful "hello world" persona to start with. |
-| **Provider** | **Claude** (or whichever provider you actually have a key for) | Match this to the provider key you collected in section 1. |
+| **Provider** | **Claude** (or whichever provider you actually have a key for) | Match this to the provider key you collected in section 2. |
 | **Provider key** | Paste the API key when prompted | Only asked the first time; subsequent launches reuse it from the Secrets API. |
 | **Session mode** | **Vanilla** | The agent will ask permission before each file edit or shell command. Skip *VibeFlow (YOLO)* and *Chat-First* until you've done this once. Both run the agent with fewer safety prompts. |
 | **Terminal mode** | **Hybrid** | Default. The code-writing agent's terminal is visible; advisory agents run hidden. |
@@ -112,7 +150,7 @@ Confirm the final step and the launch begins.
 
 ---
 
-## 5. A 5-minute happy-path tour
+## 6. A 5-minute happy-path tour
 
 Now you'll give the agent something to do and watch the full round-trip. Goal: prove that the loop actually works. You talk, work item gets filed, agent claims, agent responds.
 
@@ -131,7 +169,7 @@ That's the loop. Everything else in VibeFlow (multiple personas, governance gate
 
 ---
 
-## 6. What's next
+## 7. What's next
 
 You've got a working agent. From here, branch out depending on what you want to learn next:
 

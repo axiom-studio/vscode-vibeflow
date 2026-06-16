@@ -19,6 +19,8 @@ The VibeFlow icon sits in Cursor's **Activity Bar**. Click it and Cursor opens t
 
 The first two are expanded by default. **Project Items** and **Documents** start collapsed. Each view has a title-bar action row (icons that appear on hover), covered inline below.
 
+![Agent Fleet with three active chat-first sessions and the VibeFlow sidebar](../assets/2-Vibeflow-Cursor-Principal-Engineer.png)
+
 ---
 
 ## 2. Agent Fleet view
@@ -78,6 +80,8 @@ The first two are expanded by default. **Project Items** and **Documents** start
 
 Each row shows title, ID (`#1982`), priority badge, and review/security badges.
 
+![Work Item detail panel — issue #2433 with description, scope, and governance actions](../assets/3-Issues-Cursor.png)
+
 ### Right-click menu
 
 - **Open Work Item Panel**. Opens the full detail editor (see [Work Item Detail panel](#work-item-detail-panel)).
@@ -112,6 +116,8 @@ Use this view to understand the shape of the project; use Work Items for day-to-
 **What it is**: a flat list of every **document** attached to the project, plus the features and work items that have docs hanging off them. Documents are markdown: PRDs, architecture notes, design specs, runbooks, uploaded by you or authored by an agent.
 
 Click a row to open the [Document Viewer](#document-viewer) in the editor area.
+
+![Document Viewer — Phase 3 PRD rendered in the editor area](../assets/6-PRD-Documents.png)
 
 Title-bar actions: **+ Create Document** (new untitled doc, attached to a project / feature / work item), **Refresh**, **Settings**.
 
@@ -159,6 +165,8 @@ Diffs render with a `+/-` gutter or split view (`vibeflow.chat.diffView`). Each 
 
 Open via **Open Session Panel** on an Agent Fleet row.
 
+![Principal Engineer chat-first — multi-turn conversation in Session Chat](../assets/4-Cursor-PE-talk.png)
+
 ### Work Item Detail panel
 
 **What it shows**: the full record for one todo or issue:
@@ -205,17 +213,23 @@ A visual topology of the agent fleet plus project metrics.
 
 Open via **Open Dashboard** on Agent Fleet's title bar, or `Cmd/Ctrl+Shift+V D`.
 
+![VibeFlow Dashboard — agent topology, metrics, and active session nodes](../assets/5-Dashboard.png)
+
 ### Kanban Board panel
 
 A drag-and-drop swimlane board, one column per status. Each card is a todo or issue. Drop a card across columns to move it through the lifecycle (same MCP transition as the right-click menu).
 
 Open via **Open Kanban Board** on Work Items, or `Cmd/Ctrl+Shift+V K`.
 
+![VibeFlow Kanban — swimlanes by status with drag-and-drop cards](../assets/8-Kanban.png)
+
 ### Compliance panel
 
 Open **compliance findings** grouped by framework: **SOC 2**, **ISO 27001**, **PCI-DSS**, **HIPAA**. Each finding links to its source work item, framework clause, and agent evidence.
 
 Open via **Open Compliance** on Work Items, or `Cmd/Ctrl+Shift+V C`.
+
+![Compliance panel — findings by framework with severity and status](../assets/7-Complaince-Dashboard.png)
 
 ---
 
