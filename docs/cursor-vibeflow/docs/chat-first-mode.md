@@ -80,9 +80,37 @@ Uses `tmux` if the binary is on `PATH`, otherwise falls back to a hidden editor 
 Forces tmux. Properties:
 
 - **Survives IDE restart.** Close Cursor, reopen, the agent process is still alive in its tmux session. The chat panel reattaches.
-- **Inspectable from any terminal.** From a regular shell, run `tmux -L vibeflow-headless attach -t <session-name>` to watch the agent's raw stream. Useful when something looks weird.
+- **Inspectable from any terminal.** Chat-first agents run on a dedicated tmux socket named `vibeflow-headless` (isolated from your personal tmux sessions and from the CLI-mode `vibeflow` socket). See [Observing agents from any terminal](#observing-agents-from-any-terminal) below.
 - **Multi-turn works correctly.** This is the supported backing for ongoing conversation.
 - Unix only. It's silently ignored on Windows.
+
+### Observing agents from any terminal
+
+Chat-first agents are **headless** — no visible editor terminal. Under `tmux` backing they live in background tmux sessions on socket `vibeflow-headless`. From any shell:
+
+**List running VibeFlow headless sessions:**
+
+```bash
+tmux -L vibeflow-headless ls
+```
+
+**Attach to watch a session's raw CLI output** (tool calls, provider stream, errors):
+
+```bash
+tmux -L vibeflow-headless attach -t <session-name>
+```
+
+Session names follow the pattern `vibeflow-<persona>-<branch>-<hash>`, e.g. `vibeflow-principal_engineer-main-a1b2c3d4`. When you launch chat-first with tmux backing, the launch toast shows the exact attach command.
+
+**Detach without killing the agent:** press `Ctrl+B`, then `D`. The agent keeps running in the background.
+
+**Kill a stuck session from a terminal:**
+
+```bash
+tmux -L vibeflow-headless kill-session -t <session-name>
+```
+
+You can also kill from the **Agent Fleet** view (right-click → **Kill Session**). The tmux commands are for when you want to debug from outside Cursor or after an IDE restart.
 
 ### `vscode`
 
@@ -123,18 +151,23 @@ From your perspective: you type, agent responds, you type again, agent responds 
 
 ## 6. How to launch chat-first
 
+**Prerequisites:** A project folder must be open in the Editor Window (see [getting-started.md §1](getting-started.md#1-open-a-project-folder-required)). Sessions will not start without a workspace.
+
 1. Open the Command Palette (`Cmd/Ctrl+Shift+P`) and run **VibeFlow: Launch Session**. (Equivalent: click **Launch Session** in the Agent Fleet view.)
 2. Step through the wizard:
    - **Branch**: the git branch this session targets (defaults to current).
-   - **Persona**: Developer, Architect, etc.
+   - **Persona**: Developer, Architect, Principal Engineer, etc.
    - **Provider**: Claude, Codex, Gemini, Cursor, Qwen. (Remember: the **Cursor** provider here is the agent's model backend, independent of the Cursor editor you're in.)
    - **Provider key**: only if you haven't already stored one.
    - **Session Mode**: choose **Chat-First**.
 3. If this is the first chat-first launch for the `{persona, branch, workDir}` triple, the **YOLO consent modal** appears. Click **I understand, continue**.
-4. The **Session Chat** panel opens immediately in the editor area. **No terminal opens.** That's the whole point. There is no terminal.
-5. The first agent process spawns in the background (on `tmux` or hidden editor terminal, per `vibeflow.session.headlessBacking`). When it's ready, the panel renders an empty transcript with a focused input box.
+4. The **Session Chat** panel opens immediately in the editor area. **No terminal opens.** That's the whole point. There is no visible terminal.
+5. The first agent process spawns in the background on tmux socket `vibeflow-headless` (or a hidden editor terminal if tmux isn't available, per `vibeflow.session.headlessBacking`). When it's ready, the panel renders an empty transcript with a focused input box.
+6. A toast confirms the tmux session name and shows the attach command, e.g. `tmux -L vibeflow-headless attach -t vibeflow-developer-main-abc12345`.
 
-You're now in chat. Type.
+![Principal Engineer chat-first session — type in the Session Chat panel, agent runs headless in tmux](../assets/4-Cursor-PE-talk.png)
+
+You're now in chat. Type. The agent runs in tmux in the background; you interact only through the chat panel (or by attaching to tmux from a terminal).
 
 ---
 
