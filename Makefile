@@ -12,7 +12,7 @@
 #     export VSCE_PAT=<Azure DevOps PAT, Marketplace > Manage scope>
 #     make publish-all
 
-PUBLISHER := AxiomStudio
+PUBLISHER := AxiomStudio     
 NAME      := vscode-vibeflow
 VERSION   := $(shell node -p "require('./package.json').version")
 VSIX      := $(NAME)-$(VERSION).vsix

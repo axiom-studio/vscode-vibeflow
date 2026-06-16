@@ -9,6 +9,8 @@ import type { ChatPrompt, SessionMode } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
 import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
 import { AssetCard } from './AssetCard';
+import { PersonaAvatar } from './PersonaAvatar';
+import { StructuredAgentBody } from './agentStructure';
 import { InfoIcon } from '../_shared/icons';
 import { getVsCodeApi } from '../../vscodeApi';
 
@@ -41,6 +43,13 @@ interface Props {
    * mislead the user.
    */
   sessionMode: SessionMode;
+  /**
+   * First message of a same-sender run. Only the group's first row renders
+   * the persona/You header (avatar + name + time); continuation rows tuck
+   * under it. Kills the "header + RESPONSE label on every single line"
+   * repetition that made the transcript read like CI log output.
+   */
+  groupStart: boolean;
   onRespond?: (promptId: string, text: string) => void;
 }
 
@@ -69,12 +78,20 @@ interface Props {
  * it non-stable, this memo will degrade silently to "always re-render";
  * worth a `useCallback` audit if profile data ever points back here.
  */
-function MessageBubbleImpl({ msg, personaName, personaColor, diffView, sessionMode, onRespond }: Props) {
+function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
   const author = isUser ? 'You' : personaName;
   const time = formatTime(msg.created_at);
+  // Agent autonomous posts carry their content in `response_text`, leaving
+  // `prompt_text` empty. Compute the visible prompt body up front so we can
+  // skip rendering an empty `.msg-content` — otherwise it shows as a hollow
+  // bubble now that `.msg-content` has bubble chrome.
+  const promptBody = stripAgentFooter(msg.prompt_text || '');
+  // Build the markdown component overrides once and share them across the
+  // prompt body and the structured response renderer (chips / ```diff / tables).
+  const mdComponents = markdownComponents(diffView);
 
   // User → agent prompts can sit in `pending` indefinitely when the
   // agent is autonomous AND terminal-driven (vanilla / vibeflow):
@@ -100,42 +117,55 @@ function MessageBubbleImpl({ msg, personaName, personaColor, diffView, sessionMo
   // without each row needing a unique class. User-message rows ignore
   // this — their stripe color is hard-coded to the VS Code button color
   // for a consistent "you" treatment. #2346 (Phase 2 chat skin).
-  const rowStyle = !isUser ? { '--msg-stripe-color': personaColor } as React.CSSProperties : undefined;
+  // Persona color is exposed as a CSS var on EVERY row (not just agent rows)
+  // so the agent's bubble — including an agent reply nested inside a 'You'
+  // row — can carry a faint persona tint. #chat-persona.
+  const rowStyle = { '--msg-stripe-color': personaColor } as React.CSSProperties;
 
   return (
     <div
-      className={isUser ? 'msg-row msg-user' : 'msg-row msg-agent'}
+      className={`msg-row ${isUser ? 'msg-user' : 'msg-agent'}${groupStart ? ' msg-group-start' : ''}`}
       style={rowStyle}
     >
       <div className="msg-body">
-        <div className="msg-header">
-          <span className="msg-author">{author}</span>
-          <span className="msg-time">{time}</span>
-          {msg.status === 'pending' && <WorkingIndicator startTime={msg.created_at} />}
-          {msg.status === 'expired' && (
-            <span className="msg-status msg-status-expired">expired</span>
-          )}
-        </div>
-        <div className="msg-content">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeHighlight]}
-            components={markdownComponents(diffView)}
-          >
-            {stripAgentFooter(msg.prompt_text || '')}
-          </ReactMarkdown>
-        </div>
-
-        {msg.response_text && (
-          <div className="msg-response">
-            <div className="msg-response-label">Response</div>
+        {(groupStart || msg.status === 'pending' || msg.status === 'expired') && (
+          <div className="msg-header">
+            {!isUser && (
+              <PersonaAvatar
+                className="msg-header-avatar"
+                src={personaAvatarUrl}
+                fallbackGlyph={personaName.trim().charAt(0).toUpperCase() || 'A'}
+                fallbackColor={personaColor}
+              />
+            )}
+            <span
+              className="msg-author"
+              style={!isUser ? { color: personaColor } : undefined}
+            >
+              {author}
+            </span>
+            <span className="msg-time">{time}</span>
+            {msg.status === 'pending' && <WorkingIndicator startTime={msg.created_at} />}
+            {msg.status === 'expired' && (
+              <span className="msg-status msg-status-expired">expired</span>
+            )}
+          </div>
+        )}
+        {promptBody.trim().length > 0 && (
+          <div className="msg-content">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
-              components={markdownComponents(diffView)}
+              components={mdComponents}
             >
-              {msg.response_text}
+              {promptBody}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {msg.response_text && (
+          <div className="msg-response">
+            <StructuredAgentBody text={msg.response_text} mdComponents={mdComponents} />
           </div>
         )}
 
