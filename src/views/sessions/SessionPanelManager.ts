@@ -604,8 +604,20 @@ export class SessionPanelManager implements vscode.Disposable {
           });
         }
       }
-    } catch {
-      // Absorb — chat is non-critical, we'll retry on the next 5s tick.
+    } catch (err) {
+      // Backfill failures are non-critical: the transcript is already on
+      // screen and the next 5s tick retries, so stay silent. But an
+      // INITIAL-load failure (the captured `state` is still missing /
+      // uninitialized — same condition that entered the initial branch
+      // above) leaves the webview pinned on its loading skeleton forever,
+      // because it only exits `loading` on a chatTranscript/chatError
+      // message. Surface it as chatError so the panel drops the skeleton
+      // and shows the real reason; the poll keeps retrying, so a transient
+      // failure self-heals into a chatTranscript on a later tick.
+      if (!state || !state.initialized) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.postToWebview(panel, { type: 'chatError', payload: { message: `Failed to load chat: ${msg}` } });
+      }
     }
   }
 
