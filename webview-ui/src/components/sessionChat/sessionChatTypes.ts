@@ -113,4 +113,8 @@ export type ChatClientMessage =
       };
     }
   | { type: 'stop' }
-  | { type: 'refresh' };
+  | { type: 'refresh' }
+  // Sent once on mount, right after the webview registers its `message`
+  // listener, so the host can (re)deliver the initial transcript without
+  // racing the webview bootstrap. See SessionChatView's mount effect.
+  | { type: 'ready' };

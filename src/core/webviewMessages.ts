@@ -342,7 +342,15 @@ export type SessionPanelClientMessage =
   // to VSCode's `vscode.open` command, which picks the right editor
   // for the file type (built-in image preview, text editor, or
   // external app prompt for unknown binaries).
-  | { type: 'chatOpenAsset'; payload: { id: number; name: string } };
+  | { type: 'chatOpenAsset'; payload: { id: number; name: string } }
+  // The webview has mounted and registered its `message` listener
+  // (SessionChatView's mount effect). The host responds by re-delivering
+  // the initial transcript, which clears the loading skeleton. Without this
+  // handshake the panel-creation-time chatTranscript post can race the webview
+  // bootstrap and be dropped — invisible in VS Code (postMessage buffering),
+  // but a permanent stuck-skeleton in Cursor (service-worker-gated webview
+  // load). See SessionPanelManager's `ready` handler.
+  | { type: 'ready' };
 
 // ============================================================
 // Kanban Panel

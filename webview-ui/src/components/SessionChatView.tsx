@@ -309,6 +309,13 @@ export function SessionChatView() {
       }
     }
     window.addEventListener('message', handleMessage);
+    // Handshake: tell the host we're listening now. The host (re)sends the
+    // initial chatTranscript in response, which clears the loading skeleton.
+    // Without this, the host's panel-creation-time transcript post can land
+    // before this listener exists and be dropped — VS Code's postMessage
+    // buffering hides the race, but Cursor's service-worker-gated webview
+    // bootstrap exposes it as a skeleton that never resolves.
+    vscode.postMessage({ type: 'ready' });
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
@@ -523,10 +530,14 @@ export function SessionChatView() {
               the deferred re-render cheap when only a few bubbles changed.
               Refs #2330 (chat input lag investigation).
             */
-            deferredMessages.map(msg => (
+            deferredMessages.map((msg, i) => (
               <MessageBubble
                 key={msg.id}
                 msg={msg}
+                // First message of a same-sender run — only the group's first
+                // row renders the persona/You header, collapsing the repeated
+                // "Security Lead · RESPONSE" stack into one conversational group.
+                groupStart={i === 0 || deferredMessages[i - 1].source !== msg.source}
                 personaName={meta.personaName}
                 personaAvatarUrl={personaAvatar}
                 personaColor={personaColor}

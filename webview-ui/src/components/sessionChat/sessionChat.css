@@ -337,36 +337,36 @@
  *   VS Code button color for a consistent "you" treatment regardless
  *   of which agent the chat is with.
  */
+/*
+ * Conversation grouping (#chat-persona). Consecutive messages from the same
+ * sender collapse under ONE header (rendered only on .msg-group-start);
+ * continuation rows tuck under it. The old per-row persona stripe + blue
+ * response rail are gone — identity now lives in the group header (avatar +
+ * persona-colored name), not a repeated gutter bar. That doubled rail + the
+ * "RESPONSE" caps stack on every line was the "CI-log / AI-generated" tell.
+ */
 .msg-row {
   position: relative;
-  padding: var(--vf-sp-3) 0 var(--vf-sp-3) var(--vf-sp-4);
-  border-bottom: var(--vf-border);
+  padding: 2px 0 2px var(--vf-sp-4);
 }
 
-.msg-row:last-child { border-bottom: none; }
-
-.msg-row::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: var(--vf-sp-3);
-  bottom: var(--vf-sp-3);
-  width: 2px;
-  border-radius: var(--vf-r-pill);
-  background: var(--msg-stripe-color, var(--vscode-textLink-foreground));
-  transition: opacity var(--vf-t-quick) ease-out;
+/* Tight within a group; air + a hairline between groups. */
+.msg-row + .msg-row { margin-top: 3px; }
+.msg-group-start:not(:first-child) {
+  margin-top: var(--vf-sp-5);
+  padding-top: var(--vf-sp-4);
+  border-top: var(--vf-border-subtle);
 }
 
-/* User-message stripe: a neutral foreground tint rather than the
- * theme's button color (#2348). The button color is typically a bright
- * brand blue, which on the developer persona (cyan `#4fc1ff`) reads
- * as visually similar — both blues at a glance. A muted foreground
- * tint ALWAYS contrasts against the saturated persona colors and
- * makes the "you vs them" distinction read instantly. Color-mix on
- * foreground keeps it theme-aware (dim in dark, dim in light) without
- * conditional CSS. */
-.msg-user::before {
-  background: color-mix(in oklab, var(--vscode-foreground) 55%, transparent);
+/* A new group gently fades up on mount. Restrained on purpose — this is a
+ * read-often surface, so no perpetual motion. Reduced-motion → no transform. */
+.msg-group-start { animation: msg-enter var(--vf-t-panel) var(--vf-ease) both; }
+@keyframes msg-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msg-group-start { animation: none; }
 }
 
 .msg-body {
@@ -378,19 +378,33 @@
 
 .msg-header {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  font-size: 12px;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  font-size: var(--vf-text-sm);
+  margin-bottom: var(--vf-sp-1);
+}
+
+/* The "You" header sits on the right, mirroring the right-aligned bubble. */
+.msg-user .msg-header { justify-content: flex-end; }
+
+.msg-header-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--vf-r-pill);
+  flex: 0 0 auto;
 }
 
 .msg-author {
-  font-weight: 600;
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-weight-semibold);
+  letter-spacing: var(--vf-tracking-tight);
+  /* Agent rows override this inline with the persona color (MessageBubble). */
   color: var(--vscode-foreground);
 }
 
 .msg-time {
   color: var(--vscode-descriptionForeground);
-  font-size: 11px;
+  font-size: var(--vf-text-xs);
 }
 
 .msg-status {
@@ -579,6 +593,22 @@
   text-decoration: none;
 }
 .msg-content a:hover { text-decoration: underline; }
+
+/*
+ * Your messages render as a compact, right-aligned bubble (WhatsApp / ChatGPT
+ * model) — short prompts fit a bubble; the agent's long replies stay full-width
+ * (.msg-response). `.msg-body` is a flex column, so align-self pushes the bubble
+ * to the right edge without reordering the DOM.
+ */
+.msg-user .msg-content {
+  align-self: flex-end;
+  max-width: 82%;
+  padding: var(--vf-sp-2) var(--vf-sp-3);
+  border-radius: 14px 14px 4px 14px;
+  background: color-mix(in oklab, var(--vscode-foreground) 8%, transparent);
+  border: var(--vf-border-subtle);
+}
+.msg-user .msg-content > :last-child { margin-bottom: 0; }
 /*
  * Markdown table styling for BOTH the user-prompt body (.msg-content)
  * AND the agent-response body (.msg-response). Previously only .msg-content
@@ -625,23 +655,29 @@
   font-size: 0.92em;
   padding: 1px 6px;
   border-radius: var(--vf-r-sm);
-  border: 1px solid color-mix(in oklab, var(--vscode-textLink-foreground) 30%, transparent);
-  background: color-mix(in oklab, var(--vscode-textLink-foreground) 10%, transparent);
-  color: var(--vscode-textLink-foreground);
+  /* Neutral, not link-blue. A commit/file is a reference, not a state —
+   * color is reserved for things that actually carry status, so references
+   * stop competing for attention. (THE LILA fix: kill the uniform AI-blue.) */
+  border: 1px solid color-mix(in oklab, var(--vscode-foreground) 18%, transparent);
+  background: color-mix(in oklab, var(--vscode-foreground) 7%, transparent);
+  color: var(--vscode-foreground);
   cursor: pointer;
   text-decoration: none;
   line-height: inherit;
   vertical-align: baseline;
-  transition: background var(--vf-t-micro) ease-out, border-color var(--vf-t-micro) ease-out;
+  transition: background var(--vf-t-micro) ease-out, border-color var(--vf-t-micro) ease-out, transform var(--vf-t-micro) ease-out;
 }
+/* A commit hash is short (7 chars) and atomic — never let `overflow-wrap`
+ * break it across a line. Paths can still wrap; they get long. */
+.chat-commit-hash { white-space: nowrap; }
 .chat-commit-hash:hover,
 .chat-path-ref:hover {
-  background: color-mix(in oklab, var(--vscode-textLink-foreground) 18%, transparent);
-  border-color: color-mix(in oklab, var(--vscode-textLink-foreground) 50%, transparent);
+  background: color-mix(in oklab, var(--vscode-foreground) 13%, transparent);
+  border-color: color-mix(in oklab, var(--vscode-foreground) 34%, transparent);
 }
 .chat-commit-hash:active,
 .chat-path-ref:active {
-  transform: translateY(0.5px);
+  transform: scale(0.97);
 }
 .chat-commit-hash:focus-visible,
 .chat-path-ref:focus-visible {
@@ -688,27 +724,109 @@
   cursor: not-allowed;
 }
 
-/* Response block (when an agent prompt has been answered) */
-.msg-response {
-  margin-top: 4px;
-  padding: 10px 14px;
-  border-left: 3px solid var(--vscode-textLink-foreground);
-  background: var(--vscode-editor-background);
-  border-radius: var(--vf-r-sm);
-  font-size: 13.5px;
-  line-height: 1.5;
+/*
+ * Agent response = full-width prose (the agent's voice). The old treatment
+ * (3px blue left-border + bg card + a "RESPONSE" caps label) was a second
+ * competing rail and a textbook AI tell — both removed. The content reads as
+ * a document; the persona header above already says who's speaking.
+ */
+.msg-response,
+.msg-agent .msg-content {
+  align-self: flex-start;
+  max-width: 92%;
+  margin-top: var(--vf-sp-1);
+  padding: var(--vf-sp-3) var(--vf-sp-4);
+  /* Tail on the top-left (toward the avatar); rounded elsewhere. */
+  border-radius: 4px 16px 16px 16px;
+  border: var(--vf-border-subtle);
+  /* A faint wash of the persona's color over the panel — always contrasts
+   * (mix over transparent), and gives each persona a distinct warmth instead
+   * of a flat wall of text. ~9% keeps it a whisper, not a billboard. */
+  background: color-mix(in oklab, var(--msg-stripe-color, var(--vscode-foreground)) 9%, transparent);
+  font-size: var(--vf-text-md);
+  line-height: 1.55;
 }
 
-.msg-response-label {
-  font-size: 10px;
-  font-weight: 700;
+/* Label removed from the DOM; hidden defensively for any cached build. */
+.msg-response-label { display: none; }
+
+/* ── Structured agent body (#chat-structure) ──────────────────────────────
+ * Renders the agents' house-style conventions (see agentStructure.tsx) as
+ * real elements so a long report scans as a document, not a wall of text.
+ */
+
+/* `[<iso> | session-<id>]` header line → a quiet monospace caption. */
+.chat-meta {
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-text-xs);
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.75;
+  margin: 0 0 var(--vf-sp-2);
+}
+
+/* ALL-CAPS section header (SYSTEM MAP / PLAN / …) → a tracked label with a
+ * hairline above it, giving the body visible sections. */
+.chat-section {
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-text-xs);
+  font-weight: var(--vf-weight-semibold);
+  letter-spacing: var(--vf-tracking-caps);
   text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--vscode-textLink-foreground);
-  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground);
+  /* Generous top gap so every ALL-CAPS section reads as a clear new block
+   * (margin-top wins any sibling-margin collapse, so the break never vanishes). */
+  margin: var(--vf-sp-6) 0 var(--vf-sp-2);
+  padding-top: var(--vf-sp-3);
+  border-top: var(--vf-border-subtle);
+}
+.chat-meta:first-child,
+.chat-section:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
-.msg-response > :last-child { margin-bottom: 0; }
+/* Emoji phase marker (🤔 Thinking — / ⚠️ WARN — / ✅ Verification …) → a
+ * callout with a colored spine + dot + bold label. Color carries STATE only:
+ * success = green, warn = amber; reasoning/info stays muted (no decorative
+ * color), so an actual warning reads instantly. */
+.chat-phase {
+  display: flex;
+  gap: var(--vf-sp-2);
+  margin: var(--vf-sp-2) 0;
+  padding: 2px 0 2px var(--vf-sp-3);
+  border-left: 2px solid var(--phase-accent);
+}
+.chat-phase-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 0.5em;
+  border-radius: var(--vf-r-pill);
+  background: var(--phase-accent);
+}
+.chat-phase-content { min-width: 0; }
+.chat-phase-label {
+  font-weight: var(--vf-weight-semibold);
+  color: var(--phase-accent);
+  margin-right: 0.45em;
+}
+/* The body is rendered as markdown (chips/bold survive) but must sit inline
+ * after the label, so collapse its paragraph wrapper. */
+.chat-phase-body,
+.chat-phase-body > p { display: inline; }
+.chat-phase-body > p { margin: 0; }
+
+.chat-phase-info,
+.chat-phase-note,
+.chat-phase-security { --phase-accent: var(--vscode-descriptionForeground); }
+.chat-phase-success { --phase-accent: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fb950)); }
+.chat-phase-warn { --phase-accent: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #d29922)); }
+
+.msg-response > :first-child,
+.msg-agent .msg-content > :first-child { margin-top: 0; }
+.msg-response > :last-child,
+.msg-agent .msg-content > :last-child { margin-bottom: 0; }
 
 /* ============================== Empty state ============================== */
 .chat-empty {
