@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { BugIcon, CheckSquareIcon, LockIcon } from '../_shared/icons';
 
 /**
@@ -26,15 +27,38 @@ export interface KanbanCard {
  * KANBAN_COLUMNS (src/views/kanban/kanbanData.ts). `statuses` is the status
  * set shown here; `primary` is the status sent on drop (host re-validates).
  */
-const COLUMNS: Array<{ key: string; label: string; statuses: string[]; primary: string; accent: string }> = [
-  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review', accent: 'var(--vscode-charts-blue, #4e94ce)' },
-  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input', accent: 'var(--vscode-charts-purple, #c586c0)' },
-  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input', accent: 'var(--vscode-charts-orange, #d18616)' },
-  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning', accent: 'var(--feed-muted)' },
-  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete', accent: 'var(--vscode-charts-blue, #4e94ce)' },
-  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement', accent: 'var(--vscode-charts-green, #89d185)' },
-  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing', accent: 'var(--feed-warning)' },
-  { key: 'done', label: 'Done', statuses: ['done'], primary: 'done', accent: 'var(--feed-success)' },
+/**
+ * Per-swimlane explainer (#2896) — what the status means, which persona acts on
+ * it, and where the ticket moves next. Persona ownership verified against the
+ * backend's `personaDefaultIntakeStatuses` (axiomcloud mcp/vibeflow_tools.go):
+ * `in_review` has NO agent intake (human triage); PM owns `needs_pm_input`;
+ * code agents own `ready_to_implement` (one per branch); security_lead + qa_lead
+ * intake `done`. Persona dot colors mirror the dashboard PERSONA_COLORS.
+ */
+interface ColumnInfo {
+  what: string;
+  who: string;
+  whoColor: string;
+  next: string;
+}
+
+const COLUMNS: Array<{ key: string; label: string; statuses: string[]; primary: string; accent: string; info: ColumnInfo }> = [
+  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review', accent: 'var(--vscode-charts-blue, #4e94ce)',
+    info: { what: 'Triage inbox — new or returned items waiting to be routed.', who: 'Human triage — no agent auto-picks these', whoColor: 'var(--feed-muted)', next: 'Needs PM/UX Input · Planning · Rejected' } },
+  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input', accent: 'var(--vscode-charts-purple, #c586c0)',
+    info: { what: 'Needs a spec, PRD, or product decision.', who: 'Aria · Product Manager', whoColor: '#ff9a3d', next: 'Planning · Ready' } },
+  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input', accent: 'var(--vscode-charts-orange, #d18616)',
+    info: { what: 'Needs design input — flows, wireframes, UX review.', who: 'Dana · UX Designer', whoColor: '#ff70c4', next: 'Needs PM Input · Planning' } },
+  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning', accent: 'var(--feed-muted)',
+    info: { what: 'Claimed by an agent and being scoped / planned.', who: 'The claiming agent', whoColor: 'var(--feed-muted)', next: 'Ready to Implement' } },
+  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete', accent: 'var(--vscode-charts-blue, #4e94ce)',
+    info: { what: "Architect's design pass is done; ready for a builder.", who: 'Morgan · Architect → a code agent', whoColor: '#b483ff', next: 'Ready · In Progress' } },
+  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement', accent: 'var(--vscode-charts-green, #89d185)',
+    info: { what: 'Ready to build — picked up by one code agent per branch.', who: 'Developer / Architect / Principal Eng · 1 per branch', whoColor: '#4d9fff', next: 'In Progress' } },
+  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing', accent: 'var(--feed-warning)',
+    info: { what: 'Actively being built; this agent holds the branch lock.', who: 'Code agent (the branch holder)', whoColor: '#4d9fff', next: 'Done' } },
+  { key: 'done', label: 'Done', statuses: ['done'], primary: 'done', accent: 'var(--feed-success)',
+    info: { what: 'Built; awaiting Security then QA review.', who: 'Sophie · Security → Quinn · QA', whoColor: '#ff5d5d', next: 'Archived · Rejected' } },
 ];
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -292,8 +316,11 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
                 display: 'flex',
                 justifyContent: 'space-between',
               }}>
-                <span>{col.label}</span>
-                <span style={{ fontWeight: 400 }}>{columnCards.length}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{col.label}</span>
+                  <ColumnInfoIcon label={col.label} info={col.info} accent={col.accent} />
+                </span>
+                <span style={{ fontWeight: 400, flexShrink: 0 }}>{columnCards.length}</span>
               </div>
 
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
@@ -316,6 +343,84 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Per-column explainer popover (#2896). The `ⓘ` glyph in each swimlane header
+ * reveals what the status is, which persona owns it, and where the ticket goes
+ * next. Portal-rendered with `position: fixed` so the board's horizontal-scroll
+ * `overflow` never clips it (the same escape-the-overflow trick the dashboard's
+ * persona hover cards use).
+ */
+function ColumnInfoIcon({ label, info, accent }: { label: string; info: ColumnInfo; accent: string }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const show = () => { if (ref.current) { setRect(ref.current.getBoundingClientRect()); } };
+  const hide = () => setRect(null);
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={(e) => { e.stopPropagation(); show(); }}
+        aria-label={`${label}: ${info.what} Handled by ${info.who}. Moves next to ${info.next}.`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 14, height: 14, padding: 0, flexShrink: 0,
+          border: 'none', background: 'transparent', color: 'var(--feed-muted)',
+          cursor: 'help', opacity: 0.65,
+        }}
+      >
+        <InfoGlyph />
+      </button>
+      {rect && createPortal(
+        <div
+          role="tooltip"
+          style={{
+            position: 'fixed',
+            top: rect.bottom + 6,
+            left: Math.max(8, Math.min(rect.left - 6, window.innerWidth - 256)),
+            width: 240,
+            zIndex: 9999,
+            background: 'var(--vscode-editorHoverWidget-background, var(--feed-bg))',
+            border: '1px solid var(--vscode-editorHoverWidget-border, var(--feed-border))',
+            borderRadius: 6,
+            padding: '9px 11px',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.35)',
+            // Reset the header's uppercase + letter-spacing inheritance.
+            textTransform: 'none', letterSpacing: 0, fontWeight: 400,
+            fontSize: 11, lineHeight: 1.5, color: 'var(--feed-fg)',
+            pointerEvents: 'none',
+          }}
+        >
+          <div style={{ fontWeight: 700, color: accent, fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{label}</div>
+          <div style={{ color: 'var(--feed-muted)', marginBottom: 7 }}>{info.what}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: info.whoColor, flexShrink: 0 }} aria-hidden />
+            <span style={{ fontWeight: 500 }}>{info.who}</span>
+          </div>
+          <div style={{ color: 'var(--feed-muted)' }}>
+            <span style={{ opacity: 0.7 }}>Moves next → </span>{info.next}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+function InfoGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden>
+      <circle cx="8" cy="8" r="6.4" />
+      <line x1="8" y1="7.2" x2="8" y2="11.2" strokeLinecap="round" />
+      <circle cx="8" cy="4.7" r="0.55" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 
