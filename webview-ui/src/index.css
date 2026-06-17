@@ -334,6 +334,16 @@ select:focus-visible {
   animation: persona-pulse 2.4s ease-in-out infinite;
 }
 
+/* Persona-node queue hover card entrance (Dashboard topology). A small
+ * lift + fade so the card feels anchored to the node it springs from. */
+@keyframes vf-pop-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes vf-pop-in { from { opacity: 1; } to { opacity: 1; } }
+}
+
 /*
  * Dashboard SummaryGrid bento layout (introduced #1660).
  * Top tier: Sessions hero + Work items hero (each spans 3 cols).

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ReactFlow,
   Background,
@@ -11,12 +12,22 @@ import {
 import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
 import { AVATAR_BY_PERSONA } from '../personaAvatars';
+import { PERSONA_COLORS } from '../types';
 import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
 import { GitBranchIcon, SpinnerIcon } from './_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: DashboardClientMessage) => void };
 
 type PersonaStatus = 'active' | 'stale' | 'inactive';
+
+/** One queued work item shown in a persona node's hover card (mirrors host). */
+interface PersonaQueueItem {
+  id: number;
+  type: 'todo' | 'issue';
+  title: string;
+  status: string;
+  priority?: string;
+}
 
 // Branch readiness card is hidden in v1.1; the host still sends this
 // data so the card can return without a wire change. Kept as a partial
@@ -48,6 +59,9 @@ interface DashboardSnapshot {
   // null = no status-driven intake (project_manager tracker, customer input);
   // numbers are item counts pending action by that persona.
   personaQueues: Record<string, number | null>;
+  // Actual items behind each persona's count (mirrors host PersonaQueueItem).
+  // Keyed by persona; advisory personas (project_manager/customer) absent.
+  personaQueueItems: Record<string, PersonaQueueItem[]>;
   sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -231,6 +245,13 @@ export function DashboardView() {
     vscode.postMessage({ type: 'dashboardFocusPersona', payload: { personaKey } });
   }, []);
 
+  const openWorkItem = useCallback((item: PersonaQueueItem) => {
+    vscode.postMessage({
+      type: 'dashboardOpenWorkItem',
+      payload: { workItemType: item.type, workItemId: item.id },
+    });
+  }, []);
+
   const onNodeClick = useCallback((_evt: unknown, node: Node) => {
     focusPersona(node.id);
   }, [focusPersona]);
@@ -270,12 +291,14 @@ export function DashboardView() {
 
   const personaStatus = state.snapshot?.personaStatus ?? {};
   const personaQueues = state.snapshot?.personaQueues ?? {};
+  const personaQueueItems = state.snapshot?.personaQueueItems ?? {};
   const serverUrl = state.snapshot?.serverUrl ?? '';
   const nodes: Node[] = useMemo(() => {
     const personaNodes: Node[] = Object.keys(PERSONA_DISPLAY).map(key => {
       const status = personaStatus[key] ?? 'inactive';
       const isCodeAgent = CODE_AGENT_KEYS.has(key);
       const queue = personaQueues[key];
+      const items = personaQueueItems[key] ?? [];
       const avatarPath = AVATAR_BY_PERSONA[key];
       const avatarUrl = avatarPath && serverUrl ? `${serverUrl}${avatarPath}` : undefined;
       return {
@@ -295,6 +318,10 @@ export function DashboardView() {
               queue={queue === undefined ? null : queue}
               queueTooltip={QUEUE_TOOLTIPS[key]}
               avatarUrl={avatarUrl}
+              personaColor={PERSONA_COLORS[key] ?? 'var(--vscode-foreground)'}
+              items={items}
+              isCodeAgent={isCodeAgent}
+              onOpenItem={openWorkItem}
             />
           ),
         },
@@ -320,7 +347,7 @@ export function DashboardView() {
     };
 
     return [slotNode, ...personaNodes];
-  }, [personaStatus, personaQueues, positions, serverUrl]);
+  }, [personaStatus, personaQueues, personaQueueItems, positions, serverUrl, openWorkItem]);
 
   const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => {
     // An edge is "active" only when BOTH endpoints have a live session.
@@ -504,15 +531,30 @@ export function DashboardView() {
  * conveyed by a single visual chip floating above the cluster
  * (see `SlotLabelNode`) instead of per-node "1/branch" badges.
  */
-function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatarUrl }: {
+function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatarUrl, personaColor, items, isCodeAgent, onOpenItem }: {
   name: string;
   character: string | undefined;
   status: PersonaStatus;
   queue: number | null;
   queueTooltip: string | undefined;
   avatarUrl: string | undefined;
+  personaColor: string;
+  items: PersonaQueueItem[];
+  isCodeAgent: boolean;
+  onOpenItem: (item: PersonaQueueItem) => void;
 }) {
   const showQueueBadge = queueTooltip !== undefined && queue !== null && queue > 0;
+  // Hover card with the actual queued items. Hover-intent: a short close
+  // delay lets the pointer travel from the node to the portal'd card
+  // (which lives outside this node's DOM) without it snapping shut.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [hovering, setHovering] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelClose = () => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = undefined; } };
+  const openCard = () => { cancelClose(); setHovering(true); };
+  const closeSoon = () => { cancelClose(); closeTimer.current = setTimeout(() => setHovering(false), 130); };
+  useEffect(() => cancelClose, []);
+  const showCard = hovering && items.length > 0 && rootRef.current !== null;
   const ringColor = STATUS_COLOR[status];
   const restingShadow = `0 1px 3px color-mix(in oklab, var(--vscode-foreground) 22%, transparent)`;
   // Active personas get the live breathing ring via the .persona-pulse
@@ -532,13 +574,19 @@ function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatar
       : { boxShadow: restingShadow }),
   };
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 11,
-      fontSize: 12,
-      minWidth: 0,
-    }}>
+    <div
+      ref={rootRef}
+      onMouseEnter={openCard}
+      onMouseLeave={closeSoon}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 11,
+        fontSize: 12,
+        minWidth: 0,
+        position: 'relative',
+      }}
+    >
       {/* Avatar block ----------------------------------------------------- */}
       <div style={{ position: 'relative', flexShrink: 0 }}>
         {avatarUrl ? (
@@ -579,7 +627,6 @@ function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatar
             node. Hidden when queue is 0 so the badge is a real signal. */}
         {showQueueBadge && (
           <span
-            title={queueTooltip}
             style={{
               position: 'absolute',
               top: -4,
@@ -627,7 +674,201 @@ function PersonaNodeLabel({ name, character, status, queue, queueTooltip, avatar
           {name}
         </div>
       </div>
+
+      {showCard && (
+        <PersonaQueuePopover
+          anchor={rootRef.current!}
+          personaName={name}
+          personaColor={personaColor}
+          subtitle={isCodeAgent ? 'Shared code-agent queue · one runs per branch.' : queueTooltip}
+          items={items}
+          onOpenItem={onOpenItem}
+          onMouseEnter={openCard}
+          onMouseLeave={closeSoon}
+        />
+      )}
     </div>
+  );
+}
+
+/** Status pill metadata for grouping items in the hover card. */
+const QUEUE_STATUS_META: Record<string, { label: string; color: string; order: number }> = {
+  in_review:                    { label: 'In Review',        color: 'var(--vscode-charts-purple, #c586c0)', order: 0 },
+  needs_pm_input:               { label: 'Needs PM',         color: 'var(--vscode-charts-purple, #c586c0)', order: 1 },
+  needs_ux_input:               { label: 'Needs UX',         color: 'var(--vscode-charts-orange, #d18616)', order: 2 },
+  planning:                     { label: 'Planning',         color: 'var(--vscode-charts-blue, #4e94ce)',   order: 3 },
+  ready_to_implement:           { label: 'Ready',            color: 'var(--vscode-charts-blue, #4e94ce)',   order: 4 },
+  architecture_review_complete: { label: 'Arch Review Done', color: 'var(--vscode-charts-blue, #4e94ce)',   order: 5 },
+  implementing:                 { label: 'Implementing',     color: 'var(--vscode-charts-yellow, #cca700)', order: 6 },
+  done:                         { label: 'Done',             color: 'var(--vscode-charts-green, #89d185)',  order: 7 },
+};
+
+function groupQueueItemsByStatus(items: PersonaQueueItem[]) {
+  const buckets = new Map<string, PersonaQueueItem[]>();
+  for (const it of items) {
+    const arr = buckets.get(it.status) ?? [];
+    arr.push(it);
+    buckets.set(it.status, arr);
+  }
+  return [...buckets.entries()]
+    .map(([status, groupItems]) => ({
+      key: status,
+      label: QUEUE_STATUS_META[status]?.label ?? status,
+      color: QUEUE_STATUS_META[status]?.color ?? 'var(--vscode-descriptionForeground)',
+      order: QUEUE_STATUS_META[status]?.order ?? 99,
+      items: groupItems,
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+/**
+ * Hover card listing a persona's actual queued work items, grouped by status.
+ * Rendered via a portal to `document.body` so it escapes React Flow's node
+ * clipping / z-index stacking / drag capture entirely. Anchored to the node's
+ * on-screen rect and viewport-clamped. Clicking a row opens that work item.
+ */
+function PersonaQueuePopover({ anchor, personaName, personaColor, subtitle, items, onOpenItem, onMouseEnter, onMouseLeave }: {
+  anchor: HTMLElement;
+  personaName: string;
+  personaColor: string;
+  subtitle: string | undefined;
+  items: PersonaQueueItem[];
+  onOpenItem: (item: PersonaQueueItem) => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const WIDTH = 320;
+  const [pos, setPos] = useState<{ left: number; top: number } | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const r = anchor.getBoundingClientRect();
+    const margin = 8;
+    let left = r.left;
+    if (left + WIDTH > window.innerWidth - margin) { left = window.innerWidth - WIDTH - margin; }
+    if (left < margin) { left = margin; }
+    const estHeight = Math.min(360, 96 + items.length * 28);
+    const roomBelow = window.innerHeight - r.bottom;
+    const top = (roomBelow < estHeight + margin && r.top > estHeight + margin)
+      ? r.top - estHeight - 6
+      : r.bottom + 6;
+    setPos({ left, top });
+  }, [anchor, items.length]);
+
+  const groups = useMemo(() => groupQueueItemsByStatus(items), [items]);
+  // Until measured, render off-screen to avoid a flash at (0,0).
+  const left = pos?.left ?? -9999;
+  const top = pos?.top ?? -9999;
+
+  return createPortal(
+    <div
+      className="nodrag nopan"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        width: WIDTH,
+        zIndex: 10000,
+        background: 'var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)))',
+        color: 'var(--vscode-menu-foreground, var(--vscode-foreground))',
+        border: '1px solid var(--vscode-menu-border, color-mix(in oklab, var(--vscode-foreground) 18%, transparent))',
+        borderRadius: 10,
+        boxShadow: '0 10px 30px color-mix(in oklab, black 48%, transparent)',
+        overflow: 'hidden',
+        fontSize: 12,
+        animation: 'vf-pop-in 120ms ease-out',
+      }}
+    >
+      {/* Header: persona-colored accent + name + count */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '9px 12px',
+        borderTop: `2px solid ${personaColor}`,
+        background: `color-mix(in oklab, ${personaColor} 12%, transparent)`,
+        borderBottom: '1px solid color-mix(in oklab, var(--vscode-foreground) 12%, transparent)',
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: personaColor, flexShrink: 0 }} />
+        <span style={{ fontWeight: 600, color: 'var(--vscode-foreground)' }}>{personaName}</span>
+        <span style={{ marginLeft: 'auto', fontWeight: 700, color: personaColor, fontVariantNumeric: 'tabular-nums' }}>
+          {items.length}
+        </span>
+      </div>
+
+      {subtitle && (
+        <div style={{
+          padding: '6px 12px',
+          fontSize: 10.5,
+          lineHeight: 1.4,
+          color: 'var(--vscode-descriptionForeground)',
+          borderBottom: '1px solid color-mix(in oklab, var(--vscode-foreground) 8%, transparent)',
+        }}>
+          {subtitle}
+        </div>
+      )}
+
+      {/* Body: items grouped by status, scrollable */}
+      <div style={{ maxHeight: 300, overflowY: 'auto', padding: '4px 6px 8px' }}>
+        {groups.map(g => (
+          <div key={g.key} style={{ marginTop: 4 }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 6px 3px',
+              fontSize: 9.5,
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              color: 'var(--vscode-descriptionForeground)',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: 2, background: g.color, flexShrink: 0 }} />
+              {g.label}
+              <span style={{ marginLeft: 'auto', opacity: 0.7 }}>{g.items.length}</span>
+            </div>
+            {g.items.map(it => (
+              <button
+                key={`${it.type}-${it.id}`}
+                type="button"
+                onClick={() => onOpenItem(it)}
+                title={it.title}
+                className="hover:bg-[var(--vscode-list-hoverBackground)]"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  width: '100%',
+                  textAlign: 'left',
+                  padding: '5px 6px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--vscode-foreground)',
+                  cursor: 'pointer',
+                  borderRadius: 6,
+                  font: 'inherit',
+                }}
+              >
+                <span style={{
+                  fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                  fontSize: 10.5,
+                  color: 'var(--vscode-descriptionForeground)',
+                  flexShrink: 0,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {it.type === 'issue' ? '◆' : '○'} #{it.id}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {it.title}
+                </span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
