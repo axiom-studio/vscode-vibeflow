@@ -175,10 +175,16 @@ const DEFAULT_TARGET_POSITION = Position.Left;
  *
  * Project Manager is a lifecycle tracker — no status-routing edges.
  */
-const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?: boolean }> = [
+const PERSONA_EDGES: Array<{ id: string; source: string; target: string; dashed?: boolean; type?: string }> = [
   // Planning collaboration (Customer + UX feed PM iteratively for PRDs).
-  { id: 'cust-pm',  source: 'customer',           target: 'product_manager',    dashed: true },
-  { id: 'ux-pm',    source: 'ux_designer',        target: 'product_manager',    dashed: true },
+  // Bezier ('default') for these two, NOT smoothstep: Customer + UX are
+  // stacked at the same x and converge on PM's single left handle, so
+  // smoothstep's right-angle paths stack into one overlapping vertical bar.
+  // A curve from each gives two distinct smooth lines (one down, one up) into
+  // PM. Safe here — no node sits between Customer/UX and PM, so the curve
+  // can't arc across anything (the reason smoothstep is the default elsewhere).
+  { id: 'cust-pm',  source: 'customer',           target: 'product_manager',    dashed: true, type: 'default' },
+  { id: 'ux-pm',    source: 'ux_designer',        target: 'product_manager',    dashed: true, type: 'default' },
   // PM hands the PRD/spec to whichever code agent the user picked. Three
   // separate dashed lines — NOT a sequential chain.
   { id: 'pm-arch',  source: 'product_manager',    target: 'architect',          dashed: true },
@@ -396,10 +402,12 @@ export function DashboardView() {
       id: e.id,
       source: e.source,
       target: e.target,
-      // Smoothstep gives clean orthogonal corners that respect the
-      // explicit handle positions, instead of bezier curves that
-      // arc across other nodes.
-      type: 'smoothstep',
+      // Smoothstep is the default — clean orthogonal corners that respect the
+      // explicit handle positions, instead of bezier curves that arc across
+      // other nodes. A few edges opt into bezier ('default') via
+      // PERSONA_EDGES.type where converging paths (customer/ux → PM) would
+      // otherwise stack into one overlapping right-angle bar.
+      type: e.type ?? 'smoothstep',
       animated: isActive,
       label,
       labelStyle: label
