@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tallyPersonaQueues } from './DashboardPanel.js';
+import { tallyPersonaQueues, collectPersonaQueueItems, type PersonaQueueItem } from './DashboardPanel.js';
 import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/types.js';
 
 /**
@@ -217,5 +217,75 @@ describe('tallyPersonaQueues', () => {
       expect(q.security_lead).toBe(0);
       expect(q.ux_designer).toBe(0);
     });
+  });
+});
+
+describe('collectPersonaQueueItems', () => {
+  const qaItem = (id: number): PersonaQueueItem => ({ id, type: 'todo', title: `qa-${id}`, status: 'done' });
+
+  it('item-list length equals the badge count for every persona (single source of truth)', () => {
+    const swim: VibeFlowSwimlaneResult = {
+      ...emptySwimlane(),
+      in_review: [
+        mk({ type: 'feature', id: 1, status: 'in_review' }),
+        mk({ type: 'issue', id: 2, status: 'in_review' }),
+        mk({ type: 'todo', id: 3, status: 'in_review' }),
+      ],
+      planning: [mk({ type: 'todo', id: 4, status: 'planning' }), mk({ type: 'feature', id: 5, status: 'planning' })],
+      architecture_review_complete: [mk({ type: 'issue', id: 6, status: 'architecture_review_complete' })],
+      needs_ux_input: [mk({ type: 'todo', id: 7, status: 'needs_ux_input' })],
+      done: [
+        mk({ type: 'feature', id: 8, security_reviewed: false }),
+        mk({ type: 'todo', id: 9, security_reviewed: false }),
+      ],
+    };
+    const qaItems = [qaItem(100), qaItem(101)];
+    const counts = tallyPersonaQueues(swim, PROJECT, qaItems.length);
+    const items = collectPersonaQueueItems(swim, PROJECT, qaItems);
+    for (const persona of ['product_manager', 'architect', 'developer', 'principal_engineer', 'security_lead', 'qa_lead', 'ux_designer'] as const) {
+      expect(items[persona]?.length ?? 0).toBe(counts[persona] ?? 0);
+    }
+  });
+
+  it('excludes container rows and carries id/type/title/status', () => {
+    const swim: VibeFlowSwimlaneResult = {
+      ...emptySwimlane(),
+      in_review: [
+        mk({ type: 'feature', id: 1, name: 'a feature', status: 'in_review' }),
+        mk({ type: 'issue', id: 2, name: 'a real issue', status: 'in_review' }),
+      ],
+    };
+    const pm = collectPersonaQueueItems(swim, PROJECT, []).product_manager ?? [];
+    expect(pm).toEqual([{ id: 2, type: 'issue', title: 'a real issue', status: 'in_review', priority: undefined }]);
+  });
+
+  it('the three code agents share the same item list (one queue per branch)', () => {
+    const swim: VibeFlowSwimlaneResult = {
+      ...emptySwimlane(),
+      planning: [mk({ type: 'todo', id: 1, status: 'planning' })],
+      ready_to_implement: [mk({ type: 'issue', id: 2, status: 'ready_to_implement' })],
+    };
+    const items = collectPersonaQueueItems(swim, PROJECT, []);
+    expect(items.architect).toEqual(items.developer);
+    expect(items.developer).toEqual(items.principal_engineer);
+    expect(items.architect?.map(i => i.id)).toEqual([1, 2]);
+  });
+
+  it('passes qa items straight through and excludes other-project rows', () => {
+    const swim: VibeFlowSwimlaneResult = {
+      ...emptySwimlane(),
+      in_review: [
+        mk({ type: 'issue', id: 1, status: 'in_review', project_id: PROJECT }),
+        mk({ type: 'issue', id: 2, status: 'in_review', project_id: OTHER_PROJECT }),
+      ],
+    };
+    const items = collectPersonaQueueItems(swim, PROJECT, [qaItem(50)]);
+    expect(items.product_manager?.map(i => i.id)).toEqual([1]);
+    expect(items.qa_lead).toEqual([qaItem(50)]);
+  });
+
+  it('returns only qa items when the swimlane fetch failed', () => {
+    const items = collectPersonaQueueItems(undefined, PROJECT, [qaItem(7)]);
+    expect(items).toEqual({ qa_lead: [qaItem(7)] });
   });
 });

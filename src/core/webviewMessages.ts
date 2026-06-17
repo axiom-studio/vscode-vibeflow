@@ -378,6 +378,8 @@ export type DashboardClientMessage =
   | { type: 'dashboardLoad' }
   | { type: 'dashboardRefresh' }
   | { type: 'dashboardFocusPersona'; payload: { personaKey: string } }
+  // User clicked an item inside a persona node's queue hover-card — open it.
+  | { type: 'dashboardOpenWorkItem'; payload: { workItemType: string; workItemId: number } }
   | { type: 'dashboardOpenSidebar' }
   // Persist the user's custom node layout. Sent on drag-stop with the
   // full position map so the host can write it atomically.

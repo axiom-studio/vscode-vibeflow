@@ -30,6 +30,15 @@ export const DASHBOARD_PERSONAS = [
 type PersonaKey = typeof DASHBOARD_PERSONAS[number];
 type PersonaStatus = 'active' | 'stale' | 'inactive';
 
+/** One work item shown in a persona node's hover queue card. */
+export interface PersonaQueueItem {
+  id: number;
+  type: 'todo' | 'issue';
+  title: string;
+  status: string;
+  priority?: string;
+}
+
 interface DashboardSnapshot {
   projectId: number;
   projectName: string;
@@ -65,6 +74,14 @@ interface DashboardSnapshot {
    * of showing a misleading zero.
    */
   personaQueues: Record<string, number | null>;
+  /**
+   * The actual work items behind each persona's queue count, so the
+   * dashboard can list them on hover. Built from the SAME data and the
+   * SAME per-persona predicates as `personaQueues`, so a persona's list
+   * length always equals its count (single source of truth). Keyed by
+   * persona; advisory personas (project_manager/customer) are absent.
+   */
+  personaQueueItems: Record<string, PersonaQueueItem[]>;
   sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -185,6 +202,18 @@ export class DashboardPanel {
             await this.sendSnapshot();
           }
         }
+        return;
+      }
+      case 'dashboardOpenWorkItem': {
+        // User clicked an item in a persona node's queue hover-card.
+        // Defensive-parse (mirrors CompliancePanel): only todo/issue with a
+        // positive id may reach the command dispatch.
+        const type = msg.payload.workItemType;
+        if (type !== 'todo' && type !== 'issue') { return; }
+        const id = msg.payload.workItemId;
+        if (!Number.isFinite(id) || id <= 0) { return; }
+        // openWorkItemPanel takes positional (nodeId "{type}-{id}", label?, description?).
+        await vscode.commands.executeCommand('vibeflow.openWorkItemPanel', `${type}-${id}`, '', '');
         return;
       }
       case 'dashboardOpenSidebar':
@@ -350,6 +379,20 @@ async function composeSnapshot(
     ? countPendingQA(doneTodos) + countPendingQA(doneIssues)
     : null;
 
+  // The items behind qa_lead's count — same strict predicate as
+  // countPendingQA, sourced from the full done rows (the swimlane wire shape
+  // lacks qa_verified). Empty when the done fetches failed (badge hides).
+  const qaItems: PersonaQueueItem[] = qaQueueResolved
+    ? [
+      ...doneTodos
+        .filter(i => i.security_reviewed === true && i.qa_verified === false)
+        .map((i): PersonaQueueItem => ({ id: i.id, type: 'todo', title: i.title, status: i.status, priority: i.priority })),
+      ...doneIssues
+        .filter(i => i.security_reviewed === true && i.qa_verified === false)
+        .map((i): PersonaQueueItem => ({ id: i.id, type: 'issue', title: i.title, status: i.status, priority: i.priority })),
+    ]
+    : [];
+
   return {
     projectId: project.projectId,
     projectName: project.projectName,
@@ -359,6 +402,7 @@ async function composeSnapshot(
     nodePositions,
     personaStatus: derivePersonaStatus(sessions),
     personaQueues: tallyPersonaQueues(swimlane, project.projectId, qaPending),
+    personaQueueItems: collectPersonaQueueItems(swimlane, project.projectId, qaItems),
     sessions: tallySessions(sessions),
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
@@ -485,6 +529,51 @@ export function tallyPersonaQueues(
     ux_designer: needsUx,
     project_manager: null,
     customer: null,
+  };
+}
+
+/**
+ * The work items behind each persona's queue count — same per-persona
+ * predicates (and the same container-row exclusion) as `tallyPersonaQueues`,
+ * so each list's length equals that persona's count. `qaItems` is supplied by
+ * the caller because qa_lead membership needs `qa_verified`, which the
+ * swimlane wire shape omits (it comes from the separate done-todo/issue
+ * fetches in composeSnapshot).
+ */
+export function collectPersonaQueueItems(
+  swimlane: VibeFlowSwimlaneResult | undefined,
+  projectId: number,
+  qaItems: PersonaQueueItem[],
+): DashboardSnapshot['personaQueueItems'] {
+  if (!swimlane) {
+    return { qa_lead: qaItems };
+  }
+  const inProject = (arr: VibeFlowSwimlaneItem[]) =>
+    arr.filter(i => i.project_id === projectId && (i.type === 'todo' || i.type === 'issue'));
+  const toItem = (i: VibeFlowSwimlaneItem): PersonaQueueItem => ({
+    id: i.id,
+    type: i.type as 'todo' | 'issue',
+    title: i.name,
+    status: i.status,
+    priority: i.priority,
+  });
+
+  // Shared across the three code agents by reference — they share one queue
+  // (only one runs per branch), exactly as tallyPersonaQueues reports.
+  const codeQueue = [
+    ...inProject(swimlane.planning),
+    ...inProject(swimlane.ready_to_implement),
+    ...inProject(swimlane.architecture_review_complete),
+  ].map(toItem);
+
+  return {
+    product_manager: inProject(swimlane.in_review).map(toItem),
+    architect: codeQueue,
+    developer: codeQueue,
+    principal_engineer: codeQueue,
+    security_lead: inProject(swimlane.done).filter(i => i.security_reviewed === false).map(toItem),
+    qa_lead: qaItems,
+    ux_designer: inProject(swimlane.needs_ux_input).map(toItem),
   };
 }
 
