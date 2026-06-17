@@ -61,6 +61,10 @@ export class KanbanPanel {
   // Throttle the mount-time `kanbanLoad` against the "became visible"
   // event so we don't fan out two consecutive swimlane fetches on open.
   private lastFetchAt = 0;
+  // Auto-refresh cadence, tunable from the board's live control. `0` pauses
+  // the timer (manual Refresh + focus-refetch still work). In-memory only —
+  // resets to the default on reopen.
+  private refreshIntervalMs: number = POLL_INTERVAL_MS;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -134,6 +138,16 @@ export class KanbanPanel {
           '',
         );
         return;
+      case 'kanbanSetRefreshInterval': {
+        // Clamp to sane bounds: 0 (paused) or >= 5s so a typo can't hammer
+        // the heavy org-wide swimlane. The webview only offers 0/10/30/60s.
+        const ms = msg.payload.ms;
+        this.refreshIntervalMs = ms <= 0 ? 0 : Math.max(5_000, ms);
+        this.restartPolling();
+        // Re-push immediately so the new cadence + generatedAt reach the UI.
+        await this.sendData();
+        return;
+      }
       default:
         assertNever(msg);
     }
@@ -189,6 +203,9 @@ export class KanbanPanel {
           projectId: this.projectId,
           projectName: this.projectName,
           cards,
+          // Drives the board's live "updated Ns ago · next in Ns" countdown.
+          generatedAt: new Date().toISOString(),
+          refreshIntervalMs: this.refreshIntervalMs,
         },
       });
     } catch (err) {
@@ -206,11 +223,22 @@ export class KanbanPanel {
 
   private startPolling(): void {
     if (this.pollTimer) { return; }
+    if (this.refreshIntervalMs <= 0) { return; } // paused
     this.pollTimer = setInterval(() => {
       // Only poll while the panel is visible; postMessage to a hidden panel
       // is fine but wakes the webview's React tree unnecessarily.
       if (this.panel.visible) { void this.sendData(); }
-    }, POLL_INTERVAL_MS);
+    }, this.refreshIntervalMs);
+  }
+
+  /** Tear down and re-arm the poll timer at the current cadence (or leave it
+   *  off when paused). Called when the user changes the refresh interval. */
+  private restartPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
+    this.startPolling();
   }
 
   private dispose(): void {
