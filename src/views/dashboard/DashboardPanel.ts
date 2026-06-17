@@ -434,7 +434,7 @@ function tallySessions(sessions: VibeFlowSession[]): { active: number; stale: nu
  * tracker; customer is an input source) — the webview renders "—" so
  * the user doesn't read a literal 0 as "queue is empty."
  */
-function tallyPersonaQueues(
+export function tallyPersonaQueues(
   swimlane: VibeFlowSwimlaneResult | undefined,
   projectId: number,
   qaPending: number | null,
@@ -450,7 +450,15 @@ function tallyPersonaQueues(
       project_manager: null, customer: null,
     };
   }
-  const inProject = (arr: VibeFlowSwimlaneItem[]) => arr.filter(i => i.project_id === projectId);
+  // Every persona badge counts WORK ITEMS waiting on a human, so exclude
+  // container rows (`feature`/`project`) the swimlane also carries — they
+  // never flow through a persona's status pipeline. Without this, a feature
+  // sitting in any status column inflates that persona's badge (e.g. a
+  // `done` feature has `security_reviewed=null` and was counted as
+  // "needs security review"). Mirrors the `i.type` guard already used by
+  // `tallyTodos` / `tallyIssues`.
+  const inProject = (arr: VibeFlowSwimlaneItem[]) =>
+    arr.filter(i => i.project_id === projectId && (i.type === 'todo' || i.type === 'issue'));
 
   const inReview = inProject(swimlane.in_review).length;
   const codeQueue = inProject(swimlane.planning).length
@@ -458,7 +466,10 @@ function tallyPersonaQueues(
     + inProject(swimlane.architecture_review_complete).length;
   const needsUx = inProject(swimlane.needs_ux_input).length;
   const doneItems = inProject(swimlane.done);
-  const securityQueue = doneItems.filter(i => !i.security_reviewed).length;
+  // Strict `=== false`: only definitely-unreviewed items count. `null`/
+  // `undefined` (never entered review) must NOT count — parity with
+  // `countPendingQA`'s strict equality.
+  const securityQueue = doneItems.filter(i => i.security_reviewed === false).length;
   // qa_lead is computed in composeSnapshot from the project's full
   // done todos+issues (see countPendingQA) because the swimlane wire
   // shape doesn't expose qa_verified. `null` falls through when those
