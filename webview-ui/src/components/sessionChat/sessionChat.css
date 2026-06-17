@@ -738,11 +738,14 @@
   padding: var(--vf-sp-3) var(--vf-sp-4);
   /* Tail on the top-left (toward the avatar); rounded elsewhere. */
   border-radius: 4px 16px 16px 16px;
-  border: var(--vf-border-subtle);
-  /* A faint wash of the persona's color over the panel — always contrasts
-   * (mix over transparent), and gives each persona a distinct warmth instead
-   * of a flat wall of text. ~9% keeps it a whisper, not a billboard. */
-  background: color-mix(in oklab, var(--msg-stripe-color, var(--vscode-foreground)) 9%, transparent);
+  /* Persona-tinted edge (full perimeter — a cohesive tinted card, NOT the
+   * left "rail" we removed in #chat-persona). Falls back to the neutral
+   * hairline when no persona color is set. */
+  border: 1px solid color-mix(in oklab, var(--msg-stripe-color, var(--vscode-foreground)) 22%, transparent);
+  /* A wash of the persona's color over the panel — always contrasts (mix over
+   * transparent), giving each persona a distinct warmth instead of a flat wall
+   * of text. 14% reads as "present" without becoming a billboard. */
+  background: color-mix(in oklab, var(--msg-stripe-color, var(--vscode-foreground)) 14%, transparent);
   font-size: var(--vf-text-md);
   line-height: 1.55;
 }

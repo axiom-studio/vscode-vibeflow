@@ -47,17 +47,27 @@ export type WebviewMessage =
   | { type: 'runSetup'; payload: undefined }
   | { type: 'launchSession'; payload: undefined };
 
-// Persona color mapping
+// Persona color mapping.
+//
+// Vibrant, identity-first palette (replaces the old VS Code *syntax-token*
+// colors, which are deliberately low-chroma for fatigue-free code reading and
+// read washed-out as UI accents). Tuned for high chroma at ~even perceptual
+// lightness (so none washes out on a dark editor bg) with hues spread evenly
+// around the wheel for 9-way distinguishability. Semantic anchors kept:
+// security = red, qa = green, developer = blue. Used for the chat author name,
+// the agent-bubble tint/border, the avatar fallback, and the activity-feed
+// persona dots. NOTE: the brightest hues (amber/lime/cyan) have weaker text
+// contrast on *light* themes — a theme-aware palette is a tracked follow-up.
 export const PERSONA_COLORS: Record<string, string> = {
-  developer: '#4fc1ff',
-  architect: '#c586c0',
-  principal_engineer: '#dcdcaa',
-  security_lead: '#f44747',
-  qa_lead: '#4ec86e',
-  product_manager: '#ce9178',
-  project_manager: '#9cdcfe',
-  ux_designer: '#d7ba7d',
-  customer: '#b5cea8',
+  developer: '#4d9fff',          // blue
+  architect: '#b483ff',          // violet
+  principal_engineer: '#ffcf4a', // amber  (was khaki #dcdcaa)
+  security_lead: '#ff5d5d',      // red
+  qa_lead: '#43d782',            // emerald
+  product_manager: '#ff9a3d',    // orange (was tan #ce9178)
+  project_manager: '#34d6e0',    // cyan   (was pale-blue #9cdcfe)
+  ux_designer: '#ff70c4',        // pink   (was gold #d7ba7d)
+  customer: '#b6e84a',           // lime   (was sage #b5cea8)
 };
 
 // Message type icons
