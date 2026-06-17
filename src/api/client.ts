@@ -179,21 +179,25 @@ export class VibeFlowClient {
   }
 
   /**
-   * Transition a todo's status. `rejection_comment` is required when
-   * status is 'rejected' (backend returns 400 otherwise). The other
-   * fields (`expected_status`, git info) aren't yet plumbed — they're
-   * populated by the agent on its own update path.
+   * Transition a todo's status via REST — `PATCH /todos/{id}/status`, the same
+   * Bearer path the rest of the UI uses (swimlane, etc.). Deliberately REST,
+   * NOT the MCP transport: the MCP path proved unreliable in the extension
+   * host, so kanban drag-to-move never persisted (#2890). `rejection_comment`
+   * is required when status is 'rejected' (backend returns 400 otherwise).
    */
   async updateTodoStatus(todoId: number, status: string, opts?: { rejectionComment?: string }): Promise<void> {
-    const args: Record<string, unknown> = { id: todoId, status };
-    if (opts?.rejectionComment) { args.rejection_comment = opts.rejectionComment; }
-    await this.mcp.callTool('update_todo_status', args);
+    const body: Record<string, unknown> = { status };
+    if (opts?.rejectionComment) { body.rejection_comment = opts.rejectionComment; }
+    await this.request(`/rest/v1/vibeflow/todos/${todoId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
   }
 
   /**
    * Edit body fields of a todo. Status is NOT editable here — backend
-   * routes that through PATCH /todos/{id}/status (see updateTodoStatus
-   * MCP wrapper). Mirrors axiomcloud handlers/vibeflow_todos.go UpdateTodo.
+   * routes that through PATCH /todos/{id}/status (see updateTodoStatus).
+   * Mirrors axiomcloud handlers/vibeflow_todos.go UpdateTodo.
    */
   async updateTodo(
     todoId: number,
@@ -272,10 +276,15 @@ export class VibeFlowClient {
     await this.mcp.callTool('create_issue', { project_id: projectId, title, priority, target_branch: targetBranch });
   }
 
+  /** Transition an issue's status via REST (`PATCH /issues/{id}/status`) — see
+   *  updateTodoStatus for why this is REST, not MCP (#2890). */
   async updateIssueStatus(issueId: number, status: string, opts?: { rejectionComment?: string }): Promise<void> {
-    const args: Record<string, unknown> = { id: issueId, status };
-    if (opts?.rejectionComment) { args.rejection_comment = opts.rejectionComment; }
-    await this.mcp.callTool('update_issue_status', args);
+    const body: Record<string, unknown> = { status };
+    if (opts?.rejectionComment) { body.rejection_comment = opts.rejectionComment; }
+    await this.request(`/rest/v1/vibeflow/issues/${issueId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
   }
 
   /**
