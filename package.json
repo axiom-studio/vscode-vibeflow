@@ -793,6 +793,11 @@
           "default": "unified",
           "description": "How diff code blocks render in the Session Chat panel. 'unified' stacks added/removed lines vertically with a +/- gutter. 'split' renders before / after in two columns aligned by hunk. Either way, the 'Open in Editor' button on each diff opens VSCode's native diff editor for full review."
         },
+        "vibeflow.chat.showTmuxAttachButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a button in the chat-first Session Chat header that opens this session's tmux shell in a VSCode integrated terminal (tmux -L vibeflow-headless attach -t <name>), so you can watch or step through the raw agent exchange for debugging. Only appears for chat-first sessions backed by tmux. Enabled by default."
+        },
         "vibeflow.worktree.baseDir": {
           "type": "string",
           "default": ".claude/worktrees",
