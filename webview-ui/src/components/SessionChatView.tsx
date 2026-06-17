@@ -495,7 +495,7 @@ export function SessionChatView() {
             <button
               className="chat-header-toggle chat-header-tmux"
               onClick={() => vscode.postMessage({ type: 'chatOpenTmux' })}
-              title="Open this session's tmux shell in a VSCode terminal"
+              title="Open this session's tmux shell in a VSCode terminal — watch or step through the raw agent exchange for debugging"
               aria-label="Open tmux shell in a terminal"
             >
               <span>tmux</span>
