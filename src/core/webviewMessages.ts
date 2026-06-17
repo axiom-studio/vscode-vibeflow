@@ -383,6 +383,8 @@ export type DashboardClientMessage =
   | { type: 'dashboardFocusPersona'; payload: { personaKey: string } }
   // User clicked an item inside a persona node's queue hover-card — open it.
   | { type: 'dashboardOpenWorkItem'; payload: { workItemType: string; workItemId: number } }
+  // Drag on the embedded Kanban board (when toggled on) — move an item's status.
+  | { type: 'dashboardKanbanMove'; payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string } }
   | { type: 'dashboardOpenSidebar' }
   // Persist the user's custom node layout. Sent on drag-stop with the
   // full position map so the host can write it atomically.

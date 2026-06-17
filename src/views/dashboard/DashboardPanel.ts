@@ -13,6 +13,7 @@ import type { DetectedProject } from '../../project/ProjectDetector.js';
 import type { TerminalRegistry } from '../../sessions/TerminalRegistry.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
 import { assertNever, type DashboardClientMessage, type DashboardHostMessage } from '../../core/webviewMessages.js';
+import { flattenForProject, ALLOWED_PRIMARY_STATUSES, type KanbanCard } from '../kanban/kanbanData.js';
 
 /** Persona keys that drive the topology nodes. */
 export const DASHBOARD_PERSONAS = [
@@ -82,6 +83,13 @@ interface DashboardSnapshot {
    * persona; advisory personas (project_manager/customer) are absent.
    */
   personaQueueItems: Record<string, PersonaQueueItem[]>;
+  /**
+   * Flattened todo/issue cards for the OPTIONAL embedded Kanban board
+   * (rendered under the topology when the user toggles it on). Built from the
+   * same swimlane composeSnapshot already fetches — no extra API call. The
+   * standalone Kanban panel (KanbanPanel) is unaffected.
+   */
+  kanbanCards: KanbanCard[];
   sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -214,6 +222,26 @@ export class DashboardPanel {
         if (!Number.isFinite(id) || id <= 0) { return; }
         // openWorkItemPanel takes positional (nodeId "{type}-{id}", label?, description?).
         await vscode.commands.executeCommand('vibeflow.openWorkItemPanel', `${type}-${id}`, '', '');
+        return;
+      }
+      case 'dashboardKanbanMove': {
+        // Drag on the embedded Kanban. Same validation as KanbanPanel: only
+        // todo/issue with a valid target status + positive id reach the API.
+        const { itemType, itemId, newStatus } = msg.payload;
+        if (itemType !== 'todo' && itemType !== 'issue') { return; }
+        if (!ALLOWED_PRIMARY_STATUSES.has(newStatus)) { await this.sendSnapshot(); return; }
+        if (!Number.isFinite(itemId) || itemId <= 0) { await this.sendSnapshot(); return; }
+        try {
+          if (itemType === 'todo') {
+            await this.client.updateTodoStatus(itemId, newStatus);
+          } else {
+            await this.client.updateIssueStatus(itemId, newStatus);
+          }
+        } catch (err) {
+          vscode.window.showErrorMessage(`VibeFlow: Failed to move ${itemType} #${itemId} → ${newStatus} — ${err}`);
+        }
+        // Re-broadcast the server truth (claims / review gates may override).
+        await this.sendSnapshot();
         return;
       }
       case 'dashboardOpenSidebar':
@@ -403,6 +431,7 @@ async function composeSnapshot(
     personaStatus: derivePersonaStatus(sessions),
     personaQueues: tallyPersonaQueues(swimlane, project.projectId, qaPending),
     personaQueueItems: collectPersonaQueueItems(swimlane, project.projectId, qaItems),
+    kanbanCards: swimlane ? flattenForProject(swimlane, project.projectId) : [],
     sessions: tallySessions(sessions),
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
