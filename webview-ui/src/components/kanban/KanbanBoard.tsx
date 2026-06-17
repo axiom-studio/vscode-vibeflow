@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { BugIcon, CheckSquareIcon, LockIcon } from '../_shared/icons';
 
 /**
@@ -52,6 +52,12 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
 }) {
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Optimistic overlay so a drag moves the card INSTANTLY (the host round-trip
+  // — esp. the dashboard's full snapshot re-fetch — is too slow to feel
+  // responsive). Reconciled to the host truth whenever fresh `cards` arrive:
+  // a server-rejected move simply snaps back on the next broadcast.
+  const [localCards, setLocalCards] = useState<KanbanCard[]>(cards);
+  useEffect(() => { setLocalCards(cards); }, [cards]);
   // Column show/hide (view-only, in-memory). Stores HIDDEN keys so the
   // default (empty set) shows all 8.
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
@@ -79,13 +85,15 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
     const column = COLUMNS.find(c => c.key === columnKey);
     if (!column) { return; }
     if (column.statuses.includes(card.status)) { return; } // same-column drop = no-op
+    // Optimistic: move the card now; the host re-broadcast reconciles (or reverts).
+    setLocalCards(prev => prev.map(c => (c.id === card.id && c.type === card.type ? { ...c, status: column.primary } : c)));
     onMove(card.type, card.id, column.primary);
   }, [draggedCard, onMove]);
 
   const cardsByColumn = useMemo(() => {
     const map: Record<string, KanbanCard[]> = {};
     for (const col of COLUMNS) { map[col.key] = []; }
-    for (const card of cards) {
+    for (const card of localCards) {
       const col = COLUMNS.find(c => c.statuses.includes(card.status));
       if (col) { map[col.key].push(card); }
     }
@@ -99,12 +107,12 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
       });
     }
     return map;
-  }, [cards]);
+  }, [localCards]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       {/* Column show/hide control */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '0 12px 6px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px 6px', flexShrink: 0 }}>
         <div style={{ position: 'relative' }}>
           <button
             onClick={() => setShowColumnMenu(v => !v)}
