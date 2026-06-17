@@ -13,6 +13,7 @@ import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
 import { AVATAR_BY_PERSONA } from '../personaAvatars';
 import { PERSONA_COLORS } from '../types';
+import { KanbanBoard, type KanbanCard } from './kanban/KanbanBoard';
 import type { DashboardClientMessage, DashboardHostMessage } from '../../../src/core/webviewMessages';
 import { GitBranchIcon, SpinnerIcon } from './_shared/icons';
 
@@ -62,6 +63,8 @@ interface DashboardSnapshot {
   // Actual items behind each persona's count (mirrors host PersonaQueueItem).
   // Keyed by persona; advisory personas (project_manager/customer) absent.
   personaQueueItems: Record<string, PersonaQueueItem[]>;
+  // Cards for the optional embedded Kanban board (mirrors host KanbanCard).
+  kanbanCards: KanbanCard[];
   sessions: { active: number; stale: number };
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
@@ -252,6 +255,16 @@ export function DashboardView() {
     });
   }, []);
 
+  // Optional embedded Kanban board (toggled from the header). In-memory v1.
+  const [kanbanEmbedded, setKanbanEmbedded] = useState(false);
+  const toggleKanban = useCallback(() => setKanbanEmbedded(v => !v), []);
+  const onKanbanMove = useCallback((itemType: 'todo' | 'issue', itemId: number, newStatus: string) => {
+    vscode.postMessage({ type: 'dashboardKanbanMove', payload: { itemType, itemId, newStatus } });
+  }, []);
+  const onKanbanOpen = useCallback((card: KanbanCard) => {
+    vscode.postMessage({ type: 'dashboardOpenWorkItem', payload: { workItemType: card.type, workItemId: card.id } });
+  }, []);
+
   const onNodeClick = useCallback((_evt: unknown, node: Node) => {
     focusPersona(node.id);
   }, [focusPersona]);
@@ -430,6 +443,8 @@ export function DashboardView() {
         snapshot={state.snapshot}
         loading={state.loading}
         onRefresh={refresh}
+        kanbanEmbedded={kanbanEmbedded}
+        onToggleKanban={toggleKanban}
       />
 
       {state.error && (
@@ -500,6 +515,24 @@ export function DashboardView() {
           </ReactFlow>
         </div>
       </Section>
+
+      {/* Embedded Kanban (toggled from the header) — sits under the topology;
+       *  Summary + Governance shift down. Standalone Kanban panel unchanged. */}
+      {kanbanEmbedded && (
+        <Section
+          title="Kanban"
+          subtitle="Drag a card to change its status · click to open. Same board as Work Items → Kanban."
+        >
+          <div style={{ height: 480, borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)', overflow: 'hidden' }}>
+            <KanbanBoard
+              cards={state.snapshot?.kanbanCards ?? []}
+              loading={state.loading}
+              onMove={onKanbanMove}
+              onOpenCard={onKanbanOpen}
+            />
+          </div>
+        </Section>
+      )}
 
       {/* Summary cards */}
       <Section title="Summary">
@@ -944,10 +977,12 @@ function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProper
   };
 }
 
-function Header({ snapshot, loading, onRefresh }: {
+function Header({ snapshot, loading, onRefresh, kanbanEmbedded, onToggleKanban }: {
   snapshot: DashboardSnapshot | undefined;
   loading: boolean;
   onRefresh: () => void;
+  kanbanEmbedded: boolean;
+  onToggleKanban: () => void;
 }) {
   const generated = snapshot?.generatedAt
     ? new Date(snapshot.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -980,28 +1015,59 @@ function Header({ snapshot, loading, onRefresh }: {
           </span>
         )}
       </div>
-      <button
-        onClick={onRefresh}
-        disabled={loading}
-        className="transition-all duration-150 ease-out active:scale-[0.97]"
-        style={{
-          padding: '5px 12px',
-          fontSize: 11,
-          fontWeight: 500,
-          background: 'var(--feed-button-bg)',
-          color: 'var(--feed-button-fg)',
-          border: 'none',
-          borderRadius: 4,
-          cursor: loading ? 'wait' : 'pointer',
-          opacity: loading ? 0.7 : 1,
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        {loading && <SpinnerIcon size={11} />}
-        {loading ? 'Loading' : 'Refresh'}
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        {/* Embedded-Kanban toggle — left of Refresh. */}
+        <button
+          onClick={onToggleKanban}
+          aria-pressed={kanbanEmbedded}
+          title="Show the Kanban board inside the dashboard, under the topology"
+          className="transition-all duration-150 ease-out active:scale-[0.97] hover:bg-[var(--vscode-list-hoverBackground)]"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 500,
+            borderRadius: 4,
+            border: '1px solid var(--feed-border)',
+            background: kanbanEmbedded ? 'color-mix(in oklab, var(--feed-link) 18%, transparent)' : 'transparent',
+            color: kanbanEmbedded ? 'var(--feed-link)' : 'var(--feed-muted)',
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: kanbanEmbedded ? 'var(--feed-link)' : 'var(--feed-muted)',
+            flexShrink: 0,
+          }} />
+          Kanban
+        </button>
+        <button
+          onClick={onRefresh}
+          disabled={loading}
+          className="transition-all duration-150 ease-out active:scale-[0.97]"
+          style={{
+            padding: '5px 12px',
+            fontSize: 11,
+            fontWeight: 500,
+            background: 'var(--feed-button-bg)',
+            color: 'var(--feed-button-fg)',
+            border: 'none',
+            borderRadius: 4,
+            cursor: loading ? 'wait' : 'pointer',
+            opacity: loading ? 0.7 : 1,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+          }}
+        >
+          {loading && <SpinnerIcon size={11} />}
+          {loading ? 'Loading' : 'Refresh'}
+        </button>
+      </div>
     </div>
   );
 }
