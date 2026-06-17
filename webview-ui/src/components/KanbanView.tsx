@@ -428,8 +428,8 @@ export function KanbanView() {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                flex: '0 0 264px',
-                minWidth: 264,
+                flex: '0 0 232px',
+                minWidth: 232,
                 minHeight: 0, // lets the card list's overflow:auto engage (flex children default min-height:auto)
                 background: isDropping ? 'rgba(127,127,127,0.1)' : 'transparent',
                 borderRadius: 6,
