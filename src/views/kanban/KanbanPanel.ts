@@ -5,14 +5,12 @@ import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/typ
 import { assertNever, type KanbanClientMessage, type KanbanHostMessage } from '../../core/webviewMessages.js';
 
 /**
- * Five logical kanban columns mapped to the eight backend statuses.
- *
- * The swimlane endpoint returns 8 status arrays but eight columns are too
- * dense for a Kanban — we collapse the sub-statuses ("needs_pm_input",
- * "needs_ux_input", "architecture_review_complete") into their parent
- * columns and surface them as a sub-tag on each card. Dragging a card to a
- * column always moves it to the column's `primary` status — this keeps
- * drag-and-drop predictable and matches the PRD layout.
+ * Eight kanban columns — one per backend status — matching the swimlane wire
+ * shape and the axiomcloud web board. (Previously collapsed to 5; users
+ * couldn't see Needs-PM/Needs-UX/Arch-Review as their own lanes, so the
+ * webview now shows all 8 and lets the user hide columns it doesn't need.)
+ * Dragging a card to a column moves it to that column's `primary` status;
+ * `primary` is also the server-side drag-target allowlist below.
  */
 export const KANBAN_COLUMNS: Array<{
   key: string;
@@ -22,10 +20,13 @@ export const KANBAN_COLUMNS: Array<{
   /** Status assigned when an item is dragged INTO this column. */
   primary: string;
 }> = [
-  { key: 'planning', label: 'Planning', statuses: ['planning', 'needs_pm_input', 'needs_ux_input'], primary: 'planning' },
-  { key: 'ready', label: 'Ready', statuses: ['ready_to_implement', 'architecture_review_complete'], primary: 'ready_to_implement' },
-  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing' },
   { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review' },
+  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input' },
+  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input' },
+  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning' },
+  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete' },
+  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement' },
+  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing' },
   { key: 'done', label: 'Done', statuses: ['done'], primary: 'done' },
 ];
 
