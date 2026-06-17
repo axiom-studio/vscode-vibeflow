@@ -18,14 +18,15 @@ interface KanbanCard {
 }
 
 /**
- * Five logical columns matching the host's KANBAN_COLUMNS in
- * src/views/kanban/KanbanPanel.ts. The `statuses` array is the set of
- * backend statuses that fall into this column; `primary` is the status
- * we send when an item is dropped here.
+ * Eight columns — one per backend status — matching the host's KANBAN_COLUMNS
+ * in src/views/kanban/KanbanPanel.ts and the axiomcloud web board. `statuses`
+ * is the backend status set shown in this column; `primary` is the status we
+ * send on drop.
  *
- * Keep the two definitions in sync — host validates `primary` against its
- * own allowlist before calling the API, so a webview-host drift just
- * surfaces as a "not a valid target column" error rather than a bad write.
+ * Keep the two definitions in sync — host validates `primary` against its own
+ * allowlist before calling the API, so a webview/host drift just surfaces as a
+ * "not a valid target column" error rather than a bad write. Users can hide
+ * columns via the header Columns control (view-only; doesn't affect data).
  */
 const COLUMNS: Array<{
   key: string;
@@ -34,10 +35,13 @@ const COLUMNS: Array<{
   primary: string;
   accent: string;
 }> = [
-  { key: 'planning', label: 'Planning', statuses: ['planning', 'needs_pm_input', 'needs_ux_input'], primary: 'planning', accent: 'var(--feed-muted)' },
-  { key: 'ready', label: 'Ready', statuses: ['ready_to_implement', 'architecture_review_complete'], primary: 'ready_to_implement', accent: 'var(--feed-link)' },
+  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review', accent: 'var(--vscode-charts-blue, #4e94ce)' },
+  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input', accent: 'var(--vscode-charts-purple, #c586c0)' },
+  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input', accent: 'var(--vscode-charts-orange, #d18616)' },
+  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning', accent: 'var(--feed-muted)' },
+  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete', accent: 'var(--vscode-charts-blue, #4e94ce)' },
+  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement', accent: 'var(--vscode-charts-green, #89d185)' },
   { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing', accent: 'var(--feed-warning)' },
-  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review', accent: 'var(--feed-muted)' },
   { key: 'done', label: 'Done', statuses: ['done'], primary: 'done', accent: 'var(--feed-success)' },
 ];
 
@@ -98,6 +102,18 @@ export function KanbanView() {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  // Column show/hide (view-only; in-memory). Stores the HIDDEN keys so the
+  // default (empty set) shows all 8. The "Columns" header control toggles it.
+  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const toggleColumn = useCallback((key: string) => {
+    setHiddenColumns(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      return next;
+    });
+  }, []);
+  const visibleColumns = useMemo(() => COLUMNS.filter(c => !hiddenColumns.has(c.key)), [hiddenColumns]);
 
   // Mount: kick the host to load + start its polling cycle.
   useEffect(() => {
@@ -267,6 +283,55 @@ export function KanbanView() {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Column show/hide menu */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowColumnMenu(v => !v)}
+              title="Show or hide columns"
+              style={{
+                fontSize: 11,
+                padding: '4px 8px',
+                background: 'var(--feed-bg)',
+                color: 'var(--feed-fg)',
+                border: '1px solid var(--feed-border)',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              Columns ({visibleColumns.length}/{COLUMNS.length}) ▾
+            </button>
+            {showColumnMenu && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                right: 0,
+                zIndex: 20,
+                background: 'var(--vscode-menu-background, var(--feed-bg))',
+                border: '1px solid var(--vscode-menu-border, var(--feed-border))',
+                borderRadius: 6,
+                boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
+                padding: '4px 0',
+                minWidth: 184,
+              }}>
+                {COLUMNS.map(c => (
+                  <label key={c.key} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    color: 'var(--feed-fg)',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    <input type="checkbox" checked={!hiddenColumns.has(c.key)} onChange={() => toggleColumn(c.key)} />
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: c.accent, flexShrink: 0 }} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           {/* Live status: pulsing dot + countdown (or Paused) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--feed-muted)' }} title={paused ? 'Auto-refresh paused — use Refresh or switch focus to update.' : 'Auto-refreshing; also refetches the moment this tab regains focus.'}>
             <span
@@ -336,16 +401,22 @@ export function KanbanView() {
         </div>
       )}
 
-      {/* Columns */}
+      {/* Columns — horizontally scrollable row of fixed-width lanes. */}
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: `repeat(${COLUMNS.length}, 1fr)`,
+        display: 'flex',
         gap: 8,
         padding: 12,
         height: state.error ? 'calc(100vh - 84px)' : 'calc(100vh - 56px)',
-        overflow: 'hidden',
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        alignItems: 'stretch',
       }}>
-        {COLUMNS.map(col => {
+        {visibleColumns.length === 0 && (
+          <div style={{ margin: 'auto', fontSize: 12, color: 'var(--feed-muted)' }}>
+            All columns hidden — use “Columns” above to show some.
+          </div>
+        )}
+        {visibleColumns.map(col => {
           const columnCards = cardsByColumn[col.key] ?? [];
           const isDropping = dropTarget === col.key;
           return (
@@ -357,11 +428,13 @@ export function KanbanView() {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
+                flex: '0 0 264px',
+                minWidth: 264,
+                minHeight: 0, // lets the card list's overflow:auto engage (flex children default min-height:auto)
                 background: isDropping ? 'rgba(127,127,127,0.1)' : 'transparent',
                 borderRadius: 6,
                 border: isDropping ? '2px dashed var(--feed-link)' : '2px solid transparent',
                 transition: 'all 120ms',
-                minWidth: 0,
               }}
             >
               <div style={{
@@ -379,7 +452,7 @@ export function KanbanView() {
                 <span style={{ fontWeight: 400 }}>{columnCards.length}</span>
               </div>
 
-              <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
                 {columnCards.length === 0 && !state.loading && (
                   <div style={{
                     padding: '12px',
