@@ -72,6 +72,7 @@ export function SessionChatView() {
   // live-updated when the host pushes an `update` carrying chatDiffView
   // (Settings → Session Defaults → Chat — Diff View).
   const [diffView, setDiffView] = useState<'unified' | 'split'>(readInitialDiffView());
+  const [showTmuxButton, setShowTmuxButton] = useState<boolean>(readInitialShowTmuxButton());
   // axiomcloud base URL — used to resolve persona avatar portraits
   // (`{serverUrl}/persona/professional/{Char}_{Role}.jpg`). Stamped on
   // the body by the host on mount; never changes during a panel's life.
@@ -305,6 +306,9 @@ export function SessionChatView() {
           if (m.payload.chatDiffView === 'unified' || m.payload.chatDiffView === 'split') {
             setDiffView(m.payload.chatDiffView);
           }
+          if (typeof m.payload.showTmuxButton === 'boolean') {
+            setShowTmuxButton(m.payload.showTmuxButton);
+          }
           break;
       }
     }
@@ -484,6 +488,17 @@ export function SessionChatView() {
               >
                 <ChevronIcon size={11} />
               </span>
+            </button>
+          )}
+          {/* Chat-first: open this session's tmux shell in a terminal (#2059). */}
+          {meta.sessionMode === 'chat_first' && showTmuxButton && (
+            <button
+              className="chat-header-toggle chat-header-tmux"
+              onClick={() => vscode.postMessage({ type: 'chatOpenTmux' })}
+              title="Open this session's tmux shell in a VSCode terminal"
+              aria-label="Open tmux shell in a terminal"
+            >
+              <span>tmux</span>
             </button>
           )}
         </div>
@@ -817,6 +832,11 @@ function EmptyState({ personaName, personaAvatarUrl, personaColor, sessionMode, 
 function readInitialDiffView(): 'unified' | 'split' {
   const v = document.body.dataset.vfDiffView;
   return v === 'split' ? 'split' : 'unified';
+}
+
+function readInitialShowTmuxButton(): boolean {
+  // Default ON (#2059); only an explicit "false" data attribute hides it.
+  return document.body.dataset.vfShowTmuxButton !== 'false';
 }
 
 function readInitialMeta(): SessionMeta {

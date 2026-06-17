@@ -88,6 +88,9 @@ export type ChatHostMessage =
         // Optional so older host builds (without the diff-view setting wired)
         // don't break the type. Falls back to the body data attribute.
         chatDiffView?: 'unified' | 'split';
+        // Whether to show the chat-first "open tmux shell" header button.
+        // Threaded each refresh so the Settings toggle live-updates the panel.
+        showTmuxButton?: boolean;
       };
     };
 
@@ -117,4 +120,6 @@ export type ChatClientMessage =
   // Sent once on mount, right after the webview registers its `message`
   // listener, so the host can (re)deliver the initial transcript without
   // racing the webview bootstrap. See SessionChatView's mount effect.
-  | { type: 'ready' };
+  | { type: 'ready' }
+  // Chat-first header button: open this session's tmux shell in a VSCode terminal.
+  | { type: 'chatOpenTmux' };
