@@ -13,6 +13,7 @@ import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
 import { lookupLaunchMode } from '../../sessions/launchModeStore.js';
+import { TmuxBacking, buildHeadlessTmuxName, TMUX_SOCKET } from '../../sessions/tmuxBacking.js';
 
 /**
  * Session-mode union recognized by the webview. Mirrors the `SESSION_MODES`
@@ -390,6 +391,9 @@ export class SessionPanelManager implements vscode.Disposable {
         case 'chatOpenAsset':
           await this.handleChatOpenAsset(msg.payload.id, msg.payload.name);
           break;
+        case 'chatOpenTmux':
+          await this.handleChatOpenTmux(session);
+          break;
         case 'ready': {
           // The webview just mounted and registered its `message` listener.
           // Re-deliver the initial transcript NOW that we know it's listening.
@@ -434,7 +438,7 @@ export class SessionPanelManager implements vscode.Disposable {
     if (this.projectId === undefined) {
       this.postToWebview(panel, {
         type: 'update',
-        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting(), sessionMode),
+        payload: toReactUpdatePayload(session, [], this.readDiffViewSetting(), sessionMode, this.readShowTmuxButtonSetting()),
       });
       return;
     }
@@ -445,13 +449,50 @@ export class SessionPanelManager implements vscode.Disposable {
     ]);
     this.postToWebview(panel, {
       type: 'update',
-      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting(), sessionMode),
+      payload: toReactUpdatePayload(session, logs, this.readDiffViewSetting(), sessionMode, this.readShowTmuxButtonSetting()),
     });
   }
 
   private readDiffViewSetting(): 'unified' | 'split' {
     const v = vscode.workspace.getConfiguration('vibeflow').get<string>('chat.diffView', 'unified');
     return v === 'split' ? 'split' : 'unified';
+  }
+
+  private readShowTmuxButtonSetting(): boolean {
+    return vscode.workspace.getConfiguration('vibeflow').get<boolean>('chat.showTmuxAttachButton', true);
+  }
+
+  /**
+   * Chat-first header button (#2059): open this session's tmux backing in a
+   * VSCode integrated terminal so the user can watch / step through the raw
+   * agent exchange for debugging. Resolves the headless socket + session name
+   * from real session state (never hardcoded; same `buildHeadlessTmuxName`
+   * triple as SessionReattacher / killSession). No-ops with a message when the
+   * session has no live tmux pane (e.g. a single-turn vscode-backed session).
+   */
+  private async handleChatOpenTmux(session: VibeFlowSession): Promise<void> {
+    const workDir = session.git_worktree_path
+      || session.working_directory
+      || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      || '';
+    // buildHeadlessTmuxName sanitizes to [a-zA-Z0-9_-]; TMUX_SOCKET is a
+    // constant — so the sendText command below has no shell-injection surface.
+    const name = buildHeadlessTmuxName(session.persona_key, session.git_branch, workDir);
+    let alive = false;
+    try {
+      alive = await new TmuxBacking().hasSession(name);
+    } catch {
+      alive = false; // tmux not installed / Windows / etc. → treat as no backing.
+    }
+    if (!alive) {
+      vscode.window.showInformationMessage(
+        'VibeFlow: this session has no live tmux shell to attach to (it may be a single-turn / VS Code-backed session).',
+      );
+      return;
+    }
+    const term = vscode.window.createTerminal({ name: `tmux · ${session.persona_name ?? session.persona_key}` });
+    term.sendText(`tmux -L ${TMUX_SOCKET} attach -t ${name}`);
+    term.show();
   }
 
   /**
@@ -1320,6 +1361,7 @@ export class SessionPanelManager implements vscode.Disposable {
       ? new Date(session.last_message_at).toLocaleTimeString()
       : '';
     const diffView = this.readDiffViewSetting();
+    const showTmuxButton = this.readShowTmuxButtonSetting();
     const sessionMode = this.resolveSessionMode(session);
     // Avatar portraits live on the axiomcloud server (same source the
     // dashboard's agent topology uses). Pass the base URL through so the
@@ -1369,6 +1411,7 @@ export class SessionPanelManager implements vscode.Disposable {
   data-vf-task-title="${escapeHtml(taskTitle)}"
   data-vf-task-status="${escapeHtml(taskStatus)}"
   data-vf-diff-view="${escapeHtml(diffView)}"
+  data-vf-show-tmux-button="${showTmuxButton ? 'true' : 'false'}"
   data-vf-server-url="${escapeHtml(serverUrl)}"
   data-vf-session-mode="${escapeHtml(sessionMode)}"
 >
@@ -1409,6 +1452,7 @@ function toReactUpdatePayload(
   logs: PanelLog[],
   chatDiffView: 'unified' | 'split',
   sessionMode: SessionMode,
+  showTmuxButton: boolean,
 ): {
   session: {
     sessionId: string;
@@ -1423,6 +1467,7 @@ function toReactUpdatePayload(
   };
   logs: { text: string; time?: string; src?: string }[];
   chatDiffView: 'unified' | 'split';
+  showTmuxButton: boolean;
 } {
   const status: 'active' | 'stale' | 'inactive' = session.active
     ? (session.stale ? 'stale' : 'active')
@@ -1447,6 +1492,7 @@ function toReactUpdatePayload(
       src: l.source ? `${l.source.type} #${l.source.id}` : undefined,
     })),
     chatDiffView,
+    showTmuxButton,
   };
 }
 
