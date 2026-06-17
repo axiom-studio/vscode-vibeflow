@@ -342,7 +342,7 @@ function Card({ card, onDragStart, onClick }: {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-        <div style={{ fontWeight: 500, lineHeight: 1.3, flex: 1, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
+        <div style={{ fontWeight: 500, lineHeight: 1.3, flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
           <span
             title={card.type === 'issue' ? 'Issue' : 'Todo'}
             style={{ display: 'inline-flex', alignItems: 'center', color: card.type === 'issue' ? 'var(--feed-error)' : 'var(--feed-muted)', flexShrink: 0, paddingTop: 1 }}
@@ -352,7 +352,7 @@ function Card({ card, onDragStart, onClick }: {
           <span style={{ color: 'var(--feed-muted)', fontFamily: 'var(--vscode-editor-font-family)', fontSize: 10 }}>
             #{card.id}
           </span>
-          <span>{card.title}</span>
+          <span style={{ minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{card.title}</span>
         </div>
         {card.securityReviewed && (
           <span title="Security reviewed" style={{ display: 'inline-flex', color: 'var(--feed-success)', opacity: 0.75, flexShrink: 0 }}>
