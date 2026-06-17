@@ -206,6 +206,9 @@ export type SessionPanelHostMessage =
         // Settings → Session Defaults → Chat — Diff View radio without a
         // panel reload.
         chatDiffView?: 'unified' | 'split';
+        // Chat-first "open tmux shell" header button visibility. Threaded each
+        // refresh so toggling the setting live-updates the open panel.
+        showTmuxButton?: boolean;
       };
     }
   // Initial chat load OR full replace after a session switch.
@@ -350,7 +353,9 @@ export type SessionPanelClientMessage =
   // bootstrap and be dropped — invisible in VS Code (postMessage buffering),
   // but a permanent stuck-skeleton in Cursor (service-worker-gated webview
   // load). See SessionPanelManager's `ready` handler.
-  | { type: 'ready' };
+  | { type: 'ready' }
+  // Chat-first header button → open this session's tmux shell in a VSCode terminal (#2059).
+  | { type: 'chatOpenTmux' };
 
 // ============================================================
 // Kanban Panel
