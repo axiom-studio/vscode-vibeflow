@@ -58,6 +58,10 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
   // a server-rejected move simply snaps back on the next broadcast.
   const [localCards, setLocalCards] = useState<KanbanCard[]>(cards);
   useEffect(() => { setLocalCards(cards); }, [cards]);
+  // Client-side filters (#2881) — over the cards already sent, no host call.
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'todo' | 'issue'>('all');
+  const [featureFilter, setFeatureFilter] = useState<string>(''); // '' = all features
   // Column show/hide (view-only, in-memory). Stores HIDDEN keys so the
   // default (empty set) shows all 8.
   const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
@@ -90,10 +94,28 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
     onMove(card.type, card.id, column.primary);
   }, [draggedCard, onMove]);
 
+  // Distinct feature names present — the extension's "tag" axis (the board is
+  // already single-project, so feature is the only useful tag dimension).
+  const featureOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of localCards) { if (c.featureName) { set.add(c.featureName); } }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [localCards]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return localCards.filter(c => {
+      if (typeFilter !== 'all' && c.type !== typeFilter) { return false; }
+      if (featureFilter && c.featureName !== featureFilter) { return false; }
+      if (q && !(`#${c.id}`.includes(q) || c.title.toLowerCase().includes(q))) { return false; }
+      return true;
+    });
+  }, [localCards, search, typeFilter, featureFilter]);
+
   const cardsByColumn = useMemo(() => {
     const map: Record<string, KanbanCard[]> = {};
     for (const col of COLUMNS) { map[col.key] = []; }
-    for (const card of localCards) {
+    for (const card of filtered) {
       const col = COLUMNS.find(c => c.statuses.includes(card.status));
       if (col) { map[col.key].push(card); }
     }
@@ -107,13 +129,72 @@ export function KanbanBoard({ cards, loading, onMove, onOpenCard }: {
       });
     }
     return map;
-  }, [localCards]);
+  }, [filtered]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {/* Column show/hide control */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '8px 12px 6px', flexShrink: 0 }}>
-        <div style={{ position: 'relative' }}>
+      {/* Filters (search · type · feature) + column show/hide */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 6px', flexShrink: 0, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search items…"
+          style={{
+            flex: '1 1 160px',
+            minWidth: 120,
+            maxWidth: 280,
+            fontSize: 11,
+            padding: '4px 8px',
+            background: 'var(--vscode-input-background, var(--feed-bg))',
+            color: 'var(--vscode-input-foreground, var(--feed-fg))',
+            border: '1px solid var(--feed-border)',
+            borderRadius: 4,
+          }}
+        />
+        {/* Type tabs */}
+        <div style={{ display: 'inline-flex', border: '1px solid var(--feed-border)', borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
+          {(['all', 'todo', 'issue'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t)}
+              style={{
+                fontSize: 11,
+                padding: '4px 9px',
+                border: 'none',
+                cursor: 'pointer',
+                background: typeFilter === t ? 'var(--feed-button-bg)' : 'transparent',
+                color: typeFilter === t ? 'var(--feed-button-fg)' : 'var(--feed-muted)',
+              }}
+            >
+              {t === 'all' ? 'All' : t === 'todo' ? 'Todos' : 'Issues'}
+            </button>
+          ))}
+        </div>
+        {/* Feature ("tag") filter */}
+        {featureOptions.length > 0 && (
+          <select
+            value={featureFilter}
+            onChange={e => setFeatureFilter(e.target.value)}
+            title="Filter by feature"
+            style={{
+              fontSize: 11,
+              padding: '3px 6px',
+              maxWidth: 180,
+              background: 'var(--feed-bg)',
+              color: 'var(--feed-fg)',
+              border: '1px solid var(--feed-border)',
+              borderRadius: 4,
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            <option value="">All features</option>
+            {featureOptions.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        )}
+        {/* Column show/hide control (right-aligned) */}
+        <div style={{ position: 'relative', marginLeft: 'auto', flexShrink: 0 }}>
           <button
             onClick={() => setShowColumnMenu(v => !v)}
             title="Show or hide columns"
