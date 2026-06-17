@@ -58,7 +58,21 @@ interface KanbanState {
   cards: KanbanCard[];
   loading: boolean;
   error: string | undefined;
+  // Host's last-snapshot timestamp + the active auto-refresh cadence,
+  // used to render the live "updated Ns ago · next in Ns" indicator.
+  generatedAt: string | undefined;
+  refreshIntervalMs: number;
 }
+
+// Auto-refresh options offered by the live control. 0 = paused. Default 30s
+// (the org-wide swimlane is heavy; 10s is the fastest we expose).
+const REFRESH_OPTIONS: Array<{ ms: number; label: string }> = [
+  { ms: 0, label: 'Off' },
+  { ms: 10_000, label: '10s' },
+  { ms: 30_000, label: '30s' },
+  { ms: 60_000, label: '60s' },
+];
+const DEFAULT_REFRESH_MS = 30_000;
 
 /**
  * Kanban Board with drag-and-drop columns. Loads via host postMessage on
@@ -71,9 +85,19 @@ export function KanbanView() {
     cards: [],
     loading: true,
     error: undefined,
+    generatedAt: undefined,
+    refreshIntervalMs: DEFAULT_REFRESH_MS,
   });
   const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // 1s heartbeat so the "next in Ns" countdown ticks; derived from
+  // `generatedAt` + interval (timestamp math, not a decrementing counter, so
+  // it can't drift or go stale across re-renders).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Mount: kick the host to load + start its polling cycle.
   useEffect(() => {
@@ -88,13 +112,20 @@ export function KanbanView() {
     function handleMessage(event: MessageEvent<KanbanHostMessage>) {
       const msg = event.data;
       if (msg?.type === 'kanbanData' && msg.payload) {
-        const data = msg.payload as { projectName?: string; cards?: KanbanCard[] };
-        setState({
+        const data = msg.payload as {
+          projectName?: string;
+          cards?: KanbanCard[];
+          generatedAt?: string;
+          refreshIntervalMs?: number;
+        };
+        setState(s => ({
           projectName: data.projectName ?? '',
           cards: data.cards ?? [],
           loading: false,
           error: undefined,
-        });
+          generatedAt: data.generatedAt,
+          refreshIntervalMs: data.refreshIntervalMs ?? s.refreshIntervalMs,
+        }));
       } else if (msg?.type === 'kanbanError') {
         setState(s => ({ ...s, loading: false, error: msg.payload.message }));
       }
@@ -121,6 +152,13 @@ export function KanbanView() {
       refreshTimerRef.current = null;
     }
   }, [state.loading]);
+
+  const setRefreshInterval = useCallback((ms: number) => {
+    // Optimistic so the control + countdown update instantly; the host
+    // echoes the clamped value back on the next `kanbanData`.
+    setState(s => ({ ...s, refreshIntervalMs: ms }));
+    vscode.postMessage({ type: 'kanbanSetRefreshInterval', payload: { ms } });
+  }, []);
 
   const onDragStart = useCallback((card: KanbanCard) => {
     setDraggedCard(card);
@@ -197,6 +235,13 @@ export function KanbanView() {
     return map;
   }, [state.cards]);
 
+  // Live-refresh status for the header indicator. Countdown is derived from
+  // the host's `generatedAt` + the active interval (timestamp math via `now`).
+  const paused = state.refreshIntervalMs <= 0;
+  const nextInSec = (!paused && state.generatedAt)
+    ? Math.max(0, Math.ceil((state.refreshIntervalMs - (now - new Date(state.generatedAt).getTime())) / 1000))
+    : null;
+
   return (
     <div style={{ width: '100%', height: '100vh', background: 'var(--feed-bg)', overflow: 'hidden' }}>
       {/* Header */}
@@ -221,22 +266,62 @@ export function KanbanView() {
             ({state.cards.length} item{state.cards.length === 1 ? '' : 's'})
           </span>
         </div>
-        <button
-          onClick={refresh}
-          disabled={state.loading}
-          style={{
-            padding: '4px 12px',
-            fontSize: 11,
-            background: 'var(--feed-button-bg)',
-            color: 'var(--feed-button-fg)',
-            border: 'none',
-            borderRadius: 4,
-            cursor: state.loading ? 'wait' : 'pointer',
-            opacity: state.loading ? 0.6 : 1,
-          }}
-        >
-          {state.loading ? 'Loading…' : 'Refresh'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Live status: pulsing dot + countdown (or Paused) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--feed-muted)' }} title={paused ? 'Auto-refresh paused — use Refresh or switch focus to update.' : 'Auto-refreshing; also refetches the moment this tab regains focus.'}>
+            <span
+              className={paused ? undefined : 'persona-pulse'}
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                flexShrink: 0,
+                background: paused ? 'var(--feed-muted)' : 'var(--feed-success, #3fb950)',
+                ...(paused ? {} : { ['--persona-pulse-color' as string]: 'var(--feed-success, #3fb950)' }),
+              }}
+            />
+            {paused
+              ? 'Paused'
+              : `Live${nextInSec != null ? ` · ${nextInSec}s` : ''}`}
+          </div>
+          {/* Cadence selector (mirrors the web's Refresh: Ns control) */}
+          <select
+            value={String(state.refreshIntervalMs)}
+            onChange={e => setRefreshInterval(Number(e.target.value))}
+            title="Auto-refresh interval"
+            style={{
+              fontSize: 11,
+              padding: '3px 6px',
+              background: 'var(--feed-bg)',
+              color: 'var(--feed-fg)',
+              border: '1px solid var(--feed-border)',
+              borderRadius: 4,
+              cursor: 'pointer',
+            }}
+          >
+            {REFRESH_OPTIONS.map(opt => (
+              <option key={opt.ms} value={String(opt.ms)}>
+                {opt.ms === 0 ? 'Auto-refresh: Off' : `Refresh: ${opt.label}`}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={refresh}
+            disabled={state.loading}
+            style={{
+              padding: '4px 12px',
+              fontSize: 11,
+              background: 'var(--feed-button-bg)',
+              color: 'var(--feed-button-fg)',
+              border: 'none',
+              borderRadius: 4,
+              cursor: state.loading ? 'wait' : 'pointer',
+              opacity: state.loading ? 0.6 : 1,
+            }}
+          >
+            {state.loading ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {state.error && (

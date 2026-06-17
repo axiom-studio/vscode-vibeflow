@@ -364,7 +364,10 @@ export type KanbanClientMessage =
   | { type: 'kanbanLoad' }
   | { type: 'kanbanRefresh' }
   | { type: 'kanbanMove'; payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string } }
-  | { type: 'kanbanOpenItem'; payload: { itemType: 'todo' | 'issue'; itemId: number; title: string } };
+  | { type: 'kanbanOpenItem'; payload: { itemType: 'todo' | 'issue'; itemId: number; title: string } }
+  // User changed the auto-refresh cadence from the board's live control.
+  // `ms === 0` pauses polling (manual Refresh + focus-refetch still work).
+  | { type: 'kanbanSetRefreshInterval'; payload: { ms: number } };
 
 // ============================================================
 // Dashboard Panel
