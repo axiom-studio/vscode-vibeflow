@@ -101,11 +101,7 @@ export function KanbanView() {
   }, []);
 
   const onMove = useCallback((itemType: 'todo' | 'issue', itemId: number, newStatus: string) => {
-    // Optimistic — host re-broadcasts the truth on success or rolls back.
-    setState(s => ({
-      ...s,
-      cards: s.cards.map(c => (c.id === itemId && c.type === itemType ? { ...c, status: newStatus } : c)),
-    }));
+    // Optimistic feedback is handled inside KanbanBoard now; just persist.
     vscode.postMessage({ type: 'kanbanMove', payload: { itemType, itemId, newStatus } });
   }, []);
 
