@@ -1,54 +1,15 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/types.js';
 import { assertNever, type KanbanClientMessage, type KanbanHostMessage } from '../../core/webviewMessages.js';
-
-/**
- * Eight kanban columns — one per backend status — matching the swimlane wire
- * shape and the axiomcloud web board. (Previously collapsed to 5; users
- * couldn't see Needs-PM/Needs-UX/Arch-Review as their own lanes, so the
- * webview now shows all 8 and lets the user hide columns it doesn't need.)
- * Dragging a card to a column moves it to that column's `primary` status;
- * `primary` is also the server-side drag-target allowlist below.
- */
-export const KANBAN_COLUMNS: Array<{
-  key: string;
-  label: string;
-  /** Status set whose items appear in this column. */
-  statuses: string[];
-  /** Status assigned when an item is dragged INTO this column. */
-  primary: string;
-}> = [
-  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review' },
-  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input' },
-  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input' },
-  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning' },
-  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete' },
-  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement' },
-  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing' },
-  { key: 'done', label: 'Done', statuses: ['done'], primary: 'done' },
-];
-
-/** Card payload sent to the webview — flattened from VibeFlowSwimlaneItem. */
-export interface KanbanCard {
-  type: 'todo' | 'issue';
-  id: number;
-  title: string;
-  status: string;
-  priority: string;
-  featureName?: string;
-  currentPersona?: string;
-  securityReviewed: boolean;
-  updatedAt: string;
-}
+import { ALLOWED_PRIMARY_STATUSES, flattenForProject } from './kanbanData.js';
 
 // Canonical message types live in src/core/webviewMessages.ts so each
 // panel's protocol is documented in one place. Imported below.
+// Column model + swimlane→card flattening live in ./kanbanData.ts (shared
+// with the dashboard embed, DashboardPanel).
 
 const POLL_INTERVAL_MS = 30_000;
-/** Status set valid as a drag target — also enforced server-side. */
-const ALLOWED_PRIMARY_STATUSES = new Set(KANBAN_COLUMNS.map(c => c.primary));
 
 /**
  * Kanban Board webview panel — drag-and-drop swimlane view scoped to the
@@ -251,47 +212,6 @@ export class KanbanPanel {
       KanbanPanel.instance = undefined;
     }
   }
-}
-
-/**
- * Flatten the 8-column swimlane payload into a flat card list scoped to one
- * project. Excludes `project` and `feature` rows (those don't belong on a
- * todo/issue kanban) and items missing required fields.
- */
-function flattenForProject(
-  swimlane: VibeFlowSwimlaneResult,
-  projectId: number,
-): KanbanCard[] {
-  const cards: KanbanCard[] = [];
-  const buckets: VibeFlowSwimlaneItem[][] = [
-    swimlane.in_review,
-    swimlane.needs_pm_input,
-    swimlane.needs_ux_input,
-    swimlane.planning,
-    swimlane.ready_to_implement,
-    swimlane.architecture_review_complete,
-    swimlane.implementing,
-    swimlane.done,
-  ];
-  for (const bucket of buckets) {
-    if (!Array.isArray(bucket)) { continue; }
-    for (const item of bucket) {
-      if (item.project_id !== projectId) { continue; }
-      if (item.type !== 'todo' && item.type !== 'issue') { continue; }
-      cards.push({
-        type: item.type,
-        id: item.id,
-        title: item.name,
-        status: item.status,
-        priority: item.priority ?? 'medium',
-        featureName: item.feature_name,
-        currentPersona: item.current_persona,
-        securityReviewed: !!item.security_reviewed,
-        updatedAt: item.updated_at,
-      });
-    }
-  }
-  return cards;
 }
 
 function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

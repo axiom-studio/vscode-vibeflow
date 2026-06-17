@@ -1,75 +1,22 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import type { KanbanClientMessage, KanbanHostMessage } from '../../../src/core/webviewMessages';
-import { BugIcon, CheckSquareIcon, LockIcon } from './_shared/icons';
+import { KanbanBoard, type KanbanCard } from './kanban/KanbanBoard';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: KanbanClientMessage) => void };
-
-interface KanbanCard {
-  type: 'todo' | 'issue';
-  id: number;
-  title: string;
-  status: string;
-  priority: string;
-  featureName?: string;
-  currentPersona?: string;
-  securityReviewed: boolean;
-  updatedAt: string;
-}
-
-/**
- * Eight columns — one per backend status — matching the host's KANBAN_COLUMNS
- * in src/views/kanban/KanbanPanel.ts and the axiomcloud web board. `statuses`
- * is the backend status set shown in this column; `primary` is the status we
- * send on drop.
- *
- * Keep the two definitions in sync — host validates `primary` against its own
- * allowlist before calling the API, so a webview/host drift just surfaces as a
- * "not a valid target column" error rather than a bad write. Users can hide
- * columns via the header Columns control (view-only; doesn't affect data).
- */
-const COLUMNS: Array<{
-  key: string;
-  label: string;
-  statuses: string[];
-  primary: string;
-  accent: string;
-}> = [
-  { key: 'in_review', label: 'In Review', statuses: ['in_review'], primary: 'in_review', accent: 'var(--vscode-charts-blue, #4e94ce)' },
-  { key: 'needs_pm_input', label: 'Needs PM Input', statuses: ['needs_pm_input'], primary: 'needs_pm_input', accent: 'var(--vscode-charts-purple, #c586c0)' },
-  { key: 'needs_ux_input', label: 'Needs UX Input', statuses: ['needs_ux_input'], primary: 'needs_ux_input', accent: 'var(--vscode-charts-orange, #d18616)' },
-  { key: 'planning', label: 'Planning', statuses: ['planning'], primary: 'planning', accent: 'var(--feed-muted)' },
-  { key: 'architecture_review_complete', label: 'Arch Review', statuses: ['architecture_review_complete'], primary: 'architecture_review_complete', accent: 'var(--vscode-charts-blue, #4e94ce)' },
-  { key: 'ready_to_implement', label: 'Ready', statuses: ['ready_to_implement'], primary: 'ready_to_implement', accent: 'var(--vscode-charts-green, #89d185)' },
-  { key: 'implementing', label: 'In Progress', statuses: ['implementing'], primary: 'implementing', accent: 'var(--feed-warning)' },
-  { key: 'done', label: 'Done', statuses: ['done'], primary: 'done', accent: 'var(--feed-success)' },
-];
-
-const PRIORITY_COLORS: Record<string, string> = {
-  high: 'var(--feed-error)',
-  medium: 'var(--feed-warning)',
-  low: 'var(--feed-muted)',
-};
-
-const SUB_STATUS_LABELS: Record<string, string> = {
-  needs_pm_input: 'Needs PM',
-  needs_ux_input: 'Needs UX',
-  architecture_review_complete: 'Arch Reviewed',
-};
 
 interface KanbanState {
   projectName: string;
   cards: KanbanCard[];
   loading: boolean;
   error: string | undefined;
-  // Host's last-snapshot timestamp + the active auto-refresh cadence,
-  // used to render the live "updated Ns ago · next in Ns" indicator.
+  // Host snapshot time + active auto-refresh cadence → live countdown.
   generatedAt: string | undefined;
   refreshIntervalMs: number;
 }
 
-// Auto-refresh options offered by the live control. 0 = paused. Default 30s
-// (the org-wide swimlane is heavy; 10s is the fastest we expose).
+// Auto-refresh options for the live control. 0 = paused. Default 30s (the
+// org-wide swimlane is heavy; 10s is the fastest we expose).
 const REFRESH_OPTIONS: Array<{ ms: number; label: string }> = [
   { ms: 0, label: 'Off' },
   { ms: 10_000, label: '10s' },
@@ -79,9 +26,10 @@ const REFRESH_OPTIONS: Array<{ ms: number; label: string }> = [
 const DEFAULT_REFRESH_MS = 30_000;
 
 /**
- * Kanban Board with drag-and-drop columns. Loads via host postMessage on
- * mount (`kanbanLoad`), receives `kanbanData` updates, and posts
- * `kanbanMove` when the user drags a card to a different column.
+ * Standalone Kanban panel: a header (project + count + live-refresh controls)
+ * over the shared <KanbanBoard>. Board rendering / drag / columns live in
+ * KanbanBoard (shared with the dashboard embed); this wrapper owns the host
+ * message wiring + the auto-refresh cadence UI.
  */
 export function KanbanView() {
   const [state, setState] = useState<KanbanState>({
@@ -92,38 +40,18 @@ export function KanbanView() {
     generatedAt: undefined,
     refreshIntervalMs: DEFAULT_REFRESH_MS,
   });
-  const [draggedCard, setDraggedCard] = useState<KanbanCard | null>(null);
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
-  // 1s heartbeat so the "next in Ns" countdown ticks; derived from
-  // `generatedAt` + interval (timestamp math, not a decrementing counter, so
-  // it can't drift or go stale across re-renders).
+  // 1s heartbeat so the "next in Ns" countdown ticks (timestamp math, no drift).
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
-  // Column show/hide (view-only; in-memory). Stores the HIDDEN keys so the
-  // default (empty set) shows all 8. The "Columns" header control toggles it.
-  const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => new Set());
-  const [showColumnMenu, setShowColumnMenu] = useState(false);
-  const toggleColumn = useCallback((key: string) => {
-    setHiddenColumns(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) { next.delete(key); } else { next.add(key); }
-      return next;
-    });
-  }, []);
-  const visibleColumns = useMemo(() => COLUMNS.filter(c => !hiddenColumns.has(c.key)), [hiddenColumns]);
 
   // Mount: kick the host to load + start its polling cycle.
   useEffect(() => {
     vscode.postMessage({ type: 'kanbanLoad' });
   }, []);
 
-  // Inbound: kanbanData / kanbanError from host. The host's payload type
-  // is `unknown` (the wire shape lives in src/views/kanban/KanbanPanel.ts);
-  // we narrow at the field level because that boundary is where the
-  // unsafe cast belongs — not throughout the React tree below.
   useEffect(() => {
     function handleMessage(event: MessageEvent<KanbanHostMessage>) {
       const msg = event.data;
@@ -150,9 +78,7 @@ export function KanbanView() {
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  // Safety: drop the spinner if the host doesn't respond within 5s
-  // (network hung, swimlane composition stuck). The next snapshot push
-  // will clear `error` and resume normal rendering.
+  // Safety: drop the spinner if the host doesn't respond within 5s.
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(() => {
     if (refreshTimerRef.current) { clearTimeout(refreshTimerRef.current); }
@@ -170,96 +96,30 @@ export function KanbanView() {
   }, [state.loading]);
 
   const setRefreshInterval = useCallback((ms: number) => {
-    // Optimistic so the control + countdown update instantly; the host
-    // echoes the clamped value back on the next `kanbanData`.
     setState(s => ({ ...s, refreshIntervalMs: ms }));
     vscode.postMessage({ type: 'kanbanSetRefreshInterval', payload: { ms } });
   }, []);
 
-  const onDragStart = useCallback((card: KanbanCard) => {
-    setDraggedCard(card);
-  }, []);
-
-  const onDragOver = useCallback((e: React.DragEvent, columnKey: string) => {
-    e.preventDefault();
-    setDropTarget(columnKey);
-  }, []);
-
-  const onDragLeave = useCallback(() => {
-    setDropTarget(null);
-  }, []);
-
-  const onDrop = useCallback((columnKey: string) => {
-    setDropTarget(null);
-    const card = draggedCard;
-    setDraggedCard(null);
-    if (!card) { return; }
-
-    const column = COLUMNS.find(c => c.key === columnKey);
-    if (!column) { return; }
-
-    // Same column drop is a no-op (avoid round-tripping the same status).
-    if (column.statuses.includes(card.status)) { return; }
-
-    // Optimistic update — host re-broadcasts the truth on success or rolls back.
+  const onMove = useCallback((itemType: 'todo' | 'issue', itemId: number, newStatus: string) => {
+    // Optimistic — host re-broadcasts the truth on success or rolls back.
     setState(s => ({
       ...s,
-      cards: s.cards.map(c =>
-        c.id === card.id && c.type === card.type
-          ? { ...c, status: column.primary }
-          : c,
-      ),
+      cards: s.cards.map(c => (c.id === itemId && c.type === itemType ? { ...c, status: newStatus } : c)),
     }));
-    vscode.postMessage({
-      type: 'kanbanMove',
-      payload: { itemType: card.type, itemId: card.id, newStatus: column.primary },
-    });
-  }, [draggedCard]);
-
-  const openCard = useCallback((card: KanbanCard) => {
-    vscode.postMessage({
-      type: 'kanbanOpenItem',
-      payload: { itemType: card.type, itemId: card.id, title: card.title },
-    });
+    vscode.postMessage({ type: 'kanbanMove', payload: { itemType, itemId, newStatus } });
   }, []);
 
-  const cardsByColumn = useMemo(() => {
-    const map: Record<string, KanbanCard[]> = {};
-    for (const col of COLUMNS) { map[col.key] = []; }
-    for (const card of state.cards) {
-      const col = COLUMNS.find(c => c.statuses.includes(card.status));
-      if (col) { map[col.key].push(card); }
-    }
-    // Stable sort: priority desc, then updatedAt desc.
-    // `critical`/`urgent` are not in the documented priority set but we
-    // bucket them with `high` defensively (and warn so we notice if the
-    // backend grows new priority levels we should officially support).
-    const PR: Record<string, number> = { critical: 0, urgent: 0, high: 1, medium: 2, low: 3 };
-    const warned = new Set<string>();
-    for (const k of Object.keys(map)) {
-      map[k].sort((a, b) => {
-        const pa = PR[a.priority] ?? (warned.add(a.priority), 1);
-        const pb = PR[b.priority] ?? (warned.add(b.priority), 1);
-        if (pa !== pb) { return pa - pb; }
-        return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
-      });
-    }
-    if (warned.size > 0) {
-      // Best-effort surfacing for unknown priorities; harmless in prod.
-      console.warn('Kanban: unknown priority value(s) sorted as `high`:', [...warned]);
-    }
-    return map;
-  }, [state.cards]);
+  const onOpenCard = useCallback((card: KanbanCard) => {
+    vscode.postMessage({ type: 'kanbanOpenItem', payload: { itemType: card.type, itemId: card.id, title: card.title } });
+  }, []);
 
-  // Live-refresh status for the header indicator. Countdown is derived from
-  // the host's `generatedAt` + the active interval (timestamp math via `now`).
   const paused = state.refreshIntervalMs <= 0;
   const nextInSec = (!paused && state.generatedAt)
     ? Math.max(0, Math.ceil((state.refreshIntervalMs - (now - new Date(state.generatedAt).getTime())) / 1000))
     : null;
 
   return (
-    <div style={{ width: '100%', height: '100vh', background: 'var(--feed-bg)', overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '100vh', background: 'var(--feed-bg)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
       <div style={{
         padding: '10px 16px',
@@ -270,70 +130,18 @@ export function KanbanView() {
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)' }}>
-            VibeFlow Kanban
-          </span>
-          {state.projectName && (
-            <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>
-              · {state.projectName}
-            </span>
-          )}
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)' }}>VibeFlow Kanban</span>
+          {state.projectName && <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>· {state.projectName}</span>}
           <span style={{ fontSize: 11, color: 'var(--feed-muted)', marginLeft: 6 }}>
             ({state.cards.length} item{state.cards.length === 1 ? '' : 's'})
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Column show/hide menu */}
-          <div style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowColumnMenu(v => !v)}
-              title="Show or hide columns"
-              style={{
-                fontSize: 11,
-                padding: '4px 8px',
-                background: 'var(--feed-bg)',
-                color: 'var(--feed-fg)',
-                border: '1px solid var(--feed-border)',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              Columns ({visibleColumns.length}/{COLUMNS.length}) ▾
-            </button>
-            {showColumnMenu && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 4px)',
-                right: 0,
-                zIndex: 20,
-                background: 'var(--vscode-menu-background, var(--feed-bg))',
-                border: '1px solid var(--vscode-menu-border, var(--feed-border))',
-                borderRadius: 6,
-                boxShadow: '0 6px 20px rgba(0,0,0,0.4)',
-                padding: '4px 0',
-                minWidth: 184,
-              }}>
-                {COLUMNS.map(c => (
-                  <label key={c.key} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '5px 12px',
-                    fontSize: 12,
-                    color: 'var(--feed-fg)',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                  }}>
-                    <input type="checkbox" checked={!hiddenColumns.has(c.key)} onChange={() => toggleColumn(c.key)} />
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: c.accent, flexShrink: 0 }} />
-                    {c.label}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
           {/* Live status: pulsing dot + countdown (or Paused) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--feed-muted)' }} title={paused ? 'Auto-refresh paused — use Refresh or switch focus to update.' : 'Auto-refreshing; also refetches the moment this tab regains focus.'}>
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--feed-muted)' }}
+            title={paused ? 'Auto-refresh paused — use Refresh or switch focus to update.' : 'Auto-refreshing; also refetches the moment this tab regains focus.'}
+          >
             <span
               className={paused ? undefined : 'persona-pulse'}
               style={{
@@ -345,11 +153,9 @@ export function KanbanView() {
                 ...(paused ? {} : { ['--persona-pulse-color' as string]: 'var(--feed-success, #3fb950)' }),
               }}
             />
-            {paused
-              ? 'Paused'
-              : `Live${nextInSec != null ? ` · ${nextInSec}s` : ''}`}
+            {paused ? 'Paused' : `Live${nextInSec != null ? ` · ${nextInSec}s` : ''}`}
           </div>
-          {/* Cadence selector (mirrors the web's Refresh: Ns control) */}
+          {/* Cadence selector */}
           <select
             value={String(state.refreshIntervalMs)}
             onChange={e => setRefreshInterval(Number(e.target.value))}
@@ -401,176 +207,9 @@ export function KanbanView() {
         </div>
       )}
 
-      {/* Columns — horizontally scrollable row of fixed-width lanes. */}
-      <div style={{
-        display: 'flex',
-        gap: 8,
-        padding: 12,
-        height: state.error ? 'calc(100vh - 84px)' : 'calc(100vh - 56px)',
-        overflowX: 'auto',
-        overflowY: 'hidden',
-        alignItems: 'stretch',
-      }}>
-        {visibleColumns.length === 0 && (
-          <div style={{ margin: 'auto', fontSize: 12, color: 'var(--feed-muted)' }}>
-            All columns hidden — use “Columns” above to show some.
-          </div>
-        )}
-        {visibleColumns.map(col => {
-          const columnCards = cardsByColumn[col.key] ?? [];
-          const isDropping = dropTarget === col.key;
-          return (
-            <div
-              key={col.key}
-              onDragOver={(e) => onDragOver(e, col.key)}
-              onDragLeave={onDragLeave}
-              onDrop={() => onDrop(col.key)}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                flex: '0 0 232px',
-                minWidth: 232,
-                minHeight: 0, // lets the card list's overflow:auto engage (flex children default min-height:auto)
-                background: isDropping ? 'rgba(127,127,127,0.1)' : 'transparent',
-                borderRadius: 6,
-                border: isDropping ? '2px dashed var(--feed-link)' : '2px solid transparent',
-                transition: 'all 120ms',
-              }}
-            >
-              <div style={{
-                padding: '6px 10px',
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                color: col.accent,
-                borderBottom: `2px solid ${col.accent}`,
-                display: 'flex',
-                justifyContent: 'space-between',
-              }}>
-                <span>{col.label}</span>
-                <span style={{ fontWeight: 400 }}>{columnCards.length}</span>
-              </div>
-
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
-                {columnCards.length === 0 && !state.loading && (
-                  <div style={{
-                    padding: '12px',
-                    fontSize: 11,
-                    color: 'var(--feed-muted)',
-                    textAlign: 'center',
-                    opacity: 0.6,
-                  }}>
-                    No items
-                  </div>
-                )}
-                {columnCards.map(card => (
-                  <Card
-                    key={`${card.type}-${card.id}`}
-                    card={card}
-                    onDragStart={onDragStart}
-                    onClick={openCard}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Card({
-  card,
-  onDragStart,
-  onClick,
-}: {
-  card: KanbanCard;
-  onDragStart: (card: KanbanCard) => void;
-  onClick: (card: KanbanCard) => void;
-}) {
-  const subStatus = SUB_STATUS_LABELS[card.status];
-  return (
-    <div
-      draggable
-      onDragStart={() => onDragStart(card)}
-      onClick={() => onClick(card)}
-      style={{
-        margin: '4px 4px',
-        padding: '6px 8px',
-        background: 'var(--vscode-editor-background)',
-        border: '1px solid var(--feed-border)',
-        borderLeft: `3px solid ${PRIORITY_COLORS[card.priority] ?? 'var(--feed-muted)'}`,
-        borderRadius: 4,
-        cursor: 'grab',
-        fontSize: 11,
-        userSelect: 'none',
-      }}
-    >
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        gap: 6,
-      }}>
-        <div style={{ fontWeight: 500, lineHeight: 1.3, flex: 1, display: 'flex', alignItems: 'flex-start', gap: 5 }}>
-          <span
-            title={card.type === 'issue' ? 'Issue' : 'Todo'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              color: card.type === 'issue' ? 'var(--feed-error)' : 'var(--feed-muted)',
-              flexShrink: 0,
-              paddingTop: 1,
-            }}
-          >
-            {card.type === 'issue' ? <BugIcon size={11} /> : <CheckSquareIcon size={11} />}
-          </span>
-          <span style={{ color: 'var(--feed-muted)', fontFamily: 'var(--vscode-editor-font-family)', fontSize: 10 }}>
-            #{card.id}
-          </span>
-          <span>{card.title}</span>
-        </div>
-        {card.securityReviewed && (
-          <span
-            title="Security reviewed"
-            style={{ display: 'inline-flex', color: 'var(--feed-success)', opacity: 0.75, flexShrink: 0 }}
-          >
-            <LockIcon size={11} />
-          </span>
-        )}
-      </div>
-      <div style={{
-        display: 'flex',
-        gap: 6,
-        marginTop: 4,
-        fontSize: 10,
-        color: 'var(--feed-muted)',
-        flexWrap: 'wrap',
-      }}>
-        {card.featureName && (
-          <span style={{ opacity: 0.8 }}>{card.featureName}</span>
-        )}
-        {card.currentPersona && (
-          <span style={{
-            padding: '0 5px',
-            borderRadius: 2,
-            background: 'rgba(127,127,127,0.15)',
-          }}>
-            @{card.currentPersona}
-          </span>
-        )}
-        {subStatus && (
-          <span style={{
-            padding: '0 5px',
-            borderRadius: 2,
-            background: 'rgba(220,150,80,0.15)',
-            color: 'var(--feed-warning)',
-          }}>
-            {subStatus}
-          </span>
-        )}
+      {/* Board (shared component) */}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <KanbanBoard cards={state.cards} loading={state.loading} onMove={onMove} onOpenCard={onOpenCard} />
       </div>
     </div>
   );
