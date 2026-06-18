@@ -198,6 +198,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   /**
+   * Resolve a session by its RAW server `session_id` (not the `session-<id>`
+   * tree-item id). Used by callers that only hold the session_id — e.g. the
+   * dashboard Live topology click — which don't know the tree-item prefix.
+   */
+  getSessionBySessionId(sessionId: string): VibeFlowSession | undefined {
+    return this.sessions.find(s => s.session_id === sessionId);
+  }
+
+  /**
    * Look up a worktree by its TreeItem id (`worktree::<path>`). Used by
    * the Open / Delete / Create-Session-Here context-menu commands.
    */
