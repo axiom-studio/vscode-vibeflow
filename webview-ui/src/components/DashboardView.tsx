@@ -7,9 +7,13 @@ import {
   Position,
   MarkerType,
   NodeToolbar,
+  Handle,
+  BaseEdge,
+  getBezierPath,
   type Node,
   type Edge,
   type NodeProps,
+  type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
@@ -1080,6 +1084,7 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
       nodes={graph.nodes}
       edges={graph.edges}
       nodeTypes={LIVE_NODE_TYPES}
+      edgeTypes={LIVE_EDGE_TYPES}
       fitView
       fitViewOptions={LIVE_FIT}
       proOptions={{ hideAttribution: true }}
@@ -1107,35 +1112,59 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
  * pushed BEFORE their children — React Flow requires that ordering. Manual
  * coords for now; P4 adds elk auto-layout.
  */
+const DOWNSTREAM_PERSONAS = new Set(['security_lead', 'qa_lead']);
+
 function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges: Edge[] } {
   if (!live) { return { nodes: [], edges: [] }; }
   const nodes: Node[] = [];
+  const edges: Edge[] = [];
+  const edgeType = prefersReducedMotion() ? 'default' : 'flow';
 
-  const ADV_W = 196;
-  live.advisory.forEach((a, i) => {
-    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: i * ADV_W, y: 0 }, data: { agent: a }, draggable: false, selectable: false });
+  // Three columns, left→right like the Explain pipeline: upstream advisory
+  // (specs) → branch lanes → downstream review (Security, QA).
+  const upstream = live.advisory.filter(a => !DOWNSTREAM_PERSONAS.has(a.personaKey));
+  const downstream = live.advisory.filter(a => DOWNSTREAM_PERSONAS.has(a.personaKey));
+
+  const ADV_H = 72, LEFT_X = 0, MID_X = 330, RIGHT_X = 690;
+  upstream.forEach((a, i) => {
+    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: LEFT_X, y: i * ADV_H }, data: { agent: a }, draggable: false, selectable: false });
+  });
+  downstream.forEach((a, i) => {
+    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: RIGHT_X, y: i * ADV_H }, data: { agent: a }, draggable: false, selectable: false });
   });
 
-  const LANE_W = 262, HEADER = 38, GAP = 8, AGENT_H = 76, TOP = 150, LANE_GAP = 290;
-  live.branches.forEach((b, bi) => {
+  const LANE_W = 262, HEADER = 38, GAP = 8, AGENT_H = 76, LANE_VGAP = 18;
+  const branchIds: string[] = [];
+  let y = 0;
+  live.branches.forEach(b => {
     const groupId = `br-${b.branch}`;
+    branchIds.push(groupId);
     const height = HEADER + GAP + b.agents.length * AGENT_H + GAP;
-    nodes.push({
-      id: groupId, type: 'liveBranch', position: { x: bi * LANE_GAP, y: TOP },
-      data: { branch: b.branch }, style: { width: LANE_W, height },
-      draggable: false, selectable: false,
-    });
+    nodes.push({ id: groupId, type: 'liveBranch', position: { x: MID_X, y }, data: { branch: b.branch }, style: { width: LANE_W, height }, draggable: false, selectable: false });
     b.agents.forEach((a, ai) => {
-      nodes.push({
-        id: `ag-${a.sessionId}`, type: 'liveAgent',
-        position: { x: 12, y: HEADER + GAP + ai * AGENT_H },
-        data: { agent: a }, parentId: groupId, extent: 'parent',
-        draggable: false, selectable: false,
-      });
+      nodes.push({ id: `ag-${a.sessionId}`, type: 'liveAgent', position: { x: 12, y: HEADER + GAP + ai * AGENT_H }, data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false });
     });
+    y += height + LANE_VGAP;
   });
 
-  return { nodes, edges: [] };
+  // Flow edges (only between sessions that are actually running): PM → each
+  // branch (specs); each branch → Security; Security → QA.
+  const pmIds = upstream.filter(a => a.personaKey === 'product_manager').map(a => `adv-${a.sessionId}`);
+  const secIds = downstream.filter(a => a.personaKey === 'security_lead').map(a => `adv-${a.sessionId}`);
+  const qaIds = downstream.filter(a => a.personaKey === 'qa_lead').map(a => `adv-${a.sessionId}`);
+  for (const pm of pmIds) { for (const bid of branchIds) { edges.push(liveEdge(pm, bid, edgeType)); } }
+  for (const bid of branchIds) { for (const sec of secIds) { edges.push(liveEdge(bid, sec, edgeType)); } }
+  for (const sec of secIds) { for (const qa of qaIds) { edges.push(liveEdge(sec, qa, edgeType)); } }
+
+  return { nodes, edges };
+}
+
+function liveEdge(source: string, target: string, type: string): Edge {
+  return {
+    id: `e-${source}-${target}`, source, target, type,
+    style: { stroke: 'color-mix(in oklab, var(--feed-link) 45%, transparent)', strokeWidth: 1.5 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--feed-link)', width: 14, height: 14 },
+  };
 }
 
 function livenessRing(liveness: LiveAgent['liveness'], personaColor: string): string {
@@ -1144,14 +1173,18 @@ function livenessRing(liveness: LiveAgent['liveness'], personaColor: string): st
 
 function LivenessAvatar({ agent, color, size }: { agent: LiveAgent; color: string; size: number }) {
   const ring = livenessRing(agent.liveness, color);
+  const isActive = agent.liveness === 'active';
   return (
     <div
+      // Active agents BREATHE — reuse the existing persona-pulse halo keyframe
+      // (already prefers-reduced-motion shielded). Stale/idle stay static.
+      className={isActive ? 'persona-pulse' : undefined}
       style={{
         width: size, height: size, borderRadius: '50%', flexShrink: 0, padding: 2,
         border: `2px solid ${ring}`,
-        boxShadow: agent.liveness === 'active' ? `0 0 9px color-mix(in oklab, ${color} 50%, transparent)` : 'none',
         opacity: agent.liveness === 'dead' ? 0.5 : 1,
         display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+        ...(isActive ? { ['--persona-pulse-color' as string]: color } : {}),
       }}
     >
       {agent.avatarUrl
@@ -1170,6 +1203,9 @@ function LivenessLabel({ liveness }: { liveness: LiveAgent['liveness'] }) {
   return <span style={{ color: c, fontWeight: 600 }}>{label}</span>;
 }
 
+/** Invisible handles — Live edges connect nodes programmatically (#2331). */
+const HIDDEN_HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight: 0, border: 'none', background: 'transparent', pointerEvents: 'none' as const };
+
 /**
  * Floating live-detail card for an agent node (#2330). Uses React Flow's
  * NodeToolbar so it renders OUTSIDE the canvas viewport — never clipped or
@@ -1186,7 +1222,7 @@ function AgentDetailToolbar({ agent, visible }: { agent: LiveAgent; visible: boo
         <DetailRow label="Branch" value={agent.branch} mono />
         {agent.agentModel && <DetailRow label="Model" value={agent.agentModel} />}
         {agent.workDir && <DetailRow label="Dir" value={agent.workDir} mono truncate />}
-        <DetailRow label="State" value={agent.liveness === 'active' ? 'Active' : agent.liveness === 'stale' ? 'Stale · branch lock freeing soon' : 'Idle'} />
+        <DetailRow label="State" value={agent.liveness === 'active' ? 'Active' : agent.liveness === 'stale' ? `Stale · last seen ${formatAge(agent.lastHeartbeat) ?? 'a while ago'}` : 'Idle'} />
         {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (
           <div style={{ marginTop: 6, color: 'var(--feed-warning)', fontWeight: 600 }}>⚠ Waiting for your input ({agent.pendingPrompts})</div>
         )}
@@ -1218,6 +1254,8 @@ function LiveAdvisoryNode({ data }: NodeProps) {
       onMouseLeave={() => setHov(false)}
       style={{ display: 'flex', alignItems: 'center', gap: 8, width: 168, padding: '7px 11px 7px 7px', borderRadius: 999, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}
     >
+      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
+      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
       <AgentDetailToolbar agent={agent} visible={hov} />
       <LivenessAvatar agent={agent} color={color} size={28} />
       <div style={{ minWidth: 0, flex: 1 }}>
@@ -1236,6 +1274,8 @@ function LiveBranchNode({ data }: NodeProps) {
   const branch = (data as { branch: string }).branch;
   return (
     <div style={{ width: '100%', height: '100%', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'color-mix(in oklab, var(--vscode-editor-background) 90%, transparent)' }}>
+      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
+      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderBottom: '1px solid var(--feed-border)', fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>
         <GitBranchIcon size={12} />
         <span style={{ fontFamily: 'var(--vscode-editor-font-family)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branch}</span>
@@ -1259,7 +1299,10 @@ function LiveAgentNode({ data }: NodeProps) {
       <LivenessAvatar agent={agent} color={color} size={34} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)' }}>{agent.characterName ?? agent.personaName}</div>
-        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 2 }}>{agent.personaName} · <LivenessLabel liveness={agent.liveness} /></div>
+        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 2 }}>
+          {agent.personaName} · <LivenessLabel liveness={agent.liveness} />
+          {agent.liveness === 'stale' && agent.lastHeartbeat ? ` · ${formatAge(agent.lastHeartbeat)}` : ''}
+        </div>
         {agent.lastMessage && (
           <div style={{ fontSize: 10, color: 'var(--feed-muted)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.lastMessage}</div>
         )}
@@ -1273,6 +1316,42 @@ const LIVE_NODE_TYPES = {
   liveBranch: LiveBranchNode,
   liveAgent: LiveAgentNode,
 };
+
+/** True when the user opted out of decorative motion. SMIL <animateMotion> is
+ *  NOT covered by the CSS reduced-motion shield, so the token is gated here. */
+function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/**
+ * A pipeline edge with a work-item TOKEN flowing along it (#2331) — the
+ * signature "alive pipeline" effect. The dot rides the bezier path via SVG
+ * <animateMotion>. Under prefers-reduced-motion we use a plain edge instead.
+ */
+function FlowEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style }: EdgeProps) {
+  const [path] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  return (
+    <>
+      <BaseEdge path={path} markerEnd={markerEnd} style={style} />
+      <circle r={3.2} fill="var(--feed-link)" style={{ filter: 'drop-shadow(0 0 3px var(--feed-link))' }}>
+        <animateMotion dur="2.6s" repeatCount="indefinite" path={path} />
+      </circle>
+    </>
+  );
+}
+
+const LIVE_EDGE_TYPES = { flow: FlowEdge };
+
+/** Relative age of a timestamp, for stale "last seen" hints. */
+function formatAge(iso: string | undefined): string | null {
+  if (!iso) { return null; }
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) { return null; }
+  const m = Math.floor(ms / 60000);
+  if (m < 1) { return 'just now'; }
+  if (m < 60) { return `${m}m ago`; }
+  return `${Math.floor(m / 60)}h ago`;
+}
 
 function Header({ snapshot, loading, onRefresh, kanbanEmbedded, onToggleKanban }: {
   snapshot: DashboardSnapshot | undefined;
