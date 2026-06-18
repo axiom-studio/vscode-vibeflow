@@ -64,6 +64,10 @@ export interface LiveAgent {
   liveness: 'active' | 'stale' | 'dead';
   lastMessage?: string;
   lastMessageAt?: string;
+  agentModel?: string;
+  workDir?: string;
+  lastHeartbeat?: string;
+  pendingPrompts?: number;
 }
 /** One git branch and the code agent(s) holding it (≤1 git-modifying per branch). */
 export interface LiveBranch {
@@ -524,6 +528,10 @@ function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): Li
     liveness: s.active ? 'active' : (s.stale ? 'stale' : 'dead'),
     lastMessage: s.last_message,
     lastMessageAt: s.last_message_at,
+    agentModel: s.agent_model,
+    workDir: s.git_worktree_path ?? s.working_directory,
+    lastHeartbeat: s.last_heartbeat,
+    pendingPrompts: s.pending_agent_prompt_count,
   });
 
   const advisory: LiveAgent[] = [];
