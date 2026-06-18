@@ -386,6 +386,9 @@ export type DashboardClientMessage =
   | { type: 'dashboardLoad' }
   | { type: 'dashboardRefresh' }
   | { type: 'dashboardFocusPersona'; payload: { personaKey: string; branch?: string } }
+  // Open a running session's chat-first panel (Live topology click). Sessions are
+  // tmux-backed, so there's no local terminal to focus — open the chat instead.
+  | { type: 'dashboardOpenSession'; payload: { sessionId: string } }
   // User clicked an item inside a persona node's queue hover-card — open it.
   | { type: 'dashboardOpenWorkItem'; payload: { workItemType: string; workItemId: number } }
   // Drag on the embedded Kanban board (when toggled on) — move an item's status.
