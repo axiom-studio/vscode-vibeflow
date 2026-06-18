@@ -4,6 +4,8 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
+  Controls,
+  MiniMap,
   Position,
   MarkerType,
   NodeToolbar,
@@ -1101,6 +1103,15 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
         gap={24}
         lineWidth={0.7}
       />
+      {/* Out-of-the-box controls: zoom +/- · fit · and an overview minimap. */}
+      <Controls showInteractive={false} />
+      <MiniMap
+        pannable
+        zoomable
+        nodeStrokeWidth={2}
+        maskColor="color-mix(in oklab, var(--vscode-foreground) 10%, transparent)"
+        style={{ background: 'var(--vscode-editor-background)', border: '1px solid var(--feed-border)' }}
+      />
     </ReactFlow>
   );
 }
@@ -1112,22 +1123,32 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
  * QA). Flow edges are INTRA-lane (agent→agent), so two PMs on different
  * branches never connect. Manual coords; P4 adds elk auto-layout.
  */
+// Sort order within each role column (pipeline order — Security before QA).
+const PERSONA_ORDER: Record<string, number> = {
+  product_manager: 0, ux_designer: 1, project_manager: 2, customer: 3,
+  architect: 0, developer: 1, principal_engineer: 2,
+  security_lead: 0, qa_lead: 1,
+};
+const byPersonaOrder = (a: LiveAgent, b: LiveAgent): number =>
+  (PERSONA_ORDER[a.personaKey] ?? 99) - (PERSONA_ORDER[b.personaKey] ?? 99);
+const eid = (a: LiveAgent): string => `ag-${a.sessionId}`;
+
 function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges: Edge[] } {
   if (!live) { return { nodes: [], edges: [] }; }
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const edgeType = prefersReducedMotion() ? 'default' : 'flow';
 
-  const HEADER = 38, TOP_PAD = 12, BOT_PAD = 12, AGENT_H = 62;
-  const COL_X = [14, 220, 426]; // upstream · code · review
-  const BAND_W = 626, BAND_VGAP = 22;
+  const HEADER = 40, TOP_PAD = 16, BOT_PAD = 16, AGENT_H = 74;
+  const COL_X = [16, 300, 584]; // upstream · code · review — generous gaps
+  const BAND_W = 786, BAND_VGAP = 30;
   let y = 0;
 
   live.branches.forEach(b => {
     const groupId = `br-${b.branch}`;
-    const up = b.agents.filter(a => a.role === 'upstream');
-    const code = b.agents.filter(a => a.role === 'code');
-    const rev = b.agents.filter(a => a.role === 'review');
+    const up = b.agents.filter(a => a.role === 'upstream').sort(byPersonaOrder);
+    const code = b.agents.filter(a => a.role === 'code').sort(byPersonaOrder);
+    const rev = b.agents.filter(a => a.role === 'review').sort(byPersonaOrder);
     const rows = Math.max(up.length, code.length, rev.length, 1);
     const height = HEADER + TOP_PAD + rows * AGENT_H + BOT_PAD;
 
@@ -1140,13 +1161,19 @@ function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges:
     place(code, COL_X[1]);
     place(rev, COL_X[2]);
 
-    // Intra-lane flow: upstream → code → review. When no builder is running
-    // yet, link specs straight to reviewers so the lane still reads as a flow.
-    if (code.length > 0) {
-      for (const u of up) { for (const c of code) { edges.push(liveEdge(`ag-${u.sessionId}`, `ag-${c.sessionId}`, edgeType)); } }
-      for (const c of code) { for (const r of rev) { edges.push(liveEdge(`ag-${c.sessionId}`, `ag-${r.sessionId}`, edgeType)); } }
+    // Sequential pipeline edges: upstream → code → Security → QA. When a stage
+    // is absent, bridge to the next present one so the flow still reads.
+    const sec = rev.filter(a => a.personaKey === 'security_lead');
+    const qa = rev.filter(a => a.personaKey !== 'security_lead');
+    const builders = code.length ? code : up;
+    if (code.length) {
+      for (const u of up) { for (const c of code) { edges.push(liveEdge(eid(u), eid(c), edgeType)); } }
+    }
+    if (sec.length) {
+      for (const s of builders) { for (const t of sec) { edges.push(liveEdge(eid(s), eid(t), edgeType)); } }
+      for (const s of sec) { for (const q of qa) { edges.push(liveEdge(eid(s), eid(q), edgeType)); } }
     } else {
-      for (const u of up) { for (const r of rev) { edges.push(liveEdge(`ag-${u.sessionId}`, `ag-${r.sessionId}`, edgeType)); } }
+      for (const s of builders) { for (const q of qa) { edges.push(liveEdge(eid(s), eid(q), edgeType)); } }
     }
 
     y += height + BAND_VGAP;
