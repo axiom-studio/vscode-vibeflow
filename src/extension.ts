@@ -865,7 +865,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.openSessionPanel', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
-      const session = id ? sessionsProvider.getSessionById(id) : undefined;
+      // Accept both a tree-item id (`session-<id>`, from tree clicks) and a raw
+      // session_id (from the dashboard Live topology click).
+      const session = id ? (sessionsProvider.getSessionById(id) ?? sessionsProvider.getSessionBySessionId(id)) : undefined;
       if (session) { sessionPanelManager.open(session); }
       else { vscode.window.showInformationMessage('VibeFlow: Session not found — it may have expired'); }
     }),
