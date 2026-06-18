@@ -62,6 +62,8 @@ export interface LiveAgent {
   branch: string;
   /** active ≤15m heartbeat · stale 15–30m (lock about to free) · dead otherwise. */
   liveness: 'active' | 'stale' | 'dead';
+  /** Pipeline column within a branch team: upstream (PM/UX) → code → review (Sec/QA). */
+  role: 'upstream' | 'code' | 'review';
   lastMessage?: string;
   lastMessageAt?: string;
   agentModel?: string;
@@ -69,14 +71,13 @@ export interface LiveAgent {
   lastHeartbeat?: string;
   pendingPrompts?: number;
 }
-/** One git branch and the code agent(s) holding it (≤1 git-modifying per branch). */
+/** One git branch and its WHOLE team — every session running on that branch. */
 export interface LiveBranch {
   branch: string;
   agents: LiveAgent[];
 }
-/** Live-mode snapshot: project-level advisory agents + per-branch code agents. */
+/** Live-mode snapshot: every running session grouped into its branch's team. */
 export interface LiveSnapshot {
-  advisory: LiveAgent[];
   branches: LiveBranch[];
   total: number;
 }
@@ -517,6 +518,15 @@ function describeRejection(reason: unknown): string {
  * project-level advisory agent. Only currently-relevant sessions (active OR
  * stale) are included — fully-dead sessions are dropped so the view stays live.
  */
+const REVIEW_PERSONAS = new Set<string>(['security_lead', 'qa_lead']);
+
+/** Pipeline column for a persona within its branch team. */
+function roleForPersona(personaKey: string): 'upstream' | 'code' | 'review' {
+  if (CODE_AGENT_PERSONAS.has(personaKey)) { return 'code'; }
+  if (REVIEW_PERSONAS.has(personaKey)) { return 'review'; }
+  return 'upstream';
+}
+
 function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): LiveSnapshot {
   const toAgent = (s: VibeFlowSession): LiveAgent => ({
     sessionId: s.session_id,
@@ -526,6 +536,7 @@ function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): Li
     avatarUrl: s.avatar_path && serverUrl ? `${serverUrl}${s.avatar_path}` : undefined,
     branch: s.git_branch,
     liveness: s.active ? 'active' : (s.stale ? 'stale' : 'dead'),
+    role: roleForPersona(s.persona_key),
     lastMessage: s.last_message,
     lastMessageAt: s.last_message_at,
     agentModel: s.agent_model,
@@ -534,27 +545,24 @@ function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): Li
     pendingPrompts: s.pending_agent_prompt_count,
   });
 
-  const advisory: LiveAgent[] = [];
+  // Group EVERY live session into its branch's team — advisory + code agents
+  // alike. Each branch is a self-contained crew; no project-level rail, so two
+  // PMs on different branches simply land in different lanes (no duplication).
   const branchMap = new Map<string, LiveAgent[]>();
   let total = 0;
   for (const s of sessions) {
     if (!s.active && !s.stale) { continue; } // drop fully-dead sessions
     total++;
-    const agent = toAgent(s);
-    if (CODE_AGENT_PERSONAS.has(s.persona_key)) {
-      const list = branchMap.get(s.git_branch) ?? [];
-      list.push(agent);
-      branchMap.set(s.git_branch, list);
-    } else {
-      advisory.push(agent);
-    }
+    const list = branchMap.get(s.git_branch) ?? [];
+    list.push(toAgent(s));
+    branchMap.set(s.git_branch, list);
   }
 
   const branches: LiveBranch[] = [...branchMap.entries()]
     .map(([branch, agents]) => ({ branch, agents }))
     .sort((a, b) => a.branch.localeCompare(b.branch));
 
-  return { advisory, branches, total };
+  return { branches, total };
 }
 
 function derivePersonaStatus(sessions: VibeFlowSession[]): Record<string, PersonaStatus> {
