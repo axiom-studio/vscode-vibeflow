@@ -30,6 +30,21 @@ interface PersonaQueueItem {
   priority?: string;
 }
 
+/** Live Agent Topology (feature 472) — mirrors host LiveAgent/LiveBranch/LiveSnapshot. */
+interface LiveAgent {
+  sessionId: string;
+  personaKey: string;
+  personaName: string;
+  characterName?: string;
+  avatarUrl?: string;
+  branch: string;
+  liveness: 'active' | 'stale' | 'dead';
+  lastMessage?: string;
+  lastMessageAt?: string;
+}
+interface LiveBranch { branch: string; agents: LiveAgent[]; }
+interface LiveSnapshot { advisory: LiveAgent[]; branches: LiveBranch[]; total: number; }
+
 // Branch readiness card is hidden in v1.1; the host still sends this
 // data so the card can return without a wire change. Kept as a partial
 // model (no `items[]` until the card is back) to satisfy noUnusedLocals.
@@ -66,6 +81,8 @@ interface DashboardSnapshot {
   // Cards for the optional embedded Kanban board (mirrors host KanbanCard).
   kanbanCards: KanbanCard[];
   sessions: { active: number; stale: number };
+  // Per-session, per-branch live view (Live topology mode).
+  live: LiveSnapshot;
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
   workSummary: { total_commits: number; lines_added: number; lines_deleted: number; total_seconds: number } | undefined;
@@ -263,6 +280,8 @@ export function DashboardView() {
 
   // Optional embedded Kanban board (toggled from the header). In-memory v1.
   const [kanbanEmbedded, setKanbanEmbedded] = useState(false);
+  // Explain (static teaching chart) ↔ Live (per-branch running sessions). #2329
+  const [topologyMode, setTopologyMode] = useState<'explain' | 'live'>('explain');
   const toggleKanban = useCallback(() => setKanbanEmbedded(v => !v), []);
   const onKanbanMove = useCallback((itemType: 'todo' | 'issue', itemId: number, newStatus: string) => {
     vscode.postMessage({ type: 'dashboardKanbanMove', payload: { itemType, itemId, newStatus } });
@@ -465,28 +484,38 @@ export function DashboardView() {
       {/* Topology */}
       <Section
         title="Agent Topology"
-        subtitle="Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit."
+        subtitle={topologyMode === 'explain'
+          ? 'Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit.'
+          : 'What’s running right now · advisory personas serve the whole project; each active branch shows the one code agent holding it.'}
         actions={
-          <button
-            onClick={onResetLayout}
-            title="Discard your dragged layout and restore the default positions."
-            className="transition-all duration-150 ease-out active:scale-[0.97] hover:bg-[var(--vscode-list-hoverBackground)]"
-            style={{
-              fontSize: 11,
-              padding: '5px 10px',
-              borderRadius: 4,
-              border: '1px solid var(--feed-border)',
-              background: 'transparent',
-              color: 'var(--feed-muted)',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            Reset layout
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <TopologyModeToggle mode={topologyMode} onChange={setTopologyMode} />
+            {topologyMode === 'explain' && (
+              <button
+                onClick={onResetLayout}
+                title="Discard your dragged layout and restore the default positions."
+                className="transition-all duration-150 ease-out active:scale-[0.97] hover:bg-[var(--vscode-list-hoverBackground)]"
+                style={{
+                  fontSize: 11,
+                  padding: '5px 10px',
+                  borderRadius: 4,
+                  border: '1px solid var(--feed-border)',
+                  background: 'transparent',
+                  color: 'var(--feed-muted)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                Reset layout
+              </button>
+            )}
+          </div>
         }
       >
         <div style={{ height: 500, width: '100%', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)', overflow: 'hidden' }}>
+          {topologyMode === 'live' ? (
+            <LiveTopology live={state.snapshot?.live} />
+          ) : (
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -521,6 +550,7 @@ export function DashboardView() {
               lineWidth={0.7}
             />
           </ReactFlow>
+          )}
         </div>
       </Section>
 
@@ -983,6 +1013,168 @@ function nodeStyle(status: PersonaStatus, isCodeAgent: boolean): React.CSSProper
     boxShadow: status === 'active' ? activeShadow : restingShadow,
     transition: 'box-shadow 160ms ease-out, transform 160ms ease-out',
   };
+}
+
+/**
+ * Explain ↔ Live segmented toggle for the topology section (#2329). Explain is
+ * the static teaching chart; Live shows running sessions grouped by branch.
+ */
+function TopologyModeToggle({ mode, onChange }: { mode: 'explain' | 'live'; onChange: (m: 'explain' | 'live') => void }) {
+  return (
+    <div style={{ display: 'inline-flex', border: '1px solid var(--feed-border)', borderRadius: 6, overflow: 'hidden' }}>
+      {(['explain', 'live'] as const).map(m => (
+        <button
+          key={m}
+          onClick={() => onChange(m)}
+          aria-pressed={mode === m}
+          title={m === 'explain'
+            ? 'How the personas and pipeline work (teaching view)'
+            : 'What’s running right now — sessions grouped by branch'}
+          style={{
+            fontSize: 11, fontWeight: 600, padding: '5px 11px', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 5,
+            background: mode === m ? 'color-mix(in oklab, var(--feed-link) 18%, transparent)' : 'transparent',
+            color: mode === m ? 'var(--feed-link)' : 'var(--feed-muted)',
+          }}
+        >
+          {m === 'live' && (
+            <span
+              className={mode === 'live' ? 'persona-pulse' : undefined}
+              style={{ width: 6, height: 6, borderRadius: '50%', background: mode === 'live' ? 'var(--feed-success)' : 'var(--feed-muted)' }}
+            />
+          )}
+          {m === 'explain' ? 'Explain' : 'Live'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Live Agent Topology — P1 render (#2329). A project-level advisory rail + one
+ * lane per active branch (the code agent holding it), each with a liveness ring.
+ * CSS layout for now; P2 migrates this to React Flow group nodes + P3 adds the
+ * flowing-token motion. Mirrors the host LiveSnapshot.
+ */
+function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
+  if (!live || live.total === 0) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--feed-muted)' }}>
+        <div style={{ fontSize: 26, opacity: 0.45 }}>◍</div>
+        <div style={{ fontSize: 13 }}>No agents are running right now.</div>
+        <div style={{ fontSize: 11, opacity: 0.7 }}>Launch a session and it’ll appear here live.</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ height: '100%', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--feed-muted)', marginBottom: 9 }}>
+          Advisory · project-level
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {live.advisory.length === 0
+            ? <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.6 }}>No advisory agents running.</span>
+            : live.advisory.map(a => <LiveAgentChip key={a.sessionId} agent={a} />)}
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--feed-muted)', marginBottom: 9 }}>
+          Branches · {live.branches.length} active · one code agent each
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+          {live.branches.length === 0
+            ? <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.6 }}>No code agents on any branch.</span>
+            : live.branches.map(b => <LiveBranchLane key={b.branch} branch={b} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function livenessRing(liveness: LiveAgent['liveness'], personaColor: string): string {
+  return liveness === 'active' ? personaColor : liveness === 'stale' ? 'var(--feed-warning)' : 'var(--feed-muted)';
+}
+
+function LivenessAvatar({ agent, color, size }: { agent: LiveAgent; color: string; size: number }) {
+  const ring = livenessRing(agent.liveness, color);
+  return (
+    <div
+      style={{
+        width: size, height: size, borderRadius: '50%', flexShrink: 0, padding: 2,
+        border: `2px solid ${ring}`,
+        boxShadow: agent.liveness === 'active' ? `0 0 9px color-mix(in oklab, ${color} 50%, transparent)` : 'none',
+        opacity: agent.liveness === 'dead' ? 0.5 : 1,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box',
+      }}
+    >
+      {agent.avatarUrl
+        ? <img src={agent.avatarUrl} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+        : <span style={{ fontSize: size * 0.4, fontWeight: 700, color }}>{(agent.characterName ?? agent.personaName).charAt(0).toUpperCase()}</span>}
+    </div>
+  );
+}
+
+function LivenessLabel({ liveness }: { liveness: LiveAgent['liveness'] }) {
+  const [label, c] = liveness === 'active'
+    ? ['Active', 'var(--feed-success, #3fb950)']
+    : liveness === 'stale'
+      ? ['Stale', 'var(--feed-warning)']
+      : ['Idle', 'var(--feed-muted)'];
+  return <span style={{ color: c, fontWeight: 600 }}>{label}</span>;
+}
+
+function LiveAgentChip({ agent }: { agent: LiveAgent }) {
+  const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
+  return (
+    <div
+      title={agent.lastMessage ?? agent.personaName}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 11px 5px 5px',
+        borderRadius: 999, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)',
+      }}
+    >
+      <LivenessAvatar agent={agent} color={color} size={26} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
+        <div style={{ fontSize: 10, color: 'var(--feed-muted)', whiteSpace: 'nowrap' }}>{agent.personaName}</div>
+      </div>
+    </div>
+  );
+}
+
+function LiveBranchLane({ branch }: { branch: LiveBranch }) {
+  return (
+    <div style={{ flex: '0 0 244px', minWidth: 244, borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderBottom: '1px solid var(--feed-border)', fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>
+        <GitBranchIcon size={12} />
+        <span style={{ fontFamily: 'var(--vscode-editor-font-family)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branch.branch}</span>
+      </div>
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {branch.agents.map(a => <LiveBranchAgent key={a.sessionId} agent={a} />)}
+      </div>
+    </div>
+  );
+}
+
+function LiveBranchAgent({ agent }: { agent: LiveAgent }) {
+  const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+      <LivenessAvatar agent={agent} color={color} size={34} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)' }}>{agent.characterName ?? agent.personaName}</div>
+        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 3 }}>
+          {agent.personaName} · <LivenessLabel liveness={agent.liveness} />
+        </div>
+        {agent.lastMessage && (
+          <div style={{ fontSize: 10, color: 'var(--feed-muted)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+            {agent.lastMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function Header({ snapshot, loading, onRefresh, kanbanEmbedded, onToggleKanban }: {

@@ -28,6 +28,13 @@ export const DASHBOARD_PERSONAS = [
   'customer',
 ] as const;
 
+/**
+ * The git-modifying personas — exactly ONE runs per branch (the lock holder,
+ * per axiomcloud GitModifyingPersonas). Everyone else is a project-level
+ * advisory persona. Drives the Live topology's branch-lane grouping.
+ */
+export const CODE_AGENT_PERSONAS = new Set<string>(['developer', 'architect', 'principal_engineer']);
+
 type PersonaKey = typeof DASHBOARD_PERSONAS[number];
 type PersonaStatus = 'active' | 'stale' | 'inactive';
 
@@ -38,6 +45,36 @@ export interface PersonaQueueItem {
   title: string;
   status: string;
   priority?: string;
+}
+
+/**
+ * Live Agent Topology (feature 472, todo #2329). One RUNNING agent session as
+ * the Live mode renders it — distinct from Explain mode's per-persona collapse.
+ * Per-session, so concurrency (2 PMs, N branches each with their own code agent)
+ * shows up instead of collapsing into one node.
+ */
+export interface LiveAgent {
+  sessionId: string;
+  personaKey: string;
+  personaName: string;
+  characterName?: string;
+  avatarUrl?: string;
+  branch: string;
+  /** active ≤15m heartbeat · stale 15–30m (lock about to free) · dead otherwise. */
+  liveness: 'active' | 'stale' | 'dead';
+  lastMessage?: string;
+  lastMessageAt?: string;
+}
+/** One git branch and the code agent(s) holding it (≤1 git-modifying per branch). */
+export interface LiveBranch {
+  branch: string;
+  agents: LiveAgent[];
+}
+/** Live-mode snapshot: project-level advisory agents + per-branch code agents. */
+export interface LiveSnapshot {
+  advisory: LiveAgent[];
+  branches: LiveBranch[];
+  total: number;
 }
 
 interface DashboardSnapshot {
@@ -91,6 +128,8 @@ interface DashboardSnapshot {
    */
   kanbanCards: KanbanCard[];
   sessions: { active: number; stale: number };
+  /** Per-session, per-branch live view (Live topology mode). */
+  live: LiveSnapshot;
   todos: { done: number; in_progress: number; ready: number; planning: number; in_review: number };
   issues: { done: number; open: number };
   workSummary: { total_commits: number; lines_added: number; lines_deleted: number; total_seconds: number } | undefined;
@@ -433,6 +472,7 @@ async function composeSnapshot(
     personaQueueItems: collectPersonaQueueItems(swimlane, project.projectId, qaItems),
     kanbanCards: swimlane ? flattenForProject(swimlane, project.projectId) : [],
     sessions: tallySessions(sessions),
+    live: collectLiveSnapshot(sessions, client.getBaseUrl()),
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
     workSummary: summary
@@ -465,6 +505,48 @@ function countPendingQA(items: Array<{ qa_verified?: boolean; security_reviewed?
 function describeRejection(reason: unknown): string {
   if (reason instanceof Error) { return reason.message; }
   return String(reason);
+}
+
+/**
+ * Build the Live-mode snapshot from the raw session list (feature 472). Code
+ * agents (git-modifying) group into branch lanes; everyone else is a
+ * project-level advisory agent. Only currently-relevant sessions (active OR
+ * stale) are included — fully-dead sessions are dropped so the view stays live.
+ */
+function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): LiveSnapshot {
+  const toAgent = (s: VibeFlowSession): LiveAgent => ({
+    sessionId: s.session_id,
+    personaKey: s.persona_key,
+    personaName: s.persona_name ?? s.persona_key,
+    characterName: s.character_name,
+    avatarUrl: s.avatar_path && serverUrl ? `${serverUrl}${s.avatar_path}` : undefined,
+    branch: s.git_branch,
+    liveness: s.active ? 'active' : (s.stale ? 'stale' : 'dead'),
+    lastMessage: s.last_message,
+    lastMessageAt: s.last_message_at,
+  });
+
+  const advisory: LiveAgent[] = [];
+  const branchMap = new Map<string, LiveAgent[]>();
+  let total = 0;
+  for (const s of sessions) {
+    if (!s.active && !s.stale) { continue; } // drop fully-dead sessions
+    total++;
+    const agent = toAgent(s);
+    if (CODE_AGENT_PERSONAS.has(s.persona_key)) {
+      const list = branchMap.get(s.git_branch) ?? [];
+      list.push(agent);
+      branchMap.set(s.git_branch, list);
+    } else {
+      advisory.push(agent);
+    }
+  }
+
+  const branches: LiveBranch[] = [...branchMap.entries()]
+    .map(([branch, agents]) => ({ branch, agents }))
+    .sort((a, b) => a.branch.localeCompare(b.branch));
+
+  return { advisory, branches, total };
 }
 
 function derivePersonaStatus(sessions: VibeFlowSession[]): Record<string, PersonaStatus> {
