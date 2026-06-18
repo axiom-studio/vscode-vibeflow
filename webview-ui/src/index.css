@@ -393,3 +393,26 @@ select:focus-visible {
     animation: spin-360 1s linear infinite !important;
   }
 }
+
+/*
+ * Live topology React Flow Controls (#2332). The library's default control
+ * buttons are light-on-light — invisible in dark VS Code themes. Repaint them
+ * with theme tokens so the zoom +/- · fit buttons read in every theme.
+ */
+.react-flow__controls {
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--vscode-editor-background);
+  border-bottom: 1px solid var(--feed-border);
+  fill: var(--feed-fg);
+  color: var(--feed-fg);
+}
+.react-flow__controls-button:hover {
+  background: var(--vscode-list-hoverBackground, color-mix(in oklab, var(--vscode-foreground) 12%, transparent));
+}
+.react-flow__controls-button svg {
+  fill: var(--feed-fg);
+}
