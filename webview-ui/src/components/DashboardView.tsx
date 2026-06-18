@@ -45,6 +45,7 @@ interface LiveAgent {
   avatarUrl?: string;
   branch: string;
   liveness: 'active' | 'stale' | 'dead';
+  role: 'upstream' | 'code' | 'review';
   lastMessage?: string;
   lastMessageAt?: string;
   agentModel?: string;
@@ -53,7 +54,7 @@ interface LiveAgent {
   pendingPrompts?: number;
 }
 interface LiveBranch { branch: string; agents: LiveAgent[]; }
-interface LiveSnapshot { advisory: LiveAgent[]; branches: LiveBranch[]; total: number; }
+interface LiveSnapshot { branches: LiveBranch[]; total: number; }
 
 // Branch readiness card is hidden in v1.1; the host still sends this
 // data so the card can return without a wire change. Kept as a partial
@@ -496,7 +497,7 @@ export function DashboardView() {
         title="Agent Topology"
         subtitle={topologyMode === 'explain'
           ? 'Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit.'
-          : 'What’s running right now · advisory personas serve the whole project; each active branch shows the one code agent holding it.'}
+          : 'What’s running right now · every branch shows its own team — upstream (PM/UX) → code → review (Security/QA). Hover an agent for detail.'}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TopologyModeToggle mode={topologyMode} onChange={setTopologyMode} />
@@ -1061,10 +1062,9 @@ function TopologyModeToggle({ mode, onChange }: { mode: 'explain' | 'live'; onCh
 }
 
 /**
- * Live Agent Topology — P1 render (#2329). A project-level advisory rail + one
- * lane per active branch (the code agent holding it), each with a liveness ring.
- * CSS layout for now; P2 migrates this to React Flow group nodes + P3 adds the
- * flowing-token motion. Mirrors the host LiveSnapshot.
+ * Live Agent Topology (feature 472). One team-per-branch band per active branch
+ * — its whole crew laid out as an upstream→code→review mini-pipeline, with
+ * flowing-token edges + breathing liveness rings. Mirrors the host LiveSnapshot.
  */
 const LIVE_FIT = { padding: 0.18 };
 
@@ -1106,55 +1106,51 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
 }
 
 /**
- * Lay out the live snapshot as React Flow nodes: an advisory rail across the
- * top, then one group (sub-flow) node per active branch with its code-agent
- * children inside (`parentId` + `extent:'parent'`). Parent group nodes are
- * pushed BEFORE their children — React Flow requires that ordering. Manual
- * coords for now; P4 adds elk auto-layout.
+ * Lay out the live snapshot as team-per-branch bands (#2333): one group node
+ * per branch, and inside it a 3-column mini-pipeline of THAT branch's team —
+ * upstream (PM/UX/PMgr/Customer) → code (the lock holder) → review (Security,
+ * QA). Flow edges are INTRA-lane (agent→agent), so two PMs on different
+ * branches never connect. Manual coords; P4 adds elk auto-layout.
  */
-const DOWNSTREAM_PERSONAS = new Set(['security_lead', 'qa_lead']);
-
 function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges: Edge[] } {
   if (!live) { return { nodes: [], edges: [] }; }
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const edgeType = prefersReducedMotion() ? 'default' : 'flow';
 
-  // Three columns, left→right like the Explain pipeline: upstream advisory
-  // (specs) → branch lanes → downstream review (Security, QA).
-  const upstream = live.advisory.filter(a => !DOWNSTREAM_PERSONAS.has(a.personaKey));
-  const downstream = live.advisory.filter(a => DOWNSTREAM_PERSONAS.has(a.personaKey));
-
-  const ADV_H = 72, LEFT_X = 0, MID_X = 330, RIGHT_X = 690;
-  upstream.forEach((a, i) => {
-    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: LEFT_X, y: i * ADV_H }, data: { agent: a }, draggable: false, selectable: false });
-  });
-  downstream.forEach((a, i) => {
-    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: RIGHT_X, y: i * ADV_H }, data: { agent: a }, draggable: false, selectable: false });
-  });
-
-  const LANE_W = 262, HEADER = 38, GAP = 8, AGENT_H = 76, LANE_VGAP = 18;
-  const branchIds: string[] = [];
+  const HEADER = 38, TOP_PAD = 12, BOT_PAD = 12, AGENT_H = 62;
+  const COL_X = [14, 220, 426]; // upstream · code · review
+  const BAND_W = 626, BAND_VGAP = 22;
   let y = 0;
+
   live.branches.forEach(b => {
     const groupId = `br-${b.branch}`;
-    branchIds.push(groupId);
-    const height = HEADER + GAP + b.agents.length * AGENT_H + GAP;
-    nodes.push({ id: groupId, type: 'liveBranch', position: { x: MID_X, y }, data: { branch: b.branch }, style: { width: LANE_W, height }, draggable: false, selectable: false });
-    b.agents.forEach((a, ai) => {
-      nodes.push({ id: `ag-${a.sessionId}`, type: 'liveAgent', position: { x: 12, y: HEADER + GAP + ai * AGENT_H }, data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false });
-    });
-    y += height + LANE_VGAP;
-  });
+    const up = b.agents.filter(a => a.role === 'upstream');
+    const code = b.agents.filter(a => a.role === 'code');
+    const rev = b.agents.filter(a => a.role === 'review');
+    const rows = Math.max(up.length, code.length, rev.length, 1);
+    const height = HEADER + TOP_PAD + rows * AGENT_H + BOT_PAD;
 
-  // Flow edges (only between sessions that are actually running): PM → each
-  // branch (specs); each branch → Security; Security → QA.
-  const pmIds = upstream.filter(a => a.personaKey === 'product_manager').map(a => `adv-${a.sessionId}`);
-  const secIds = downstream.filter(a => a.personaKey === 'security_lead').map(a => `adv-${a.sessionId}`);
-  const qaIds = downstream.filter(a => a.personaKey === 'qa_lead').map(a => `adv-${a.sessionId}`);
-  for (const pm of pmIds) { for (const bid of branchIds) { edges.push(liveEdge(pm, bid, edgeType)); } }
-  for (const bid of branchIds) { for (const sec of secIds) { edges.push(liveEdge(bid, sec, edgeType)); } }
-  for (const sec of secIds) { for (const qa of qaIds) { edges.push(liveEdge(sec, qa, edgeType)); } }
+    nodes.push({ id: groupId, type: 'liveBranch', position: { x: 0, y }, data: { branch: b.branch, count: b.agents.length }, style: { width: BAND_W, height }, draggable: false, selectable: false });
+
+    const place = (list: LiveAgent[], colX: number) => list.forEach((a, i) => {
+      nodes.push({ id: `ag-${a.sessionId}`, type: 'liveAgent', position: { x: colX, y: HEADER + TOP_PAD + i * AGENT_H }, data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false });
+    });
+    place(up, COL_X[0]);
+    place(code, COL_X[1]);
+    place(rev, COL_X[2]);
+
+    // Intra-lane flow: upstream → code → review. When no builder is running
+    // yet, link specs straight to reviewers so the lane still reads as a flow.
+    if (code.length > 0) {
+      for (const u of up) { for (const c of code) { edges.push(liveEdge(`ag-${u.sessionId}`, `ag-${c.sessionId}`, edgeType)); } }
+      for (const c of code) { for (const r of rev) { edges.push(liveEdge(`ag-${c.sessionId}`, `ag-${r.sessionId}`, edgeType)); } }
+    } else {
+      for (const u of up) { for (const r of rev) { edges.push(liveEdge(`ag-${u.sessionId}`, `ag-${r.sessionId}`, edgeType)); } }
+    }
+
+    y += height + BAND_VGAP;
+  });
 
   return { nodes, edges };
 }
@@ -1243,48 +1239,22 @@ function DetailRow({ label, value, mono, truncate }: { label: string; value: str
   );
 }
 
-/** Advisory persona node (project-level rail). */
-function LiveAdvisoryNode({ data }: NodeProps) {
-  const agent = (data as { agent: LiveAgent }).agent;
-  const [hov, setHov] = useState(false);
-  const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
-  return (
-    <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: 168, padding: '7px 11px 7px 7px', borderRadius: 999, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}
-    >
-      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
-      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
-      <AgentDetailToolbar agent={agent} visible={hov} />
-      <LivenessAvatar agent={agent} color={color} size={28} />
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
-        <div style={{ fontSize: 10, color: 'var(--feed-muted)', whiteSpace: 'nowrap' }}>{agent.personaName}</div>
-      </div>
-      {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (
-        <span title="Waiting for your input" style={{ marginLeft: 2, color: 'var(--feed-warning)', fontWeight: 800, flexShrink: 0 }}>!</span>
-      )}
-    </div>
-  );
-}
-
-/** Branch lane — a group/sub-flow container; its code-agent children render inside. */
+/** Branch team band — a group/sub-flow container; its team renders inside. */
 function LiveBranchNode({ data }: NodeProps) {
-  const branch = (data as { branch: string }).branch;
+  const { branch, count } = data as { branch: string; count: number };
   return (
-    <div style={{ width: '100%', height: '100%', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'color-mix(in oklab, var(--vscode-editor-background) 90%, transparent)' }}>
-      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
-      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderBottom: '1px solid var(--feed-border)', fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>
+    <div style={{ width: '100%', height: '100%', borderRadius: 10, border: '1px solid var(--feed-border)', background: 'color-mix(in oklab, var(--vscode-editor-background) 92%, transparent)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderBottom: '1px solid var(--feed-border)', fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>
         <GitBranchIcon size={12} />
         <span style={{ fontFamily: 'var(--vscode-editor-font-family)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branch}</span>
+        <span style={{ marginLeft: 'auto', fontWeight: 400, color: 'var(--feed-muted)' }}>{count} agent{count === 1 ? '' : 's'}</span>
       </div>
     </div>
   );
 }
 
-/** Code-agent card (child of a branch group node). */
+/** A team member card (child of a branch band). One node type for every role;
+ *  hidden handles carry the intra-lane upstream→code→review flow edges. */
 function LiveAgentNode({ data }: NodeProps) {
   const agent = (data as { agent: LiveAgent }).agent;
   const [hov, setHov] = useState(false);
@@ -1293,26 +1263,27 @@ function LiveAgentNode({ data }: NodeProps) {
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: 236 }}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: 186, padding: '4px 8px 4px 4px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}
     >
+      <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
+      <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
       <AgentDetailToolbar agent={agent} visible={hov} />
-      <LivenessAvatar agent={agent} color={color} size={34} />
+      <LivenessAvatar agent={agent} color={color} size={30} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)' }}>{agent.characterName ?? agent.personaName}</div>
-        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 2 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
+        <div style={{ fontSize: 9.5, color: 'var(--feed-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {agent.personaName} · <LivenessLabel liveness={agent.liveness} />
           {agent.liveness === 'stale' && agent.lastHeartbeat ? ` · ${formatAge(agent.lastHeartbeat)}` : ''}
         </div>
-        {agent.lastMessage && (
-          <div style={{ fontSize: 10, color: 'var(--feed-muted)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.lastMessage}</div>
-        )}
       </div>
+      {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (
+        <span title="Waiting for your input" style={{ color: 'var(--feed-warning)', fontWeight: 800, flexShrink: 0 }}>!</span>
+      )}
     </div>
   );
 }
 
 const LIVE_NODE_TYPES = {
-  liveAdvisory: LiveAdvisoryNode,
   liveBranch: LiveBranchNode,
   liveAgent: LiveAgentNode,
 };
