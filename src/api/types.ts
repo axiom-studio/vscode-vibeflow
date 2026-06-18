@@ -92,6 +92,10 @@ export interface VibeFlowSession {
   created_at: string;
   active: boolean;
   stale?: boolean;
+  // Liveness + attention signals from /sessions/active (handlers/vibeflow_sessions.go).
+  last_heartbeat?: string;
+  pending_prompt_count?: number;
+  pending_agent_prompt_count?: number;
 }
 
 /**
