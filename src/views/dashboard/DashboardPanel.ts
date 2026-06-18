@@ -241,10 +241,11 @@ export class DashboardPanel {
           vscode.window.showWarningMessage(`VibeFlow: unknown persona "${key}".`);
           return;
         }
-        const found = this.terminalRegistry.focus(key, this.project.gitBranch);
+        const branch = msg.payload.branch ?? this.project.gitBranch;
+        const found = this.terminalRegistry.focus(key, branch);
         if (!found) {
           const choice = await vscode.window.showInformationMessage(
-            `VibeFlow: No local terminal for ${key} on ${this.project.gitBranch}. Launch a session first.`,
+            `VibeFlow: No local terminal for ${key} on ${branch}. Launch a session first.`,
             'Launch Session',
             'Refresh',
           );

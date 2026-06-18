@@ -1079,6 +1079,14 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
     void buildLiveGraphElk(live).then(g => { if (!cancelled) { setGraph(g); } });
     return () => { cancelled = true; };
   }, [live]);
+  // Click an agent → focus THAT session's terminal (its persona on its branch).
+  const onNodeClick = useCallback((_e: unknown, node: Node) => {
+    if (node.type !== 'liveAgent') { return; }
+    const agent = (node.data as { agent?: LiveAgent }).agent;
+    if (agent) {
+      vscode.postMessage({ type: 'dashboardFocusPersona', payload: { personaKey: agent.personaKey, branch: agent.branch } });
+    }
+  }, []);
   if (!live || live.total === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--feed-muted)' }}>
@@ -1094,6 +1102,7 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
       edges={graph.edges}
       nodeTypes={LIVE_NODE_TYPES}
       edgeTypes={LIVE_EDGE_TYPES}
+      onNodeClick={onNodeClick}
       fitView
       fitViewOptions={LIVE_FIT}
       proOptions={{ hideAttribution: true }}
@@ -1142,22 +1151,27 @@ const byRoleThenPersona = (a: LiveAgent, b: LiveAgent): number =>
   (ROLE_RANK[a.role] - ROLE_RANK[b.role]) || ((PERSONA_ORDER[a.personaKey] ?? 99) - (PERSONA_ORDER[b.personaKey] ?? 99));
 const eid = (a: LiveAgent): string => `ag-${a.sessionId}`;
 
-/** Sequential pipeline edges for one branch team: upstream → code → Security →
- *  QA. Bridges to the next present stage when one is missing. */
+/**
+ * Pipeline edges for one branch team as a chain of present stages:
+ * [Customer + UX] → [Product Manager] → [code] → [Security] → [QA]. Customer/UX
+ * feed the PM (who synthesizes specs), then PM hands to the builder. Each
+ * present stage links to the next present one (empty stages are skipped, so the
+ * flow still reads when a role is absent). project_manager is an OBSERVER and is
+ * deliberately excluded — it gets no pipeline edges.
+ */
 function computeBandEdges(agents: LiveAgent[]): Array<{ source: string; target: string }> {
-  const up = agents.filter(a => a.role === 'upstream');
-  const code = agents.filter(a => a.role === 'code');
-  const rev = agents.filter(a => a.role === 'review');
-  const sec = rev.filter(a => a.personaKey === 'security_lead');
-  const qa = rev.filter(a => a.personaKey !== 'security_lead');
-  const builders = code.length ? code : up;
+  const of = (k: string) => agents.filter(a => a.personaKey === k);
+  const stages: LiveAgent[][] = [
+    [...of('customer'), ...of('ux_designer')],
+    of('product_manager'),
+    agents.filter(a => a.role === 'code'),
+    of('security_lead'),
+    of('qa_lead'),
+  ].filter(s => s.length > 0);
+
   const out: Array<{ source: string; target: string }> = [];
-  if (code.length) { for (const u of up) { for (const c of code) { out.push({ source: eid(u), target: eid(c) }); } } }
-  if (sec.length) {
-    for (const s of builders) { for (const t of sec) { out.push({ source: eid(s), target: eid(t) }); } }
-    for (const s of sec) { for (const q of qa) { out.push({ source: eid(s), target: eid(q) }); } }
-  } else {
-    for (const s of builders) { for (const q of qa) { out.push({ source: eid(s), target: eid(q) }); } }
+  for (let i = 0; i < stages.length - 1; i++) {
+    for (const s of stages[i]) { for (const t of stages[i + 1]) { out.push({ source: eid(s), target: eid(t) }); } }
   }
   return out;
 }
@@ -1189,15 +1203,19 @@ async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ node
 
   for (const b of live.branches) {
     const groupId = `br-${b.branch}`;
-    // Sort so elk's within-layer model order is sensible (PM-first upstream, etc.).
-    const agents = [...b.agents].sort(byRoleThenPersona);
-    const bandEdges = computeBandEdges(agents);
+    // Sort so elk's within-layer model order is sensible (PM-first, Sec-above-QA).
+    const sorted = [...b.agents].sort(byRoleThenPersona);
+    // Project Manager hovers as an observer — out of the elk pipeline.
+    const observers = sorted.filter(a => a.personaKey === 'project_manager');
+    const pipeline = sorted.filter(a => a.personaKey !== 'project_manager');
+    const bandEdges = computeBandEdges(pipeline);
+
     let laid: Awaited<ReturnType<typeof elk.layout>> | undefined;
     try {
       laid = await elk.layout({
         id: groupId,
         layoutOptions: ELK_OPTS,
-        children: agents.map(a => ({ id: eid(a), width: NODE_W, height: NODE_H })),
+        children: pipeline.map(a => ({ id: eid(a), width: NODE_W, height: NODE_H })),
         edges: bandEdges.map((e, i) => ({ id: `${groupId}-e${i}`, sources: [e.source], targets: [e.target] })),
       });
     } catch {
@@ -1205,19 +1223,30 @@ async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ node
     }
 
     const contentW = laid?.width ?? NODE_W;
-    const contentH = laid?.height ?? Math.max(1, agents.length) * (NODE_H + 18);
-    const bandW = Math.max(contentW + BAND_PAD * 2, 320);
-    const bandH = BAND_HEADER + BAND_PAD + contentH + BAND_PAD;
+    const contentH = laid?.height ?? Math.max(1, pipeline.length) * (NODE_H + 18);
+    const observerH = observers.length ? NODE_H + 16 : 0;
+    const bandW = Math.max(contentW, observers.length * (NODE_W + 12)) + BAND_PAD * 2;
+    const bandH = BAND_HEADER + BAND_PAD + observerH + contentH + BAND_PAD;
 
     nodes.push({ id: groupId, type: 'liveBranch', position: { x: 0, y }, data: { branch: b.branch, count: b.agents.length }, style: { width: bandW, height: bandH }, draggable: false, selectable: false });
 
+    // Project Manager(s) — observer, pinned top-right, hovering over the team.
+    observers.forEach((a, i) => {
+      nodes.push({
+        id: eid(a), type: 'liveAgent',
+        position: { x: bandW - BAND_PAD - NODE_W - i * (NODE_W + 12), y: BAND_HEADER + BAND_PAD },
+        data: { agent: a, observer: true }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
+      });
+    });
+
+    // Pipeline (elk-laid), below the observer row.
     const laidChildren = (laid?.children ?? []) as Array<{ id: string; x?: number; y?: number }>;
     const posById = new Map(laidChildren.map(c => [c.id, c] as const));
-    agents.forEach((a, i) => {
+    pipeline.forEach((a, i) => {
       const c = posById.get(eid(a));
       nodes.push({
         id: eid(a), type: 'liveAgent',
-        position: { x: BAND_PAD + (c?.x ?? 0), y: BAND_HEADER + BAND_PAD + (c?.y ?? i * (NODE_H + 18)) },
+        position: { x: BAND_PAD + (c?.x ?? 0), y: BAND_HEADER + BAND_PAD + observerH + (c?.y ?? i * (NODE_H + 18)) },
         data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
       });
     });
@@ -1330,14 +1359,21 @@ function LiveBranchNode({ data }: NodeProps) {
 /** A team member card (child of a branch band). One node type for every role;
  *  hidden handles carry the intra-lane upstream→code→review flow edges. */
 function LiveAgentNode({ data }: NodeProps) {
-  const agent = (data as { agent: LiveAgent }).agent;
+  const { agent, observer } = data as { agent: LiveAgent; observer?: boolean };
   const [hov, setHov] = useState(false);
   const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: 186, padding: '4px 8px 4px 4px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}
+      title="Click to focus this agent's terminal"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8, width: 186, padding: '4px 8px 4px 4px', borderRadius: 8,
+        border: observer ? '1px dashed var(--feed-border)' : '1px solid var(--feed-border)',
+        background: 'var(--vscode-editor-background)',
+        opacity: observer ? 0.82 : 1,
+        cursor: 'pointer',
+      }}
     >
       <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
       <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
@@ -1346,8 +1382,9 @@ function LiveAgentNode({ data }: NodeProps) {
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
         <div style={{ fontSize: 9.5, color: 'var(--feed-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {agent.personaName} · <LivenessLabel liveness={agent.liveness} />
-          {agent.liveness === 'stale' && agent.lastHeartbeat ? ` · ${formatAge(agent.lastHeartbeat)}` : ''}
+          {observer
+            ? `${agent.personaName} · observing`
+            : <>{agent.personaName} · <LivenessLabel liveness={agent.liveness} />{agent.liveness === 'stale' && agent.lastHeartbeat ? ` · ${formatAge(agent.lastHeartbeat)}` : ''}</>}
         </div>
       </div>
       {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (

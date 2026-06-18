@@ -385,7 +385,7 @@ export type DashboardHostMessage =
 export type DashboardClientMessage =
   | { type: 'dashboardLoad' }
   | { type: 'dashboardRefresh' }
-  | { type: 'dashboardFocusPersona'; payload: { personaKey: string } }
+  | { type: 'dashboardFocusPersona'; payload: { personaKey: string; branch?: string } }
   // User clicked an item inside a persona node's queue hover-card — open it.
   | { type: 'dashboardOpenWorkItem'; payload: { workItemType: string; workItemId: number } }
   // Drag on the embedded Kanban board (when toggled on) — move an item's status.
