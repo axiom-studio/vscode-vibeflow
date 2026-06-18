@@ -6,8 +6,10 @@ import {
   BackgroundVariant,
   Position,
   MarkerType,
+  NodeToolbar,
   type Node,
   type Edge,
+  type NodeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { getVsCodeApi } from '../vscodeApi';
@@ -41,6 +43,10 @@ interface LiveAgent {
   liveness: 'active' | 'stale' | 'dead';
   lastMessage?: string;
   lastMessageAt?: string;
+  agentModel?: string;
+  workDir?: string;
+  lastHeartbeat?: string;
+  pendingPrompts?: number;
 }
 interface LiveBranch { branch: string; agents: LiveAgent[]; }
 interface LiveSnapshot { advisory: LiveAgent[]; branches: LiveBranch[]; total: number; }
@@ -1056,7 +1062,10 @@ function TopologyModeToggle({ mode, onChange }: { mode: 'explain' | 'live'; onCh
  * CSS layout for now; P2 migrates this to React Flow group nodes + P3 adds the
  * flowing-token motion. Mirrors the host LiveSnapshot.
  */
+const LIVE_FIT = { padding: 0.18 };
+
 function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
+  const graph = useMemo(() => buildLiveGraph(live), [live]);
   if (!live || live.total === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--feed-muted)' }}>
@@ -1067,29 +1076,66 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
     );
   }
   return (
-    <div style={{ height: '100%', overflow: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
-      <div>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--feed-muted)', marginBottom: 9 }}>
-          Advisory · project-level
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {live.advisory.length === 0
-            ? <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.6 }}>No advisory agents running.</span>
-            : live.advisory.map(a => <LiveAgentChip key={a.sessionId} agent={a} />)}
-        </div>
-      </div>
-      <div>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--feed-muted)', marginBottom: 9 }}>
-          Branches · {live.branches.length} active · one code agent each
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          {live.branches.length === 0
-            ? <span style={{ fontSize: 11, color: 'var(--feed-muted)', opacity: 0.6 }}>No code agents on any branch.</span>
-            : live.branches.map(b => <LiveBranchLane key={b.branch} branch={b} />)}
-        </div>
-      </div>
-    </div>
+    <ReactFlow
+      nodes={graph.nodes}
+      edges={graph.edges}
+      nodeTypes={LIVE_NODE_TYPES}
+      fitView
+      fitViewOptions={LIVE_FIT}
+      proOptions={{ hideAttribution: true }}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
+      zoomOnScroll={false}
+      panOnDrag={true}
+      minZoom={0.4}
+    >
+      <Background
+        variant={BackgroundVariant.Lines}
+        color="color-mix(in oklab, var(--vscode-foreground) 5%, transparent)"
+        gap={24}
+        lineWidth={0.7}
+      />
+    </ReactFlow>
   );
+}
+
+/**
+ * Lay out the live snapshot as React Flow nodes: an advisory rail across the
+ * top, then one group (sub-flow) node per active branch with its code-agent
+ * children inside (`parentId` + `extent:'parent'`). Parent group nodes are
+ * pushed BEFORE their children — React Flow requires that ordering. Manual
+ * coords for now; P4 adds elk auto-layout.
+ */
+function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges: Edge[] } {
+  if (!live) { return { nodes: [], edges: [] }; }
+  const nodes: Node[] = [];
+
+  const ADV_W = 196;
+  live.advisory.forEach((a, i) => {
+    nodes.push({ id: `adv-${a.sessionId}`, type: 'liveAdvisory', position: { x: i * ADV_W, y: 0 }, data: { agent: a }, draggable: false, selectable: false });
+  });
+
+  const LANE_W = 262, HEADER = 38, GAP = 8, AGENT_H = 76, TOP = 150, LANE_GAP = 290;
+  live.branches.forEach((b, bi) => {
+    const groupId = `br-${b.branch}`;
+    const height = HEADER + GAP + b.agents.length * AGENT_H + GAP;
+    nodes.push({
+      id: groupId, type: 'liveBranch', position: { x: bi * LANE_GAP, y: TOP },
+      data: { branch: b.branch }, style: { width: LANE_W, height },
+      draggable: false, selectable: false,
+    });
+    b.agents.forEach((a, ai) => {
+      nodes.push({
+        id: `ag-${a.sessionId}`, type: 'liveAgent',
+        position: { x: 12, y: HEADER + GAP + ai * AGENT_H },
+        data: { agent: a }, parentId: groupId, extent: 'parent',
+        draggable: false, selectable: false,
+      });
+    });
+  });
+
+  return { nodes, edges: [] };
 }
 
 function livenessRing(liveness: LiveAgent['liveness'], personaColor: string): string {
@@ -1124,58 +1170,109 @@ function LivenessLabel({ liveness }: { liveness: LiveAgent['liveness'] }) {
   return <span style={{ color: c, fontWeight: 600 }}>{label}</span>;
 }
 
-function LiveAgentChip({ agent }: { agent: LiveAgent }) {
+/**
+ * Floating live-detail card for an agent node (#2330). Uses React Flow's
+ * NodeToolbar so it renders OUTSIDE the canvas viewport — never clipped or
+ * zoom-scaled. Driven by the node's own hover state.
+ */
+function AgentDetailToolbar({ agent, visible }: { agent: LiveAgent; visible: boolean }) {
+  return (
+    <NodeToolbar isVisible={visible} position={Position.Top} offset={8}>
+      <div style={{ width: 244, textAlign: 'left', background: 'var(--vscode-editorHoverWidget-background, var(--feed-bg))', border: '1px solid var(--vscode-editorHoverWidget-border, var(--feed-border))', borderRadius: 6, padding: '9px 11px', fontSize: 11, lineHeight: 1.5, color: 'var(--feed-fg)', boxShadow: '0 6px 24px rgba(0,0,0,0.35)' }}>
+        <div style={{ fontWeight: 700, marginBottom: 5 }}>
+          {agent.characterName ?? agent.personaName}
+          <span style={{ color: 'var(--feed-muted)', fontWeight: 400 }}> · {agent.personaName}</span>
+        </div>
+        <DetailRow label="Branch" value={agent.branch} mono />
+        {agent.agentModel && <DetailRow label="Model" value={agent.agentModel} />}
+        {agent.workDir && <DetailRow label="Dir" value={agent.workDir} mono truncate />}
+        <DetailRow label="State" value={agent.liveness === 'active' ? 'Active' : agent.liveness === 'stale' ? 'Stale · branch lock freeing soon' : 'Idle'} />
+        {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (
+          <div style={{ marginTop: 6, color: 'var(--feed-warning)', fontWeight: 600 }}>⚠ Waiting for your input ({agent.pendingPrompts})</div>
+        )}
+        {agent.lastMessage && (
+          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--feed-border)', color: 'var(--feed-muted)' }}>{agent.lastMessage}</div>
+        )}
+      </div>
+    </NodeToolbar>
+  );
+}
+
+function DetailRow({ label, value, mono, truncate }: { label: string; value: string; mono?: boolean; truncate?: boolean }) {
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <span style={{ color: 'var(--feed-muted)', minWidth: 44, flexShrink: 0 }}>{label}</span>
+      <span style={{ minWidth: 0, fontFamily: mono ? 'var(--vscode-editor-font-family)' : undefined, overflow: truncate ? 'hidden' : undefined, textOverflow: truncate ? 'ellipsis' : undefined, whiteSpace: truncate ? 'nowrap' : 'normal' }}>{value}</span>
+    </div>
+  );
+}
+
+/** Advisory persona node (project-level rail). */
+function LiveAdvisoryNode({ data }: NodeProps) {
+  const agent = (data as { agent: LiveAgent }).agent;
+  const [hov, setHov] = useState(false);
   const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
   return (
     <div
-      title={agent.lastMessage ?? agent.personaName}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 8, padding: '5px 11px 5px 5px',
-        borderRadius: 999, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)',
-      }}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, width: 168, padding: '7px 11px 7px 7px', borderRadius: 999, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}
     >
-      <LivenessAvatar agent={agent} color={color} size={26} />
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
+      <AgentDetailToolbar agent={agent} visible={hov} />
+      <LivenessAvatar agent={agent} color={color} size={28} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.characterName ?? agent.personaName}</div>
         <div style={{ fontSize: 10, color: 'var(--feed-muted)', whiteSpace: 'nowrap' }}>{agent.personaName}</div>
       </div>
+      {!!agent.pendingPrompts && agent.pendingPrompts > 0 && (
+        <span title="Waiting for your input" style={{ marginLeft: 2, color: 'var(--feed-warning)', fontWeight: 800, flexShrink: 0 }}>!</span>
+      )}
     </div>
   );
 }
 
-function LiveBranchLane({ branch }: { branch: LiveBranch }) {
+/** Branch lane — a group/sub-flow container; its code-agent children render inside. */
+function LiveBranchNode({ data }: NodeProps) {
+  const branch = (data as { branch: string }).branch;
   return (
-    <div style={{ flex: '0 0 244px', minWidth: 244, borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)', overflow: 'hidden' }}>
+    <div style={{ width: '100%', height: '100%', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'color-mix(in oklab, var(--vscode-editor-background) 90%, transparent)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderBottom: '1px solid var(--feed-border)', fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>
         <GitBranchIcon size={12} />
-        <span style={{ fontFamily: 'var(--vscode-editor-font-family)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branch.branch}</span>
-      </div>
-      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {branch.agents.map(a => <LiveBranchAgent key={a.sessionId} agent={a} />)}
+        <span style={{ fontFamily: 'var(--vscode-editor-font-family)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branch}</span>
       </div>
     </div>
   );
 }
 
-function LiveBranchAgent({ agent }: { agent: LiveAgent }) {
+/** Code-agent card (child of a branch group node). */
+function LiveAgentNode({ data }: NodeProps) {
+  const agent = (data as { agent: LiveAgent }).agent;
+  const [hov, setHov] = useState(false);
   const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9 }}>
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ display: 'flex', alignItems: 'flex-start', gap: 9, width: 236 }}
+    >
+      <AgentDetailToolbar agent={agent} visible={hov} />
       <LivenessAvatar agent={agent} color={color} size={34} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--feed-fg)' }}>{agent.characterName ?? agent.personaName}</div>
-        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 3 }}>
-          {agent.personaName} · <LivenessLabel liveness={agent.liveness} />
-        </div>
+        <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginBottom: 2 }}>{agent.personaName} · <LivenessLabel liveness={agent.liveness} /></div>
         {agent.lastMessage && (
-          <div style={{ fontSize: 10, color: 'var(--feed-muted)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-            {agent.lastMessage}
-          </div>
+          <div style={{ fontSize: 10, color: 'var(--feed-muted)', opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.lastMessage}</div>
         )}
       </div>
     </div>
   );
 }
+
+const LIVE_NODE_TYPES = {
+  liveAdvisory: LiveAdvisoryNode,
+  liveBranch: LiveBranchNode,
+  liveAgent: LiveAgentNode,
+};
 
 function Header({ snapshot, loading, onRefresh, kanbanEmbedded, onToggleKanban }: {
   snapshot: DashboardSnapshot | undefined;
