@@ -1079,12 +1079,12 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
     void buildLiveGraphElk(live).then(g => { if (!cancelled) { setGraph(g); } });
     return () => { cancelled = true; };
   }, [live]);
-  // Click an agent → focus THAT session's terminal (its persona on its branch).
+  // Click an agent → open that (tmux-backed) session's chat-first panel.
   const onNodeClick = useCallback((_e: unknown, node: Node) => {
     if (node.type !== 'liveAgent') { return; }
     const agent = (node.data as { agent?: LiveAgent }).agent;
     if (agent) {
-      vscode.postMessage({ type: 'dashboardFocusPersona', payload: { personaKey: agent.personaKey, branch: agent.branch } });
+      vscode.postMessage({ type: 'dashboardOpenSession', payload: { sessionId: agent.sessionId } });
     }
   }, []);
   if (!live || live.total === 0) {
@@ -1366,7 +1366,7 @@ function LiveAgentNode({ data }: NodeProps) {
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      title="Click to focus this agent's terminal"
+      title="Click to open this agent's chat"
       style={{
         display: 'flex', alignItems: 'center', gap: 8, width: 186, padding: '4px 8px 4px 4px', borderRadius: 8,
         border: observer ? '1px dashed var(--feed-border)' : '1px solid var(--feed-border)',

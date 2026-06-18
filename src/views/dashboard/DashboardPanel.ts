@@ -257,6 +257,10 @@ export class DashboardPanel {
         }
         return;
       }
+      case 'dashboardOpenSession':
+        // Live topology click — open the (tmux-backed) session's chat-first panel.
+        await vscode.commands.executeCommand('vibeflow.openSessionPanel', msg.payload.sessionId);
+        return;
       case 'dashboardOpenWorkItem': {
         // User clicked an item in a persona node's queue hover-card.
         // Defensive-parse (mirrors CompliancePanel): only todo/issue with a
