@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@xyflow/react": "^12",
+    "elkjs": "^0.11.1",
     "highlight.js": "^11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -18,6 +18,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import ELK from 'elkjs/lib/elk.bundled.js';
 import { getVsCodeApi } from '../vscodeApi';
 import { AVATAR_BY_PERSONA } from '../personaAvatars';
 import { PERSONA_COLORS } from '../types';
@@ -1071,7 +1072,13 @@ function TopologyModeToggle({ mode, onChange }: { mode: 'explain' | 'live'; onCh
 const LIVE_FIT = { padding: 0.18 };
 
 function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
-  const graph = useMemo(() => buildLiveGraph(live), [live]);
+  // elk layout is async — compute off the snapshot and stash the positioned graph.
+  const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
+  useEffect(() => {
+    let cancelled = false;
+    void buildLiveGraphElk(live).then(g => { if (!cancelled) { setGraph(g); } });
+    return () => { cancelled = true; };
+  }, [live]);
   if (!live || live.total === 0) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--feed-muted)' }}>
@@ -1129,55 +1136,95 @@ const PERSONA_ORDER: Record<string, number> = {
   architect: 0, developer: 1, principal_engineer: 2,
   security_lead: 0, qa_lead: 1,
 };
-const byPersonaOrder = (a: LiveAgent, b: LiveAgent): number =>
-  (PERSONA_ORDER[a.personaKey] ?? 99) - (PERSONA_ORDER[b.personaKey] ?? 99);
+const ROLE_RANK: Record<string, number> = { upstream: 0, code: 1, review: 2 };
+/** Stable order for elk's within-layer model order: by role, then pipeline order. */
+const byRoleThenPersona = (a: LiveAgent, b: LiveAgent): number =>
+  (ROLE_RANK[a.role] - ROLE_RANK[b.role]) || ((PERSONA_ORDER[a.personaKey] ?? 99) - (PERSONA_ORDER[b.personaKey] ?? 99));
 const eid = (a: LiveAgent): string => `ag-${a.sessionId}`;
 
-function buildLiveGraph(live: LiveSnapshot | undefined): { nodes: Node[]; edges: Edge[] } {
+/** Sequential pipeline edges for one branch team: upstream → code → Security →
+ *  QA. Bridges to the next present stage when one is missing. */
+function computeBandEdges(agents: LiveAgent[]): Array<{ source: string; target: string }> {
+  const up = agents.filter(a => a.role === 'upstream');
+  const code = agents.filter(a => a.role === 'code');
+  const rev = agents.filter(a => a.role === 'review');
+  const sec = rev.filter(a => a.personaKey === 'security_lead');
+  const qa = rev.filter(a => a.personaKey !== 'security_lead');
+  const builders = code.length ? code : up;
+  const out: Array<{ source: string; target: string }> = [];
+  if (code.length) { for (const u of up) { for (const c of code) { out.push({ source: eid(u), target: eid(c) }); } } }
+  if (sec.length) {
+    for (const s of builders) { for (const t of sec) { out.push({ source: eid(s), target: eid(t) }); } }
+    for (const s of sec) { for (const q of qa) { out.push({ source: eid(s), target: eid(q) }); } }
+  } else {
+    for (const s of builders) { for (const q of qa) { out.push({ source: eid(s), target: eid(q) }); } }
+  }
+  return out;
+}
+
+const elk = new ELK();
+const ELK_OPTS: Record<string, string> = {
+  'elk.algorithm': 'layered',
+  'elk.direction': 'RIGHT',
+  'elk.spacing.nodeNode': '26',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '96',
+  'elk.layered.spacing.edgeNodeBetweenLayers': '36',
+  'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+};
+const NODE_W = 186, NODE_H = 52, BAND_HEADER = 40, BAND_PAD = 16, BAND_VGAP = 30;
+
+/**
+ * Lay out the live snapshot with elk (#2332). Each branch team is run through
+ * elk's `layered` algorithm (direction RIGHT) so it becomes a clean
+ * upstream→code→Security→QA pipeline — each stage in its own layer/column, edges
+ * flowing left→right with no same-column loops. Bands are stacked vertically.
+ * Async (elk returns a promise) — callers await + store the result in state.
+ */
+async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ nodes: Node[]; edges: Edge[] }> {
   if (!live) { return { nodes: [], edges: [] }; }
+  const edgeType = prefersReducedMotion() ? 'default' : 'flow';
   const nodes: Node[] = [];
   const edges: Edge[] = [];
-  const edgeType = prefersReducedMotion() ? 'default' : 'flow';
-
-  const HEADER = 40, TOP_PAD = 16, BOT_PAD = 16, AGENT_H = 74;
-  const COL_X = [16, 300, 584]; // upstream · code · review — generous gaps
-  const BAND_W = 786, BAND_VGAP = 30;
   let y = 0;
 
-  live.branches.forEach(b => {
+  for (const b of live.branches) {
     const groupId = `br-${b.branch}`;
-    const up = b.agents.filter(a => a.role === 'upstream').sort(byPersonaOrder);
-    const code = b.agents.filter(a => a.role === 'code').sort(byPersonaOrder);
-    const rev = b.agents.filter(a => a.role === 'review').sort(byPersonaOrder);
-    const rows = Math.max(up.length, code.length, rev.length, 1);
-    const height = HEADER + TOP_PAD + rows * AGENT_H + BOT_PAD;
+    // Sort so elk's within-layer model order is sensible (PM-first upstream, etc.).
+    const agents = [...b.agents].sort(byRoleThenPersona);
+    const bandEdges = computeBandEdges(agents);
+    let laid: Awaited<ReturnType<typeof elk.layout>> | undefined;
+    try {
+      laid = await elk.layout({
+        id: groupId,
+        layoutOptions: ELK_OPTS,
+        children: agents.map(a => ({ id: eid(a), width: NODE_W, height: NODE_H })),
+        edges: bandEdges.map((e, i) => ({ id: `${groupId}-e${i}`, sources: [e.source], targets: [e.target] })),
+      });
+    } catch {
+      laid = undefined;
+    }
 
-    nodes.push({ id: groupId, type: 'liveBranch', position: { x: 0, y }, data: { branch: b.branch, count: b.agents.length }, style: { width: BAND_W, height }, draggable: false, selectable: false });
+    const contentW = laid?.width ?? NODE_W;
+    const contentH = laid?.height ?? Math.max(1, agents.length) * (NODE_H + 18);
+    const bandW = Math.max(contentW + BAND_PAD * 2, 320);
+    const bandH = BAND_HEADER + BAND_PAD + contentH + BAND_PAD;
 
-    const place = (list: LiveAgent[], colX: number) => list.forEach((a, i) => {
-      nodes.push({ id: `ag-${a.sessionId}`, type: 'liveAgent', position: { x: colX, y: HEADER + TOP_PAD + i * AGENT_H }, data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false });
+    nodes.push({ id: groupId, type: 'liveBranch', position: { x: 0, y }, data: { branch: b.branch, count: b.agents.length }, style: { width: bandW, height: bandH }, draggable: false, selectable: false });
+
+    const laidChildren = (laid?.children ?? []) as Array<{ id: string; x?: number; y?: number }>;
+    const posById = new Map(laidChildren.map(c => [c.id, c] as const));
+    agents.forEach((a, i) => {
+      const c = posById.get(eid(a));
+      nodes.push({
+        id: eid(a), type: 'liveAgent',
+        position: { x: BAND_PAD + (c?.x ?? 0), y: BAND_HEADER + BAND_PAD + (c?.y ?? i * (NODE_H + 18)) },
+        data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
+      });
     });
-    place(up, COL_X[0]);
-    place(code, COL_X[1]);
-    place(rev, COL_X[2]);
 
-    // Sequential pipeline edges: upstream → code → Security → QA. When a stage
-    // is absent, bridge to the next present one so the flow still reads.
-    const sec = rev.filter(a => a.personaKey === 'security_lead');
-    const qa = rev.filter(a => a.personaKey !== 'security_lead');
-    const builders = code.length ? code : up;
-    if (code.length) {
-      for (const u of up) { for (const c of code) { edges.push(liveEdge(eid(u), eid(c), edgeType)); } }
-    }
-    if (sec.length) {
-      for (const s of builders) { for (const t of sec) { edges.push(liveEdge(eid(s), eid(t), edgeType)); } }
-      for (const s of sec) { for (const q of qa) { edges.push(liveEdge(eid(s), eid(q), edgeType)); } }
-    } else {
-      for (const s of builders) { for (const q of qa) { edges.push(liveEdge(eid(s), eid(q), edgeType)); } }
-    }
-
-    y += height + BAND_VGAP;
-  });
+    for (const e of bandEdges) { edges.push(liveEdge(e.source, e.target, edgeType)); }
+    y += bandH + BAND_VGAP;
+  }
 
   return { nodes, edges };
 }
