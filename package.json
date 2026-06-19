@@ -211,6 +211,11 @@
         "icon": "$(shield)"
       },
       {
+        "command": "vibeflow.openBrainstorm",
+        "title": "VibeFlow: Open Brainstorm",
+        "icon": "$(lightbulb)"
+      },
+      {
         "command": "vibeflow.installCli",
         "title": "VibeFlow: Install Latest CLI",
         "icon": "$(cloud-download)"
@@ -520,14 +525,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "vibeflow.openCompliance",
+          "command": "vibeflow.openBrainstorm",
           "when": "view == vibeflow.workItems",
           "group": "navigation@3"
         },
         {
-          "command": "vibeflow.refresh",
+          "command": "vibeflow.openCompliance",
           "when": "view == vibeflow.workItems",
           "group": "navigation@4"
+        },
+        {
+          "command": "vibeflow.refresh",
+          "when": "view == vibeflow.workItems",
+          "group": "navigation@5"
         },
         {
           "command": "vibeflow.openSettings",
@@ -586,6 +596,11 @@
         "command": "vibeflow.openCompliance",
         "key": "ctrl+shift+v c",
         "mac": "cmd+shift+v c"
+      },
+      {
+        "command": "vibeflow.openBrainstorm",
+        "key": "ctrl+shift+v b",
+        "mac": "cmd+shift+v b"
       },
       {
         "command": "vibeflow.pickProject",
