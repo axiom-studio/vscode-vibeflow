@@ -281,10 +281,6 @@ export function DashboardView() {
     vscode.postMessage({ type: 'dashboardRefresh' });
   }, []);
 
-  const focusPersona = useCallback((personaKey: string) => {
-    vscode.postMessage({ type: 'dashboardFocusPersona', payload: { personaKey } });
-  }, []);
-
   const openWorkItem = useCallback((item: PersonaQueueItem) => {
     vscode.postMessage({
       type: 'dashboardOpenWorkItem',
@@ -304,42 +300,10 @@ export function DashboardView() {
     vscode.postMessage({ type: 'dashboardOpenWorkItem', payload: { workItemType: card.type, workItemId: card.id } });
   }, []);
 
-  const onNodeClick = useCallback((_evt: unknown, node: Node) => {
-    focusPersona(node.id);
-  }, [focusPersona]);
-
-  // Locally-tracked position overrides for drag persistence. Initialised
-  // from `snapshot.nodePositions` (host-stored layout) and mutated on
-  // drag-stop. We keep the override in component state so React re-renders
-  // place the node where the user dropped it; we also forward the change
-  // to the host so it survives reload. Resetting the layout clears this
-  // map and re-falls-back to PERSONA_POSITIONS.
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
-
-  // Hydrate / reset positions from the snapshot. Re-runs only when the host
-  // pushes a new layout (initial load or after Reset layout fires).
-  useEffect(() => {
-    setPositions(state.snapshot?.nodePositions ?? {});
-  }, [state.snapshot?.nodePositions]);
-
-  const onNodeDragStop = useCallback((_evt: unknown, node: Node) => {
-    setPositions(prev => {
-      const next = { ...prev, [node.id]: { x: node.position.x, y: node.position.y } };
-      // Send the FULL position map (override OR default) so the host can
-      // write it atomically without having to merge against its prior copy.
-      const full: Record<string, { x: number; y: number }> = {};
-      for (const key of Object.keys(PERSONA_DISPLAY)) {
-        full[key] = next[key] ?? PERSONA_POSITIONS[key];
-      }
-      vscode.postMessage({ type: 'dashboardSaveNodePositions', payload: { positions: full } });
-      return next;
-    });
-  }, []);
-
-  const onResetLayout = useCallback(() => {
-    setPositions({});
-    vscode.postMessage({ type: 'dashboardResetNodePositions' });
-  }, []);
+  // Explain mode is a STATIC overview (#2339) — no node drag, no click-to-focus.
+  // Nodes always render at the canonical PERSONA_POSITIONS; interaction (open
+  // the chat, focus a session) lives in Live mode. Hovering a node still shows
+  // its queue card with the items waiting for that persona.
 
   const personaStatus = state.snapshot?.personaStatus ?? {};
   const personaQueues = state.snapshot?.personaQueues ?? {};
@@ -355,7 +319,7 @@ export function DashboardView() {
       const avatarUrl = avatarPath && serverUrl ? `${serverUrl}${avatarPath}` : undefined;
       return {
         id: key,
-        position: positions[key] ?? PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
+        position: PERSONA_POSITIONS[key] ?? { x: 0, y: 0 },
         // Explicit handle positions stop edges from picking arbitrary
         // sides and looping (which is why the previous render had
         // edges cutting through node interiors).
@@ -386,7 +350,7 @@ export function DashboardView() {
     // orange `1/branch` pill. Anchored to the architect node's CURRENT
     // position (drag-aware) rather than the static default — otherwise
     // dragging the cluster strands the chip at its original spot.
-    const archPos = positions.architect ?? PERSONA_POSITIONS.architect;
+    const archPos = PERSONA_POSITIONS.architect;
     const slotNode: Node = {
       id: 'slot-code-agent',
       type: 'slotLabel',
@@ -399,7 +363,7 @@ export function DashboardView() {
     };
 
     return [slotNode, ...personaNodes];
-  }, [personaStatus, personaQueues, personaQueueItems, positions, serverUrl, openWorkItem]);
+  }, [personaStatus, personaQueues, personaQueueItems, serverUrl, openWorkItem]);
 
   const edges: Edge[] = useMemo(() => PERSONA_EDGES.map(e => {
     // An edge is "active" only when BOTH endpoints have a live session.
@@ -499,30 +463,11 @@ export function DashboardView() {
       <Section
         title="Agent Topology"
         subtitle={topologyMode === 'explain'
-          ? 'Click a persona to focus its terminal · Architect, Developer, and Principal Engineer share one code-agent slot per branch — advisory personas have no such limit.'
-          : 'What’s running right now · every branch shows its own team — upstream (PM/UX) → code → review (Security/QA). Hover an agent for detail.'}
+          ? 'How work flows through the team — and how much each persona is holding. A node’s badge is the number of items waiting for it; hover to see them. Architect, Developer, and Principal Engineer share one code-agent slot per branch.'
+          : 'What’s running right now · every branch shows its own team — upstream (PM/UX) → code → review (Security/QA). Click an agent to open its chat; hover for detail.'}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TopologyModeToggle mode={topologyMode} onChange={setTopologyMode} />
-            {topologyMode === 'explain' && (
-              <button
-                onClick={onResetLayout}
-                title="Discard your dragged layout and restore the default positions."
-                className="transition-all duration-150 ease-out active:scale-[0.97] hover:bg-[var(--vscode-list-hoverBackground)]"
-                style={{
-                  fontSize: 11,
-                  padding: '5px 10px',
-                  borderRadius: 4,
-                  border: '1px solid var(--feed-border)',
-                  background: 'transparent',
-                  color: 'var(--feed-muted)',
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                }}
-              >
-                Reset layout
-              </button>
-            )}
           </div>
         }
       >
@@ -534,16 +479,12 @@ export function DashboardView() {
             nodes={nodes}
             edges={edges}
             nodeTypes={NODE_TYPES}
-            onNodeClick={onNodeClick}
-            onNodeDragStop={onNodeDragStop}
             fitView
             fitViewOptions={{ padding: 0.2 }}
             proOptions={{ hideAttribution: true }}
-            // User feedback (2026-05-08): "can we let the users move the
-            // blocks around?" — yes. Free-form drag for personal layout
-            // preferences. Connections remain locked (the edge graph is
-            // canonical, not user-editable).
-            nodesDraggable={true}
+            // Explain is a static overview (#2339) — nodes are read-only; the
+            // interactive topology (drag, click-to-open) lives in Live mode.
+            nodesDraggable={false}
             nodesConnectable={false}
             edgesFocusable={false}
             zoomOnScroll={false}
