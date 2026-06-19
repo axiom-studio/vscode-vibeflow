@@ -35,6 +35,7 @@ import { manageWorktrees, deleteWorktree } from './commands/worktreeCommands.js'
 import { SettingsPanel } from './views/settings/SettingsPanel.js';
 import { DashboardPanel } from './views/dashboard/DashboardPanel.js';
 import { KanbanPanel } from './views/kanban/KanbanPanel.js';
+import { BrainstormPanel } from './views/brainstorm/BrainstormPanel.js';
 import { CompliancePanel } from './views/compliance/CompliancePanel.js';
 import { AgentFileDecorationProvider } from './views/decorations/AgentFileDecorationProvider.js';
 import { SessionPanelManager } from './views/sessions/SessionPanelManager.js';
@@ -1080,6 +1081,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
+    }),
+    vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
     vscode.commands.registerCommand('vibeflow.pickProject', () => {
       void runProjectPickerCommand({ client, detector, onSwitched: connectToProject });

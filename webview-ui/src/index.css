@@ -51,6 +51,7 @@ body[data-vf-mode="kanban"],
 body[data-vf-mode="workitem"],
 body[data-vf-mode="session-chat"],
 body[data-vf-mode="compliance"],
+body[data-vf-mode="brainstorm"],
 body[data-vf-mode="document"] {
   --feed-bg: var(--vscode-editor-background);
 }
@@ -101,10 +102,25 @@ body[data-vf-mode="workitem"] h4,
 body[data-vf-mode="compliance"] h1,
 body[data-vf-mode="compliance"] h2,
 body[data-vf-mode="compliance"] h3,
-body[data-vf-mode="compliance"] h4 {
+body[data-vf-mode="compliance"] h4,
+body[data-vf-mode="brainstorm"] h1,
+body[data-vf-mode="brainstorm"] h2,
+body[data-vf-mode="brainstorm"] h3,
+body[data-vf-mode="brainstorm"] h4 {
   font-family: var(--vf-font-display);
   letter-spacing: var(--vf-tracking-tight);
   text-wrap: balance;
+}
+
+/*
+ * Brainstorm panel (feature 473) — responsive Document↔Chat split.
+ * Wide: both panes render side-by-side and the pane tabs are hidden.
+ * Narrow (e.g. docked): show only the active pane; the tabs appear.
+ */
+.brainstorm-pane-tabs { display: none; }
+@media (max-width: 720px) {
+  .brainstorm-pane-tabs { display: flex; }
+  .brainstorm-split .brainstorm-pane:not(.is-active) { display: none; }
 }
 
 /*
