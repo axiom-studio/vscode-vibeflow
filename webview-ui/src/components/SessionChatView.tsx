@@ -14,6 +14,7 @@ import {
   PaperclipIcon,
   SpinnerIcon,
   XIcon,
+  EyeIcon,
 } from './_shared/icons';
 import { useChatAttachments, type PendingUpload } from './sessionChat/useChatAttachments';
 import {
@@ -490,15 +491,15 @@ export function SessionChatView() {
               </span>
             </button>
           )}
-          {/* Chat-first: open this session's tmux shell in a terminal (#2059). */}
+          {/* Chat-first: watch this agent live by opening its shell in a terminal (#2059). */}
           {meta.sessionMode === 'chat_first' && showTmuxButton && (
             <button
               className="chat-header-toggle chat-header-tmux"
               onClick={() => vscode.postMessage({ type: 'chatOpenTmux' })}
-              title="Open this session's tmux shell in a VSCode terminal — watch or step through the raw agent exchange for debugging"
-              aria-label="Open tmux shell in a terminal"
+              title="Watch this agent live — open its shell in a terminal to follow the raw exchange"
+              aria-label="Watch this agent's live shell in a terminal"
             >
-              <span>tmux</span>
+              <EyeIcon size={13} />
             </button>
           )}
         </div>
