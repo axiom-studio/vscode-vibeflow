@@ -22,6 +22,10 @@ import type {
   VibeFlowAttachment,
   VibeFlowSecurityReview,
   VibeFlowQAReview,
+  VibeFlowBrainstormSession,
+  BrainstormDetailResponse,
+  BrainstormRoundResponse,
+  StartBrainstormBody,
 } from './types.js';
 
 /**
@@ -285,6 +289,47 @@ export class VibeFlowClient {
       method: 'PATCH',
       body: JSON.stringify(body),
     });
+  }
+
+  // --- Brainstorm (feature 473) — all REST via request() (Bearer), NOT MCP.
+  //     Brainstorm has a full REST surface (axiomcloud handlers/
+  //     vibeflow_brainstorm_rest.go), so we avoid the #2890 MCP-mutation
+  //     unreliability entirely. See design doc #361.
+
+  async listBrainstorms(projectId: number): Promise<VibeFlowBrainstormSession[]> {
+    const r = await this.request<{ brainstorms: VibeFlowBrainstormSession[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/brainstorms`,
+    );
+    return r.brainstorms ?? [];
+  }
+
+  /** Full state for one brainstorm — the poll target ({session, rounds?, progress?}). */
+  async getBrainstorm(id: number): Promise<BrainstormDetailResponse> {
+    return this.request<BrainstormDetailResponse>(`/rest/v1/vibeflow/brainstorms/${id}`);
+  }
+
+  async getBrainstormRound(id: number, round: number): Promise<BrainstormRoundResponse> {
+    return this.request<BrainstormRoundResponse>(`/rest/v1/vibeflow/brainstorms/${id}/rounds/${round}`);
+  }
+
+  /** Start a brainstorm; the backend auto-advances to round 1 + fans out prompts. */
+  async startBrainstorm(body: StartBrainstormBody): Promise<VibeFlowBrainstormSession> {
+    return this.request<VibeFlowBrainstormSession>(`/rest/v1/vibeflow/brainstorms`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** End (cancel=false → finalize a document; cancel=true → drop, keep working draft). */
+  async endBrainstorm(id: number, cancel: boolean): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/brainstorms/${id}/end`, {
+      method: 'POST',
+      body: JSON.stringify({ cancel, output_type: 'prd' }),
+    });
+  }
+
+  async deleteBrainstorm(id: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/brainstorms/${id}`, { method: 'DELETE' });
   }
 
   /**

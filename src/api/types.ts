@@ -525,3 +525,127 @@ export interface VibeFlowPrompt {
   work_item_id?: number;
   message_type?: string;
 }
+
+// ============================================================
+// Brainstorm (feature 473) — mirror axiomcloud database/vibeflow_models.go
+// brainstorm structs + handlers/vibeflow_brainstorm_rest.go response shapes.
+// All over REST (Bearer); see design doc #361.
+// ============================================================
+
+export interface BrainstormTopic {
+  order: number;
+  name: string;
+  status: string;
+}
+
+export interface BrainstormSessionConfig {
+  max_rounds: number;
+  timeout_per_persona: number;
+  scope_guard_enabled: boolean;
+  token_budget: number;
+  tokens_used: number;
+  paused: boolean;
+  participating_personas?: string[];
+  topics?: BrainstormTopic[];
+  current_topic_index: number;
+}
+
+export interface BrainstormOpenItem {
+  id: number;
+  type: string;
+  text: string;
+  raised_by: string;
+  round: number;
+  status: string;
+  section?: string;
+}
+
+/** A brainstorm session. `status`: setup | seeding | active | converging | done | cancelled. */
+export interface VibeFlowBrainstormSession {
+  id: number;
+  organization_id: string;
+  project_id: number;
+  document_id: number | null;
+  final_document_id: number | null;
+  lead_persona_key: string;
+  feature_id: number | null;
+  status: string;
+  initiator_session_id: string;
+  config: BrainstormSessionConfig;
+  round_number: number;
+  open_items: BrainstormOpenItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VibeFlowBrainstormRound {
+  id: number;
+  organization_id: string;
+  brainstorm_id: number;
+  round_number: number;
+  document_snapshot_before?: string;
+  document_snapshot_after?: string;
+  scope_warnings: string;
+  convergence_score: number;
+  created_at: string;
+}
+
+export interface VibeFlowBrainstormResponse {
+  id: number;
+  organization_id: string;
+  brainstorm_id: number;
+  round_number: number;
+  persona_key: string;
+  session_id: string;
+  response_type: string;
+  content: string;
+  target_section: string | null;
+  resolution_status: string;
+  resolved_in_round: number | null;
+  target_persona_key: string | null;
+  parent_response_id: number | null;
+  created_at: string;
+}
+
+/** `progress` block from GET /brainstorms/{id} (vibeflow_brainstorm_rest.go:299-325). */
+export interface BrainstormProgress {
+  responded: Record<string, string>;
+  pending: string[];
+  next_up: string;
+  elapsed_seconds: number;
+  response_count: number;
+  participant_count: number;
+  topics?: BrainstormTopic[];
+  current_topic_index?: number;
+  current_topic?: string;
+  topics_total?: number;
+  topics_done?: number;
+}
+
+/** GET /brainstorms/{id} → { session, rounds?, progress? }. */
+export interface BrainstormDetailResponse {
+  session: VibeFlowBrainstormSession;
+  rounds?: VibeFlowBrainstormRound[];
+  progress?: BrainstormProgress;
+}
+
+/** GET /brainstorms/{id}/rounds/{n} → { round, responses }. */
+export interface BrainstormRoundResponse {
+  round: VibeFlowBrainstormRound;
+  responses: VibeFlowBrainstormResponse[];
+}
+
+/** POST /brainstorms body (vibeflow_brainstorm_rest.go:23-37). */
+export interface StartBrainstormBody {
+  project_id: number;
+  topic: string;
+  lead_persona_key: string;
+  session_id: string;
+  participating_personas: string[];
+  existing_document_id?: number | null;
+  feature_id?: number | null;
+  max_rounds: number;
+  scope_guard_enabled?: boolean;
+  token_budget: number;
+  topics?: { name: string }[];
+}
