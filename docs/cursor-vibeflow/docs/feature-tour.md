@@ -2,7 +2,7 @@
 
 **Who this is for**: You've finished [Getting Started](getting-started.md), the extension is installed, you're signed in, and you have a project picked. Now you want to know what every button, view, panel, and command actually *does* before you go deeper.
 
-**TL;DR**: VibeFlow ships four sidebar TreeViews, one bottom-panel webview, six editor-area panels, a chat participant, a status bar quartet, and 43 commands. This page walks you through them in the order you'll hit them.
+**TL;DR**: VibeFlow ships five sidebar TreeViews (a Welcome/setup view before you're configured, then four operational views once you are), one bottom-panel webview, six editor-area panels, a chat participant, a status bar quartet, and 43 commands. This page walks you through them in the order you'll hit them.
 
 > Jargon in **bold** is defined in [the glossary](glossary.md).
 
@@ -10,7 +10,7 @@
 
 ## 1. The VibeFlow Activity Bar icon
 
-The VibeFlow icon sits in Cursor's **Activity Bar**. Click it and Cursor opens the **VibeFlow container**, which stacks four TreeViews vertically:
+The VibeFlow icon sits in Cursor's **Activity Bar**. Click it and Cursor opens the **VibeFlow container**, which declares five TreeViews. Before you've finished setup you see only the **Welcome** view — a setup gate with a **Get Started** button that runs **VibeFlow: Setup**. Once you're configured, that view drops out and the four operational views stack vertically:
 
 1. **Agent Fleet**: your running sessions
 2. **Work Items**: todos and issues you can act on
@@ -154,14 +154,14 @@ These open in Cursor's main editor area (the same place files open). They're ful
 
 ### Session Chat panel
 
-**What it shows**: a transcript of one session. User messages, agent thinking, tool calls, diffs, commits, with the persona avatar on each turn.
+**What it shows**: a transcript of one session. User messages, agent thinking, tool calls, diffs, commits. Consecutive messages from the same sender group under one header (avatar + persona-colored name + time) rather than repeating an avatar on every turn. Your messages sit in a right-aligned bubble; agent messages sit in a left-aligned, persona-tinted bubble. Reference chips are neutral, and agent responses get light structural rendering (section headers, a metadata line, phase markers).
 
 **Who can type into it**:
 
 - **Vanilla mode** → input disabled. The agent talks to its terminal, not to you; chat is read-only.
 - **Chat-First Mode** → input is *the* interaction surface. Type, attach, paste, send.
 
-Diffs render with a `+/-` gutter or split view (`vibeflow.chat.diffView`). Each diff has an **Open in Editor** button that opens Cursor's native diff editor. Commit hashes are clickable. Pending prompts appear as a yellow banner with a Respond button.
+Diffs render with a `+/-` gutter or split view (`vibeflow.chat.diffView`). Each diff has an **Open in Editor** button that opens Cursor's native diff editor. Commit hashes and file paths are clickable. A **Working…** indicator shows while a prompt is in flight, and pending prompts get an inline Respond form.
 
 Open via **Open Session Panel** on an Agent Fleet row.
 
@@ -225,7 +225,7 @@ Open via **Open Kanban Board** on Work Items, or `Cmd/Ctrl+Shift+V K`.
 
 ### Compliance panel
 
-Open **compliance findings** grouped by framework: **SOC 2**, **ISO 27001**, **PCI-DSS**, **HIPAA**. Each finding links to its source work item, framework clause, and agent evidence.
+Open **compliance findings** grouped by framework: **SOC 2**, **ISO 27001**, **PCI-DSS**, **HIPAA**, **GDPR**, **FedRAMP**, and **CMMC**. Each finding links to its source work item, framework clause, and agent evidence.
 
 Open via **Open Compliance** on Work Items, or `Cmd/Ctrl+Shift+V C`.
 

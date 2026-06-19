@@ -24,7 +24,7 @@ Read this once; the rest of the guide assumes it.
 - **Cursor has two windows: Agents Window and Editor Window.** Cursor 3 defaults to the Agents Window — an agent-first UI for parallel agents and chat tabs. VibeFlow's extension sidebar, Extensions marketplace, and file tree live in the **Editor Window**. If you only see agent chat tabs and no Extensions panel, run `Cmd/Ctrl+Shift+P` → **Open Editor Window** (`Shift+Cmd+N` on Mac). Full explanation in [getting-started.md §0](getting-started.md#0-cursor-agents-window-vs-editor-window).
 - **Open a project folder before anything else.** VibeFlow binds to a workspace. Without an open folder, sessions will not start. See [getting-started.md §1](getting-started.md#1-open-a-project-folder-required).
 - **You install it from Open VSX, not the VS Code Marketplace.** Cursor's built-in Extensions panel is backed by the [Open VSX Registry](https://open-vsx.org). VibeFlow is published there under publisher **`AxiomStudio`** (extension id `AxiomStudio.vscode-vibeflow`). Search "VibeFlow" in Cursor's Extensions panel, or install the `.vsix` directly. Full steps in [getting-started.md](getting-started.md#3-install-the-extension).
-- **The listing still reads "VibeFlow"** There is a single cross-host extension, not a separate Cursor build. The `vscode` in the id and the "for VS Code" display name are historical — it's the right extension for Cursor.
+- **The listing reads "VibeFlow"** There is a single cross-host extension, not a separate Cursor build. The `vscode` in the id is historical — it's the right extension for Cursor.
 - **"Cursor" means two different things in this guide.** The **editor** you're running VibeFlow in is Cursor. Separately, **Cursor is also one of VibeFlow's selectable AI providers** (the agent can run against the `cursor` CLI). They're independent: in the Cursor editor you can run agents on *any* provider (Claude, Codex, Gemini, or Cursor), and the Cursor provider works in any host editor. Where it could be ambiguous, this guide says "the Cursor editor" or "the Cursor provider."
 - **VibeFlow runs alongside Cursor's own AI, not instead of it.** Cursor's built-in Chat (`Cmd/Ctrl+L`), inline edit (`Cmd/Ctrl+K`), and Composer/Agent (`Cmd/Ctrl+I`) are a single-assistant toolset. VibeFlow is a *multi-persona, work-item-governed team*. They don't conflict; use both.
 - **Two host-integration features behave differently** because Cursor's chat and MCP systems are its own: the **`@vibeflow` chat participant** and the **editor-level MCP server registration**. Details in [feature-tour.md](feature-tour.md) and [troubleshooting.md](troubleshooting.md). The core wiring — the agent CLI reaching VibeFlow Cloud via the `.mcp.json` the extension writes — is unaffected and works identically in Cursor.
@@ -56,9 +56,9 @@ Read this once; the rest of the guide assumes it.
 
 - The `VibeFlow:` prefix marks every command (e.g. `VibeFlow: Launch Session`). Run any of them via the Command Palette (`Cmd/Ctrl+Shift+P`).
 - The `vibeflow.` prefix marks every setting key (e.g. `vibeflow.serverUrl`). Find them via the Settings panel or `settings.json`.
-- View names are capitalized: Agent Fleet, Work Items, Project Items, Documents, Activity Feed.
+- View names are capitalized: Welcome, Agent Fleet, Work Items, Project Items, Documents, Activity Feed.
 - "The Cursor editor" = the IDE you're in. "The Cursor provider" = the `cursor`-backed AI option in the launch wizard.
-- Persona names are capitalized, with the character name in parentheses on first mention: Developer (Kai), Architect (Morgan), Principal Engineer (Kai), Product Manager (Priya), Project Manager (Casey), UX Designer (Sage), QA Lead (Quinn), Security Lead (Sophie), Customer (Riley).
+- Persona names are capitalized, with the character name in parentheses on first mention: Developer (Alex), Architect (Morgan), Principal Engineer (Kai), Product Manager (Aria), Project Manager (Parker), UX Designer (Dana), QA Lead (Quinn), Security Lead (Sophie), Customer (Casey).
 - Issue references look like `#NNNN` and link back to specific incidents in the troubleshooting and flow docs.
 
 ## Where these docs live
@@ -67,8 +67,8 @@ These pages ship in the repository, not in the published `.vsix`. The Open VSX l
 
 ## Found a mistake?
 
-Open an issue at the [VibeFlow extension repository](https://bitbucket.org/axiom-studio/vscode-vibeflow) or run `VibeFlow: Report an Issue…` from the Command Palette. The pre-populated report includes version + diagnostic info.
+Open an issue at the [VibeFlow extension repository](https://github.com/axiom-studio/vscode-vibeflow/issues) or run `VibeFlow: Report an Issue…` from the Command Palette. The pre-populated report includes version + diagnostic info.
 
 ---
 
-*Cursor edition of the VibeFlow user guide. Mirrors the [VS Code edition](../../vscode-vibeflow/docs/index.md); content is identical except where Cursor's installation, naming, and built-in AI differ. Last updated 2026-06-16.*
+*Cursor edition of the VibeFlow user guide. Mirrors the [VS Code edition](../../vscode-vibeflow/docs/index.md); content is identical except where Cursor's installation, naming, and built-in AI differ. Last updated 2026-06-17.*

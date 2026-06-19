@@ -40,11 +40,11 @@ Yes, you can run only a Developer, and many people start that way. The persona s
 
 ### What's the difference between a Developer and a Principal Engineer?
 
-Both are *code agents* (they write source). The Developer (Kai) implements todos against a clear acceptance-criteria spec. Head-down execution. The Principal Engineer (also Kai, different model tier by convention) takes on harder cross-cutting work: refactors, hairy bugs, architecture-sensitive changes. The PE is typically backed by a stronger model (e.g. Opus vs Sonnet) via the **Sticky Models** setting. They share an intake, but the PE picks from a higher-difficulty band.
+Both are *code agents* (they write source). The Developer (Alex) implements todos against a clear acceptance-criteria spec. Head-down execution. The Principal Engineer (Kai, a different model tier by convention) takes on harder cross-cutting work: refactors, hairy bugs, architecture-sensitive changes. The PE is typically backed by a stronger model (e.g. Opus vs Sonnet) via the **Sticky Models** setting. They share an intake, but the PE picks from a higher-difficulty band.
 
 ### Does each persona need its own API key?
 
-No. The **provider key** (Claude / Codex / Gemini / Cursor) is shared across all personas using that provider. You paste it once into the Secrets API, and the launch wizard pre-fills it from there for every subsequent session. You only need multiple provider keys if you want different personas on different providers (e.g. Architect on Claude, Developer on Codex). The **VibeFlow API key** is set once globally via **VibeFlow: Setup** and is shared by every persona.
+No. The **provider key** (Claude / Codex / Gemini / Cursor / Qwen) is shared across all personas using that provider. You paste it once into the Secrets API, and the launch wizard pre-fills it from there for every subsequent session. You only need multiple provider keys if you want different personas on different providers (e.g. Architect on Claude, Developer on Codex). The **VibeFlow API key** is set once globally via **VibeFlow: Setup** and is shared by every persona.
 
 ### Can two personas work on the same branch at the same time?
 
@@ -124,11 +124,11 @@ Yes. Two personas on the same branch is the normal case (Architect plus Develope
 
 ### Where is my API key stored?
 
-In Cursor's built-in **Secrets API** (inherited from VS Code), per-machine encrypted storage scoped to the extension. The VibeFlow API key is stored under `vibeflow.apiKey`; provider keys (Claude, OpenAI, Gemini, Cursor) live alongside it. Nothing is written to disk in plaintext, nothing is logged, nothing is committed. Run **VibeFlow: Logout** to clear them all.
+In Cursor's built-in **Secrets API** (inherited from VS Code), per-machine encrypted storage scoped to the extension. The VibeFlow API key is stored under `vibeflow.apiKey`; provider keys (Claude, Codex, Gemini, Cursor, Qwen) live alongside it. Nothing is written to disk in plaintext, nothing is logged, nothing is committed. Run **VibeFlow: Logout** to clear them all.
 
 ### Does the extension send my code to a third party?
 
-The extension itself does not. It talks to (1) the VibeFlow Cloud server you configured in `vibeflow.serverUrl` and (2) whichever AI provider CLI you launched (Claude, Codex, Gemini, Cursor). The provider CLI sends your code to that provider's API. Which provider you use is your choice. If you want everything on-prem, point `vibeflow.serverUrl` at a self-hosted VibeFlow server and pick a provider that supports a private endpoint.
+The extension itself does not. It talks to (1) the VibeFlow Cloud server you configured in `vibeflow.serverUrl` and (2) whichever AI provider CLI you launched (Claude, Codex, Gemini, Cursor, Qwen). The provider CLI sends your code to that provider's API. Which provider you use is your choice. If you want everything on-prem, point `vibeflow.serverUrl` at a self-hosted VibeFlow server and pick a provider that supports a private endpoint.
 
 ### What's the cached-serverUrl HTTPS guard?
 

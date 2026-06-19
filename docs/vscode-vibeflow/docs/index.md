@@ -45,8 +45,8 @@ If you already know what VibeFlow is from the cloud product, the extension is th
 
 - The `VibeFlow:` prefix marks every command (e.g. `VibeFlow: Launch Session`). Run any of them via the Command Palette (`Cmd/Ctrl+Shift+P`).
 - The `vibeflow.` prefix marks every setting key (e.g. `vibeflow.serverUrl`). Find them via the Settings panel or `settings.json`.
-- View names are capitalized: Agent Fleet, Work Items, Project Items, Documents, Activity Feed.
-- Persona names are capitalized, with the character name in parentheses on first mention: Developer (Kai), Architect (Morgan), Principal Engineer (Kai), Product Manager (Priya), Project Manager (Casey), UX Designer (Sage), QA Lead (Quinn), Security Lead (Sophie), Customer (Riley).
+- View names are capitalized: Welcome, Agent Fleet, Work Items, Project Items, Documents, Activity Feed.
+- Persona names are capitalized, with the character name in parentheses on first mention: Developer (Alex), Architect (Morgan), Principal Engineer (Kai), Product Manager (Aria), Project Manager (Parker), UX Designer (Dana), QA Lead (Quinn), Security Lead (Sophie), Customer (Casey).
 - Issue references look like `#NNNN` and link back to specific incidents in the troubleshooting and flow docs.
 
 ## Where these docs live
@@ -55,8 +55,8 @@ These pages ship in the repository, not in the published `.vsix`. The marketplac
 
 ## Found a mistake?
 
-Open an issue at the [VibeFlow extension repository](https://bitbucket.org/axiom-studio/vscode-vibeflow) or run `VibeFlow: Report an Issue…` from the Command Palette. The pre-populated report includes version + diagnostic info.
+Open an issue at the [VibeFlow extension repository](https://github.com/axiom-studio/vscode-vibeflow/issues) or run `VibeFlow: Report an Issue…` from the Command Palette. The pre-populated report includes version + diagnostic info.
 
 ---
 
-*Last updated 2026-05-24. Generated as part of the VibeFlow extension's user documentation initiative (feature #418, todo #1982).*
+*Last updated 2026-06-17. Generated as part of the VibeFlow extension's user documentation initiative (feature #418, todo #1982).*

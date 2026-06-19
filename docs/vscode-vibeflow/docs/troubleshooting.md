@@ -20,12 +20,12 @@
 
 ## "Server URL is HTTP, VibeFlow requires HTTPS"
 
-**What it means**: `vibeflow.serverUrl` is set to a plain-`http://` URL pointing at something that isn't `localhost` or `127.0.0.1`. This is the security guard from issue #1947. Your API token would be sent in cleartext, so the extension refuses to connect.
+**What it means**: `vibeflow.serverUrl` is set to a plain-`http://` URL pointing at something that isn't `localhost`, `127.0.0.1`, or `[::1]`. This is the security guard from issue #1947. Your API token would be sent in cleartext, so the extension refuses to connect.
 
 **Fix**: Open **VibeFlow: Settings** (`Cmd/Ctrl+Shift+V S`) and change the server URL to one of:
 
 - `https://...` for any production / staging deployment, or
-- `http://localhost:...` / `http://127.0.0.1:...` for local development (these two are explicitly allowed).
+- `http://localhost:...` / `http://127.0.0.1:...` / `http://[::1]:...` for local development (the loopback hosts are explicitly allowed).
 
 Save, then re-run **VibeFlow: Refresh**. Re-running **VibeFlow: Setup** is not required if the API key is unchanged.
 

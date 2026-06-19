@@ -214,9 +214,9 @@ A real workflow often touches multiple personas. Example: you ask for a new feat
 sequenceDiagram
     actor User
     participant Chat as Chat (UI or @vibeflow)
-    participant PM as Product Manager<br/>(Priya)
+    participant PM as Product Manager<br/>(Aria)
     participant Arch as Architect<br/>(Morgan)
-    participant Dev as Developer<br/>(Kai)
+    participant Dev as Developer<br/>(Alex)
     participant Sec as Security Lead<br/>(Sophie)
     participant QA as QA Lead<br/>(Quinn)
     participant Server as VibeFlow Cloud
@@ -315,7 +315,7 @@ gantt
     Read PM-clarification prompt      :a5, 09:30, 5m
     Approve security review           :a6, 11:15, 10m
 
-    section PM Agent (Priya)
+    section PM Agent (Aria)
     Refines scope                     :p1, 09:25, 15m
     Pings you for clarification       :p2, 09:40, 1m
 
@@ -323,7 +323,7 @@ gantt
     Plans architecture                :ar1, 09:50, 25m
     Files implementation todos        :ar2, 10:15, 5m
 
-    section Developer (Kai)
+    section Developer (Alex)
     Implements first todo             :d1, 10:25, 35m
     Commits + pushes                  :d2, 11:00, 5m
     Marks done                        :d3, 11:05, 1m
