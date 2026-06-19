@@ -354,7 +354,9 @@ export function DashboardView() {
     const slotNode: Node = {
       id: 'slot-code-agent',
       type: 'slotLabel',
-      position: { x: archPos.x + 8, y: archPos.y - 34 },
+      // Shifted left of the architect node so the (wider) chip centers over the
+      // code-agent column rather than hanging off its right.
+      position: { x: archPos.x - 80, y: archPos.y - 34 },
       data: { label: '1 active per branch · code agents' },
       draggable: false,
       selectable: false,
