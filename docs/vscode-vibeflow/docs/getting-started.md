@@ -18,7 +18,7 @@ You'll need three things up front. Take a minute to confirm each one. Getting th
 |------|-----|
 | **VS Code 1.93.0 or later** | The extension's minimum engine version. Check via *Code → About* (mac) or *Help → About* (Windows/Linux). |
 | **A VibeFlow Cloud account** | This is where your projects, work items, agent sessions, and API keys live. Sign up from your VibeFlow Cloud account dashboard. The team that pointed you at this extension can share the right link. |
-| **An API key for at least one AI provider** | The agent itself runs against an AI model. You only need **one** of: **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), or **Cursor**. Pick whichever you already have access to. |
+| **An API key for at least one AI provider** | The agent itself runs against an AI model. You only need **one** of: **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), **Cursor**, or **Qwen**. Pick whichever you already have access to. |
 
 **Optional (and skippable for your first run)**: the standalone `vibeflow-cli` binary. Most people never need it, since the extension manages agent sessions on its own. You can wire it in later from **Settings → CLI Interface → Install Latest** if you ever want a terminal-only workflow.
 
@@ -81,7 +81,7 @@ For your first session, take the safe path. Choose:
 | Wizard step | Recommended for first launch | Why |
 |-------------|------------------------------|-----|
 | **Branch** | Your current branch (usually `main`) | The agent will only pick up work items targeting this branch. Easy to reason about. |
-| **Persona** | **Developer (Kai)** | The Developer persona writes code. It's the most useful "hello world" persona to start with. |
+| **Persona** | **Developer (Alex)** | The Developer persona writes code. It's the most useful "hello world" persona to start with. |
 | **Provider** | **Claude** (or whichever provider you actually have a key for) | Match this to the provider key you collected in section 1. |
 | **Provider key** | Paste the API key when prompted | Only asked the first time; subsequent launches reuse it from the Secrets API. |
 | **Session mode** | **Vanilla** | The agent will ask permission before each file edit or shell command. Skip *VibeFlow (YOLO)* and *Chat-First* until you've done this once. Both run the agent with fewer safety prompts. |

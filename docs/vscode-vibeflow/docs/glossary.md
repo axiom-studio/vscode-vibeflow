@@ -12,7 +12,7 @@
 A long-running AI process that thinks and writes code on your behalf. VibeFlow runs **multiple** agents at once, each playing a different role (see *persona*).
 
 ### Persona
-The role an agent plays. VibeFlow ships with nine: **Developer** (Kai), **Architect** (Morgan), **Principal Engineer** (Kai), **Product Manager** (Priya), **Project Manager** (Casey), **UX Designer** (Sage), **QA Lead** (Quinn), **Security Lead** (Sophie), and **Customer** (Riley). You launch one agent *per persona*. They poll independently for work that matches their role.
+The role an agent plays. VibeFlow ships with nine: **Developer** (Alex), **Architect** (Morgan), **Principal Engineer** (Kai), **Product Manager** (Aria), **Project Manager** (Parker), **UX Designer** (Dana), **QA Lead** (Quinn), **Security Lead** (Sophie), and **Customer** (Casey). You launch one agent *per persona*. They poll independently for work that matches their role.
 
 > *Code agents* (Developer, Architect, Principal Engineer) write source code. *Advisory agents* (everyone else) write specs, reviews, and comments. They don't commit code.
 
@@ -20,7 +20,7 @@ The role an agent plays. VibeFlow ships with nine: **Developer** (Kai), **Archit
 One running agent instance. A session has a **persona**, a **branch** (the git branch it operates on), and a **provider** (which model backs it). Sessions are what the **Agent Fleet** view lists.
 
 ### Provider
-The underlying AI provider behind an agent. Today VibeFlow supports **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), and **Cursor**. Each requires its own API key. You don't need all four; pick the one you have access to.
+The underlying AI provider behind an agent. Today VibeFlow supports **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), **Cursor**, and **Qwen**. Each requires its own API key. You don't need all five; pick the one you have access to.
 
 ### Project
 A VibeFlow project. Maps roughly to one of your code repositories. Created on the **VibeFlow Cloud** server. Identified by a name (e.g. `vscode-vibeflow`) plus a numeric ID. The extension auto-detects which project applies to your current workspace by reading the git remote URL.
@@ -93,7 +93,7 @@ When you reopen VS Code, the extension looks for `.vibeflow-session-{persona}` f
 ## Views, panels, and commands
 
 ### View
-A panel in VS Code's sidebar. VibeFlow ships five: **Agent Fleet**, **Work Items**, **Project Items**, **Documents** (all in the left activity bar's VibeFlow container), plus **Activity Feed** (in the right-side **VibeFlow Monitor** panel).
+A panel in VS Code's sidebar. VibeFlow ships six: **Welcome**, **Agent Fleet**, **Work Items**, **Project Items**, **Documents** (all in the left activity bar's VibeFlow container), plus **Activity Feed** (in the right-side **VibeFlow Monitor** panel).
 
 ### Activity Bar
 VS Code's leftmost strip with the icons (Explorer, Search, Source Control…). VibeFlow adds a custom icon there.
@@ -166,7 +166,7 @@ The 3-step onboarding flow (Server URL → API Key → Project) that runs the fi
 A message from an agent asking the user to make a decision. Appears as a notification plus a row in the **Activity Feed**. Use **VibeFlow: Respond to Prompt** or the inline reply box in chat to answer.
 
 ### Compliance finding
-A flagged item from the Security Lead persona tied to a specific compliance framework (SOC 2, ISO 27001, PCI-DSS, HIPAA). Visible in the **Compliance** panel. Each finding links to the work item where it was found and the framework clause it relates to.
+A flagged item from the Security Lead persona tied to a specific compliance framework (SOC 2, ISO 27001, PCI-DSS, HIPAA, GDPR, FedRAMP, CMMC). Visible in the **Compliance** panel. Each finding links to the work item where it was found and the framework clause it relates to.
 
 ### Stream-json
 A communication protocol between the extension and provider CLIs (Claude, Codex, Gemini, Cursor) in chat-first mode. Lets the panel show live agent output as the agent thinks. It's provider-agnostic: adapters in `src/sessions/providerAdapters/` translate each provider's stream format into a common shape.
