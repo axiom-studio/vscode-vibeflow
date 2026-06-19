@@ -486,11 +486,20 @@ export class SessionPanelManager implements vscode.Disposable {
     }
     if (!alive) {
       vscode.window.showInformationMessage(
-        'VibeFlow: this session has no live tmux shell to attach to (it may be a single-turn / VS Code-backed session).',
+        'VibeFlow: this session has no live tmux shell to attach to (it may be a single-turn session).',
       );
       return;
     }
-    const term = vscode.window.createTerminal({ name: `tmux · ${session.persona_name ?? session.persona_key}` });
+    // Reuse an already-open terminal for this session instead of stacking a new
+    // one on every click. A closed terminal drops out of `window.terminals`, so
+    // matching by name gives us "open once, then just reveal it".
+    const termName = `tmux · ${session.persona_name ?? session.persona_key} · ${session.git_branch}`;
+    const existing = vscode.window.terminals.find(t => t.name === termName);
+    if (existing) {
+      existing.show();
+      return;
+    }
+    const term = vscode.window.createTerminal({ name: termName });
     term.sendText(`tmux -L ${TMUX_SOCKET} attach -t ${name}`);
     term.show();
   }
