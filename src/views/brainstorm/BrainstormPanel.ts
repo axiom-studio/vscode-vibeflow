@@ -78,8 +78,8 @@ export class BrainstormPanel {
   private async handleMessage(msg: BrainstormClientMessage): Promise<void> {
     switch (msg.type) {
       case 'brainstormLoad':
+        // sendSnapshot starts/stops polling based on the resolved mode.
         await this.sendSnapshot();
-        this.startPolling();
         return;
       case 'ready':
         // Cursor's service-worker-gated bootstrap can land its message listener
@@ -186,6 +186,11 @@ export class BrainstormPanel {
         serverUrl, detail, roundResponses, documentMarkdown, activePersonas, history: list,
       });
       this.post({ type: 'brainstormSnapshot', payload: snapshot });
+      // Poll only while a brainstorm is actively running. A done/cancelled (or
+      // absent) brainstorm is terminal — do this one final fetch, then stop the
+      // timer (design doc #361 §4.2). Polling resumes on the next focus / refresh
+      // / start if a live brainstorm appears.
+      if (snapshot.mode === 'live') { this.startPolling(); } else { this.stopPolling(); }
     } catch (err) {
       this.post({ type: 'brainstormError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
@@ -202,6 +207,13 @@ export class BrainstormPanel {
       // Only poll while visible — a hidden panel doesn't need to wake its tree.
       if (this.panel.visible) { void this.sendSnapshot(); }
     }, POLL_INTERVAL_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = undefined;
+    }
   }
 
   private dispose(): void {
