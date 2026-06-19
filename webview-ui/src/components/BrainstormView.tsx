@@ -49,6 +49,7 @@ export function BrainstormView() {
   // Document | Chat tab for narrow widths (the split is side-by-side when wide).
   const [pane, setPane] = useState<'doc' | 'chat'>('chat');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
@@ -84,12 +85,12 @@ export function BrainstormView() {
 
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--feed-bg)', overflow: 'hidden' }}>
-      <Header snap={snap} onRefresh={refresh} />
+      <Header snap={snap} onRefresh={refresh} onConfirm={setConfirm} />
       {error && <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--feed-error)', background: 'rgba(224,87,79,0.1)' }}>{error}</div>}
 
       <ProgressDashboard session={s} progress={prog} convergence={currentConvergence(snap)} />
 
-      <Banners snap={snap} />
+      <Banners snap={snap} onConfirm={setConfirm} />
 
       {/* Pane toggle — hidden on wide (both panes show side-by-side), shown when
           narrow (tabbed). Display is CSS-controlled (.brainstorm-pane-tabs). */}
@@ -108,6 +109,8 @@ export function BrainstormView() {
       </div>
 
       <OpenItemsDrawer items={s.open_items ?? []} open={drawerOpen} onToggle={() => setDrawerOpen(o => !o)} />
+
+      <ConfirmModal spec={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
 }
@@ -125,11 +128,12 @@ function currentConvergence(snap: BrainstormSnapshot): number {
 
 // ---------------------------------------------------------------- Header
 
-function Header({ snap, onRefresh }: { snap: BrainstormSnapshot; onRefresh: () => void }) {
+function Header({ snap, onRefresh, onConfirm }: { snap: BrainstormSnapshot; onRefresh: () => void; onConfirm: (s: ConfirmSpec) => void }) {
   const s = snap.session!;
   const pill = STATUS_PILL[s.status] ?? { bg: 'rgba(160,160,160,0.16)', fg: 'var(--feed-muted)', label: s.status };
   const openCount = (s.open_items ?? []).length;
   const history = snap.history ?? [];
+  const live = s.status !== 'done' && s.status !== 'cancelled';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--feed-border)', flexShrink: 0 }}>
       <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)' }}>Brainstorm #{s.id}</span>
@@ -150,6 +154,19 @@ function Header({ snap, onRefresh }: { snap: BrainstormSnapshot; onRefresh: () =
             ))}
           </select>
         )}
+        {live && (
+          <>
+            <button
+              onClick={() => onConfirm({ title: 'Stop & finalize brainstorm?', body: 'Open items are preserved in the document and a final document is generated from the working draft.', confirmLabel: 'Stop & finalize', action: () => vscode.postMessage({ type: 'brainstormEnd', payload: { id: s.id, cancel: false } }) })}
+              style={ghostBtn}>Stop &amp; finalize</button>
+            <button
+              onClick={() => onConfirm({ title: 'Discard brainstorm (no document)?', body: 'No final document is generated. The working draft is preserved, but the brainstorm ends without a finalized output.', confirmLabel: 'Discard brainstorm', danger: true, action: () => vscode.postMessage({ type: 'brainstormEnd', payload: { id: s.id, cancel: true } }) })}
+              style={ghostBtn}>Discard</button>
+          </>
+        )}
+        <button
+          onClick={() => onConfirm({ title: 'Delete brainstorm?', body: 'This permanently deletes the brainstorm session and its rounds.', confirmLabel: 'Delete', danger: true, action: () => vscode.postMessage({ type: 'brainstormDelete', payload: { id: s.id } }) })}
+          style={ghostBtn}>Delete</button>
         <button onClick={onRefresh} style={ghostBtn}>Refresh</button>
       </div>
     </div>
@@ -249,24 +266,35 @@ function TokenBar({ used, budget }: { used: number; budget: number }) {
 
 // ---------------------------------------------------------------- Banners
 
-function Banners({ snap }: { snap: BrainstormSnapshot }) {
+function Banners({ snap, onConfirm }: { snap: BrainstormSnapshot; onConfirm: (s: ConfirmSpec) => void }) {
   const s = snap.session!;
   const cfg = s.config;
-  const items: { color: string; bg: string; text: string }[] = [];
+  const live = s.status !== 'done' && s.status !== 'cancelled';
+  const items: { kind: string; color: string; bg: string; text: string; action?: { label: string; spec: ConfirmSpec } }[] = [];
   if (s.status === 'converging' || (currentConvergence(snap) >= 1 && (s.open_items ?? []).length === 0)) {
-    items.push({ color: 'var(--feed-success, #43d782)', bg: 'rgba(67,215,130,0.12)', text: '✓ Brainstorm converged — the team has reached agreement.' });
+    items.push({
+      kind: 'converged',
+      color: 'var(--feed-success, #43d782)', bg: 'rgba(67,215,130,0.12)',
+      text: '✓ Brainstorm converged — the team has reached agreement.',
+      action: live ? { label: 'Accept & Finalize', spec: { title: 'Accept & finalize?', body: 'Generate the final document from the converged draft and end the brainstorm.', confirmLabel: 'Accept & Finalize', action: () => vscode.postMessage({ type: 'brainstormEnd', payload: { id: s.id, cancel: false } }) } } : undefined,
+    });
   }
   if (cfg.token_budget > 0 && cfg.tokens_used >= cfg.token_budget) {
-    items.push({ color: 'var(--feed-error)', bg: 'rgba(224,87,79,0.12)', text: '⚠ Token budget exhausted — the brainstorm will wind down.' });
+    items.push({ kind: 'budget', color: 'var(--feed-error)', bg: 'rgba(224,87,79,0.12)', text: '⚠ Token budget exhausted — the brainstorm will wind down.' });
   }
   if (cfg.paused) {
-    items.push({ color: 'var(--feed-warning)', bg: 'rgba(234,179,8,0.12)', text: '⏸ Auto-paused at ~80% of the token budget — the agents will handle resumption or finalize.' });
+    items.push({ kind: 'paused', color: 'var(--feed-warning)', bg: 'rgba(234,179,8,0.12)', text: '⏸ Auto-paused at ~80% of the token budget — the agents will handle resumption or finalize.' });
   }
   if (!items.length) { return null; }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 16px 0', flexShrink: 0 }}>
-      {items.map((b, i) => (
-        <div key={i} style={{ fontSize: 11, fontWeight: 500, padding: '6px 10px', borderRadius: 6, color: b.color, background: b.bg }}>{b.text}</div>
+      {items.map((b) => (
+        <div key={b.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, fontWeight: 500, padding: '6px 10px', borderRadius: 6, color: b.color, background: b.bg }}>
+          <span style={{ flex: 1 }}>{b.text}</span>
+          {b.action && (
+            <button onClick={() => onConfirm(b.action!.spec)} style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 5, border: `1px solid ${b.color}`, background: 'transparent', color: b.color, cursor: 'pointer', flexShrink: 0 }}>{b.action.label}</button>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -318,10 +346,16 @@ function ContributionBubble({ resp, serverUrl }: { resp: VibeFlowBrainstormRespo
       padding: '7px 10px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: 11 }}>
-        {avatar
-          ? <img src={avatar} alt="" style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover' }} />
-          : <span style={{ width: 8, height: 8, borderRadius: '50%', background: pColor }} />}
-        <span style={{ fontWeight: 600, color: 'var(--feed-fg)' }}>{prettyPersona(resp.persona_key)}</span>
+        <button
+          onClick={() => { if (resp.session_id) { vscode.postMessage({ type: 'brainstormOpenSession', payload: { sessionId: resp.session_id } }); } }}
+          disabled={!resp.session_id}
+          title={resp.session_id ? 'Open this agent’s session' : undefined}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', padding: 0, cursor: resp.session_id ? 'pointer' : 'default' }}>
+          {avatar
+            ? <img src={avatar} alt="" style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover' }} />
+            : <span style={{ width: 8, height: 8, borderRadius: '50%', background: pColor }} />}
+          <span style={{ fontWeight: 600, color: 'var(--feed-fg)' }}>{prettyPersona(resp.persona_key)}</span>
+        </button>
         <span style={{ fontSize: 9.5, fontWeight: 700, color: tag.color }}>{tag.icon} {tag.label}</span>
         {resp.target_section && <span style={{ fontSize: 9.5, color: 'var(--feed-muted)' }}>§{resp.target_section}</span>}
         {resp.target_persona_key && (
@@ -539,6 +573,38 @@ function PaneTab({ label, active, onClick }: { label: string; active: boolean; o
       background: active ? 'color-mix(in oklab, var(--feed-link) 18%, transparent)' : 'transparent',
       color: active ? 'var(--feed-link)' : 'var(--feed-muted)',
     }}>{label}</button>
+  );
+}
+
+interface ConfirmSpec {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  danger?: boolean;
+  action: () => void;
+}
+
+function ConfirmModal({ spec, onClose }: { spec: ConfirmSpec | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!spec) { return; }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { onClose(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [spec, onClose]);
+  if (!spec) { return null; }
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: '100%', maxWidth: 380, margin: 16, padding: 18, borderRadius: 10, background: 'var(--vscode-editor-background, var(--feed-bg))', border: '1px solid var(--feed-border)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--feed-fg)', marginBottom: 8 }}>{spec.title}</div>
+        <div style={{ fontSize: 12, color: 'var(--feed-muted)', lineHeight: 1.5, marginBottom: 16 }}>{spec.body}</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button autoFocus onClick={onClose} style={ghostBtn}>Cancel</button>
+          <button
+            onClick={() => { spec.action(); onClose(); }}
+            style={{ fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 5, border: 'none', cursor: 'pointer', background: spec.danger ? 'var(--feed-error)' : 'var(--feed-link)', color: spec.danger ? '#fff' : '#0b0b0b' }}>{spec.confirmLabel}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
