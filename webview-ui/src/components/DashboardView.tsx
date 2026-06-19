@@ -1252,6 +1252,16 @@ const HIDDEN_HANDLE = { opacity: 0, width: 1, height: 1, minWidth: 0, minHeight:
  * NodeToolbar so it renders OUTSIDE the canvas viewport — never clipped or
  * zoom-scaled. Driven by the node's own hover state.
  */
+/** Tidy an agent's published activity for display: drop the redundant
+ *  "<Name>: " prefix and strip markdown markers (the toolbar is plain text). */
+function cleanActivity(msg: string, personaName: string, characterName?: string): string {
+  let s = msg.trim();
+  for (const n of [characterName, personaName]) {
+    if (n && s.toLowerCase().startsWith(`${n.toLowerCase()}:`)) { s = s.slice(n.length + 1).trim(); break; }
+  }
+  return s.replace(/\*\*/g, '').replace(/`/g, '');
+}
+
 function AgentDetailToolbar({ agent, visible }: { agent: LiveAgent; visible: boolean }) {
   return (
     <NodeToolbar isVisible={visible} position={Position.Top} offset={8}>
@@ -1268,7 +1278,14 @@ function AgentDetailToolbar({ agent, visible }: { agent: LiveAgent; visible: boo
           <div style={{ marginTop: 6, color: 'var(--feed-warning)', fontWeight: 600 }}>⚠ Waiting for your input ({agent.pendingPrompts})</div>
         )}
         {agent.lastMessage && (
-          <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--feed-border)', color: 'var(--feed-muted)' }}>{agent.lastMessage}</div>
+          <div style={{ marginTop: 7, paddingTop: 7, borderTop: '1px solid var(--feed-border)' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--feed-muted)', marginBottom: 3 }}>
+              Working on{agent.lastMessageAt ? ` · ${formatAge(agent.lastMessageAt)}` : ''}
+            </div>
+            <div style={{ color: 'var(--feed-fg)', opacity: 0.92, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+              {cleanActivity(agent.lastMessage, agent.personaName, agent.characterName)}
+            </div>
+          </div>
         )}
       </div>
     </NodeToolbar>
