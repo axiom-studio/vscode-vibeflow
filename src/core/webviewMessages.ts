@@ -487,7 +487,7 @@ export type BrainstormClientMessage =
   | { type: 'brainstormLoad' }
   | { type: 'ready' }
   | { type: 'brainstormRefresh' }
-  | { type: 'brainstormStart'; payload: StartBrainstormBody }
+  | { type: 'brainstormStart'; payload: Omit<StartBrainstormBody, 'project_id'> }
   | { type: 'brainstormEnd'; payload: { id: number; cancel: boolean } }
   | { type: 'brainstormDelete'; payload: { id: number } }
   | { type: 'brainstormSelectSession'; payload: { id: number } }

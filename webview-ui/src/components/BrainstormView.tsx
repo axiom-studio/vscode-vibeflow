@@ -76,7 +76,7 @@ export function BrainstormView() {
   }
 
   if (snap.mode === 'empty' || !snap.session) {
-    return <EmptyState activeCount={snap.activePersonas.length} onRefresh={refresh} />;
+    return <EmptyState personas={snap.activePersonas} onRefresh={refresh} />;
   }
 
   const s = snap.session;
@@ -368,22 +368,158 @@ function OpenItemsDrawer({ items, open, onToggle }: { items: BrainstormOpenItem[
 
 // ---------------------------------------------------------------- Empty state + bits
 
-function EmptyState({ activeCount, onRefresh }: { activeCount: number; onRefresh: () => void }) {
+function EmptyState({ personas, onRefresh }: { personas: { key: string; sessionId: string }[]; onRefresh: () => void }) {
+  const canStart = personas.length >= 2;
   return (
-    <Centered>
-      <div style={{ fontSize: 30, opacity: 0.45, marginBottom: 8 }}>💡</div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--feed-fg)', marginBottom: 6 }}>No active brainstorm</div>
-      <div style={{ fontSize: 12, color: 'var(--feed-muted)', maxWidth: 380, textAlign: 'center', lineHeight: 1.5 }}>
-        A brainstorm is a multi-persona working session — a lead drafts, the others review in rounds until they converge.
-        Start one from the web for now (the in-panel start flow is coming next).
+    <div style={{ width: '100%', height: '100vh', overflow: 'auto', background: 'var(--feed-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 560, padding: '32px 24px' }}>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ fontSize: 30, marginBottom: 6 }}>💡</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--feed-fg)' }}>Start a brainstorm</div>
+          <div style={{ fontSize: 12, color: 'var(--feed-muted)', marginTop: 5, lineHeight: 1.5 }}>
+            A lead persona drafts a document; the others review it in rounds — challenging, questioning, refining — until the team converges.
+          </div>
+        </div>
+        <HowItWorks />
+        {canStart
+          ? <StartBrainstormForm personas={personas} />
+          : (
+            <div style={{ marginTop: 18, padding: 16, borderRadius: 8, border: '1px solid var(--feed-border)', background: 'rgba(234,179,8,0.08)', fontSize: 12, color: 'var(--feed-warning)', textAlign: 'center', lineHeight: 1.5 }}>
+              Need at least <b>2 personas with running agents</b> to brainstorm (currently {personas.length}). Fan-out only reaches heartbeating sessions — launch more agents, then refresh.
+              <div><button onClick={onRefresh} style={{ ...ghostBtn, marginTop: 10 }}>Refresh</button></div>
+            </div>
+          )}
       </div>
-      <div style={{ marginTop: 12, fontSize: 11, color: activeCount >= 2 ? 'var(--feed-success, #43d782)' : 'var(--feed-warning)' }}>
-        {activeCount >= 2
-          ? `✓ ${activeCount} personas have live agents — ready to brainstorm.`
-          : `Need ≥2 personas with running agents to brainstorm (currently ${activeCount}).`}
+    </div>
+  );
+}
+
+function HowItWorks() {
+  const steps: [string, string, string][] = [
+    ['1', 'Define', 'topic + team'],
+    ['2', 'Review', 'agents weigh in'],
+    ['3', 'Iterate', 'rounds to converge'],
+    ['4', 'Finalize', 'a document'],
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+      {steps.map(([n, t, d]) => (
+        <div key={n} style={{ flex: 1, textAlign: 'center', padding: '8px 6px', border: '1px solid var(--feed-border)', borderRadius: 8 }}>
+          <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'var(--feed-link)', color: '#0b0b0b', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 5px' }}>{n}</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>{t}</div>
+          <div style={{ fontSize: 9.5, color: 'var(--feed-muted)', marginTop: 1 }}>{d}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StartBrainstormForm({ personas }: { personas: { key: string; sessionId: string }[] }) {
+  const [topic, setTopic] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const [maxRounds, setMaxRounds] = useState(5);
+  const [showAdv, setShowAdv] = useState(false);
+  const [tokenBudget, setTokenBudget] = useState(500_000);
+  const [scopeGuard, setScopeGuard] = useState(true);
+
+  const toggle = (key: string) => setSelected(s => (s.includes(key) ? s.filter(k => k !== key) : [...s, key]));
+  const topicShort = topic.trim().length > 0 && topic.trim().length < 5;
+  const valid = topic.trim().length >= 5 && selected.length >= 2;
+
+  const submit = () => {
+    if (!valid) { return; }
+    const lead = personas.find(p => p.key === selected[0]);
+    if (!lead) { return; }
+    vscode.postMessage({
+      type: 'brainstormStart',
+      payload: {
+        topic: topic.trim(),
+        lead_persona_key: selected[0],
+        session_id: lead.sessionId,
+        participating_personas: selected.slice(1),
+        max_rounds: maxRounds,
+        scope_guard_enabled: scopeGuard,
+        token_budget: tokenBudget,
+      },
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Field label="Topic" hint={topicShort ? 'At least 5 characters' : undefined}>
+        <textarea
+          value={topic} onChange={e => setTopic(e.target.value)} rows={2} autoFocus
+          placeholder="What should the team brainstorm? e.g. “Design the rate-limiting strategy for the public API”"
+          style={{ width: '100%', resize: 'vertical', fontSize: 13, padding: 9, borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-input-background, var(--feed-bg))', color: 'var(--feed-fg)', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+      </Field>
+
+      <Field label="Team — pick ≥2 · first pick leads">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {personas.map(p => {
+            const idx = selected.indexOf(p.key);
+            const on = idx >= 0;
+            const isLead = idx === 0;
+            const color = personaColor(p.key);
+            return (
+              <button key={p.key} onClick={() => toggle(p.key)} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, padding: '5px 10px', borderRadius: 999, cursor: 'pointer',
+                border: `1px solid ${on ? color : 'var(--feed-border)'}`,
+                background: on ? `color-mix(in oklab, ${color} 16%, transparent)` : 'transparent',
+                color: 'var(--feed-fg)', fontWeight: on ? 600 : 400,
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+                {prettyPersona(p.key)}
+                {isLead && <span style={{ fontSize: 9, fontWeight: 700, color }}>LEAD</span>}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+
+      <Field label={`Rounds — ${maxRounds}`}>
+        <input type="range" min={3} max={10} value={maxRounds} onChange={e => setMaxRounds(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--feed-link)' }} />
+      </Field>
+
+      <button onClick={() => setShowAdv(a => !a)} style={{ ...ghostBtn, alignSelf: 'flex-start' }}>
+        {showAdv ? '▾' : '▸'} Advanced
+      </button>
+      {showAdv && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '0 2px' }}>
+          <Field label="Token budget">
+            <select value={tokenBudget} onChange={e => setTokenBudget(Number(e.target.value))} style={{ ...selectStyle, width: '100%', padding: 6 }}>
+              <option value={250_000}>250K</option>
+              <option value={500_000}>500K</option>
+              <option value={1_000_000}>1M</option>
+              <option value={2_000_000}>2M</option>
+            </select>
+          </Field>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--feed-fg)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={scopeGuard} onChange={e => setScopeGuard(e.target.checked)} />
+            Scope guard — flag responses that drift off-topic
+          </label>
+        </div>
+      )}
+
+      <button onClick={submit} disabled={!valid} style={{
+        marginTop: 4, fontSize: 13, fontWeight: 600, padding: 10, borderRadius: 7, border: 'none',
+        background: valid ? 'var(--feed-link)' : 'var(--feed-border)',
+        color: valid ? '#0b0b0b' : 'var(--feed-muted)',
+        cursor: valid ? 'pointer' : 'not-allowed',
+      }}>Start brainstorm</button>
+    </div>
+  );
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--feed-fg)' }}>{label}</span>
+        {hint && <span style={{ fontSize: 10, color: 'var(--feed-warning)' }}>{hint}</span>}
       </div>
-      <button onClick={onRefresh} style={{ ...ghostBtn, marginTop: 14 }}>Refresh</button>
-    </Centered>
+      {children}
+    </div>
   );
 }
 
