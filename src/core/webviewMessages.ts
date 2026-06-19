@@ -194,6 +194,12 @@ export type WorkItemPanelClientMessage =
 // ============================================================
 
 import type { VibeFlowPrompt } from '../api/types.js';
+import type {
+  VibeFlowBrainstormSession,
+  VibeFlowBrainstormResponse,
+  BrainstormProgress,
+  StartBrainstormBody,
+} from '../api/types.js';
 
 export type SessionPanelHostMessage =
   | {
@@ -452,6 +458,42 @@ export type CommentsClientMessage =
  *     default: assertNever(msg);
  *   }
  */
+// ============================================================
+// Brainstorm Panel (feature 473) — multi-persona brainstorm. The host polls
+// REST and composes a BrainstormSnapshot; the webview is a pure renderer.
+// ============================================================
+
+export interface BrainstormSnapshot {
+  // Server origin so the webview can build persona-avatar URLs.
+  serverUrl: string;
+  // Computed host-side: no active brainstorm | one running | one finished.
+  mode: 'empty' | 'live' | 'closed';
+  // Personas with a live (heartbeating) session — powers the start-flow gate.
+  activePersonas: { key: string; sessionId: string }[];
+  session?: VibeFlowBrainstormSession;
+  progress?: BrainstormProgress;
+  // Per-round metadata merged with that round's responses.
+  rounds?: { round_number: number; convergence_score: number; responses: VibeFlowBrainstormResponse[] }[];
+  documentMarkdown?: string;
+  // Past + present sessions for the header history dropdown (list result).
+  history?: VibeFlowBrainstormSession[];
+}
+
+export type BrainstormHostMessage =
+  | { type: 'brainstormSnapshot'; payload: BrainstormSnapshot }
+  | { type: 'brainstormError'; payload: { message: string } };
+
+export type BrainstormClientMessage =
+  | { type: 'brainstormLoad' }
+  | { type: 'ready' }
+  | { type: 'brainstormRefresh' }
+  | { type: 'brainstormStart'; payload: StartBrainstormBody }
+  | { type: 'brainstormEnd'; payload: { id: number; cancel: boolean } }
+  | { type: 'brainstormDelete'; payload: { id: number } }
+  | { type: 'brainstormSelectSession'; payload: { id: number } }
+  | { type: 'brainstormOpenSession'; payload: { sessionId: string } }
+  | { type: 'brainstormOpenDocument'; payload: { documentId: number } };
+
 export function assertNever(_value: never): void {
   // No-op at runtime — purely a compile-time check.
 }
