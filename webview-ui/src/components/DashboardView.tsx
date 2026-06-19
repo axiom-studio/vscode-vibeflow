@@ -5,7 +5,6 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  MiniMap,
   Position,
   MarkerType,
   NodeToolbar,
@@ -1019,21 +1018,6 @@ const LIVE_FIT = { padding: 0.18 };
 const RF_COLOR_MODE: 'light' | 'dark' =
   typeof document !== 'undefined' && document.body.classList.contains('vscode-light') ? 'light' : 'dark';
 
-/**
- * MiniMap fill. React Flow paints node fills as SVG presentation ATTRIBUTES,
- * which don't evaluate `var()` / `color-mix()` — so these must be solid colors
- * or they render as nothing. Agent nodes get a bright persona dot; branch bands
- * a solid panel a touch off the canvas.
- */
-function miniMapNodeColor(n: Node): string {
-  const agent = (n.data as { agent?: LiveAgent } | undefined)?.agent;
-  if (agent) {
-    const c = PERSONA_COLORS[agent.personaKey];
-    return c && c.startsWith('#') ? c : '#9aa0a6';
-  }
-  return RF_COLOR_MODE === 'light' ? '#cfcfcf' : '#3a3a3a';
-}
-
 function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
   // elk layout is async — compute off the snapshot and stash the positioned graph.
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
@@ -1083,18 +1067,9 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
         gap={24}
         lineWidth={0.7}
       />
-      {/* Out-of-the-box controls: zoom +/- · fit · and an overview minimap.
-       *  Themed via colorMode above (defaults are light-on-light). */}
+      {/* Zoom +/- · fit controls, themed via colorMode above (defaults are
+       *  light-on-light). MiniMap removed (#2343) — low value for stacked bands. */}
       <Controls showInteractive={false} />
-      <MiniMap
-        pannable
-        zoomable
-        nodeStrokeWidth={2}
-        nodeColor={miniMapNodeColor}
-        nodeStrokeColor="transparent"
-        maskColor={RF_COLOR_MODE === 'light' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'}
-        style={{ border: '1px solid var(--feed-border)', borderRadius: 6 }}
-      />
     </ReactFlow>
   );
 }
