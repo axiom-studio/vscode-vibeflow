@@ -96,7 +96,7 @@ export class BrainstormPanel {
         return;
       case 'brainstormStart': {
         try {
-          const created = await this.client.startBrainstorm(msg.payload);
+          const created = await this.client.startBrainstorm({ ...msg.payload, project_id: this.projectId });
           this.selectedId = created.id;
         } catch (err) {
           vscode.window.showErrorMessage(`VibeFlow: Failed to start brainstorm — ${err instanceof Error ? err.message : String(err)}`);
