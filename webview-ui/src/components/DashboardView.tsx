@@ -356,7 +356,7 @@ export function DashboardView() {
       type: 'slotLabel',
       // Shifted left of the architect node so the (wider) chip centers over the
       // code-agent column rather than hanging off its right.
-      position: { x: archPos.x - 80, y: archPos.y - 34 },
+      position: { x: archPos.x - 25, y: archPos.y - 34 },
       data: { label: '1 active per branch · code agents' },
       draggable: false,
       selectable: false,
@@ -1014,6 +1014,18 @@ function TopologyModeToggle({ mode, onChange }: { mode: 'explain' | 'live'; onCh
  */
 const LIVE_FIT = { padding: 0.18 };
 
+// React Flow's Controls + MiniMap default to LIGHT styling (invisible on dark);
+// theme them via the colorMode prop, matched to the VS Code theme (#2341).
+const RF_COLOR_MODE: 'light' | 'dark' =
+  typeof document !== 'undefined' && document.body.classList.contains('vscode-light') ? 'light' : 'dark';
+
+/** MiniMap fill — agent nodes take their persona color; branch bands a faint neutral. */
+function miniMapNodeColor(n: Node): string {
+  const agent = (n.data as { agent?: LiveAgent } | undefined)?.agent;
+  if (agent) { return PERSONA_COLORS[agent.personaKey] ?? '#8a8a8a'; }
+  return 'color-mix(in oklab, var(--vscode-foreground) 14%, transparent)';
+}
+
 function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
   // elk layout is async — compute off the snapshot and stash the positioned graph.
   const [graph, setGraph] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] });
@@ -1055,6 +1067,7 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
       zoomOnScroll={false}
       panOnDrag={true}
       minZoom={0.4}
+      colorMode={RF_COLOR_MODE}
     >
       <Background
         variant={BackgroundVariant.Lines}
@@ -1062,14 +1075,17 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
         gap={24}
         lineWidth={0.7}
       />
-      {/* Out-of-the-box controls: zoom +/- · fit · and an overview minimap. */}
+      {/* Out-of-the-box controls: zoom +/- · fit · and an overview minimap.
+       *  Themed via colorMode above (defaults are light-on-light). */}
       <Controls showInteractive={false} />
       <MiniMap
         pannable
         zoomable
         nodeStrokeWidth={2}
-        maskColor="color-mix(in oklab, var(--vscode-foreground) 10%, transparent)"
-        style={{ background: 'var(--vscode-editor-background)', border: '1px solid var(--feed-border)' }}
+        nodeColor={miniMapNodeColor}
+        nodeStrokeColor="transparent"
+        maskColor="color-mix(in oklab, var(--vscode-foreground) 14%, transparent)"
+        style={{ border: '1px solid var(--feed-border)', borderRadius: 6 }}
       />
     </ReactFlow>
   );
