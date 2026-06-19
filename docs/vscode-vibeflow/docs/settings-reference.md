@@ -10,7 +10,7 @@
 
 Two options that write to the same place.
 
-**The VibeFlow Settings panel (friendlier).** Run **`VibeFlow: Settings`** (`Cmd/Ctrl+Shift+V S`) or click the **gear icon** next to the VibeFlow status-bar item. Tabbed, with inline descriptions and dropdowns for enums.
+**The VibeFlow Settings panel (friendlier).** Run **`VibeFlow: Settings`** (`Cmd/Ctrl+Shift+V S`) or click the **gear icon** in the title bar of any VibeFlow sidebar view (Agent Fleet, Work Items, etc.). Tabbed, with inline descriptions and dropdowns for enums.
 
 **VS Code's `settings.json`.** Run **`Preferences: Open User Settings (JSON)`** (or *Workspace* Settings for per-repo config):
 
@@ -58,7 +58,7 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 
 **When to change it**: You don't have an Anthropic key but do have OpenAI, Google, or Cursor. Set this to your daily-driver provider so launches are one click less.
 
-**Gotchas**: Free-form string in `package.json`, but the wizard only renders the four supported providers: **`claude`**, **`codex`**, **`gemini`**, **`cursor`**. Typos silently fall back to `claude`.
+**Gotchas**: Free-form string in `package.json`. The **Launch Session** wizard quick-pick lists four providers: **`claude`**, **`codex`**, **`gemini`**, **`cursor`**. A fifth value, **`qwen`**, is also a valid provider (it has a working stream-json adapter) but isn't surfaced in the wizard quick-pick — you can still set it here by hand. Unrecognized values fall back to `claude`.
 
 ---
 
@@ -309,3 +309,7 @@ The changes most users make in their first week:
 2. **Bump `vibeflow.polling.interval` from `30` to `60`+** if background CPU/network is more than you want for a non-focus tool.
 3. **Turn on `vibeflow.worktree.autoCreate`** once you use cross-branch sessions seriously. Removes the "create worktree?" dialog.
 4. **Turn off `vibeflow.notifications.workItemComplete`** once you have three or more concurrent agents. Toasts get noisy; the Work Items view shows the same info silently.
+
+---
+
+*Last updated: 2026-06-17*
