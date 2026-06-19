@@ -221,6 +221,15 @@ export function TerminalIcon({ size = 14, ...rest }: IconProps = {}) {
   );
 }
 
+export function EyeIcon({ size = 14, ...rest }: IconProps = {}) {
+  return (
+    <Svg size={size} {...rest}>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+
 export function InfoIcon({ size = 14, ...rest }: IconProps = {}) {
   return (
     <Svg size={size} {...rest}>
