@@ -1019,11 +1019,19 @@ const LIVE_FIT = { padding: 0.18 };
 const RF_COLOR_MODE: 'light' | 'dark' =
   typeof document !== 'undefined' && document.body.classList.contains('vscode-light') ? 'light' : 'dark';
 
-/** MiniMap fill — agent nodes take their persona color; branch bands a faint neutral. */
+/**
+ * MiniMap fill. React Flow paints node fills as SVG presentation ATTRIBUTES,
+ * which don't evaluate `var()` / `color-mix()` — so these must be solid colors
+ * or they render as nothing. Agent nodes get a bright persona dot; branch bands
+ * a solid panel a touch off the canvas.
+ */
 function miniMapNodeColor(n: Node): string {
   const agent = (n.data as { agent?: LiveAgent } | undefined)?.agent;
-  if (agent) { return PERSONA_COLORS[agent.personaKey] ?? '#8a8a8a'; }
-  return 'color-mix(in oklab, var(--vscode-foreground) 14%, transparent)';
+  if (agent) {
+    const c = PERSONA_COLORS[agent.personaKey];
+    return c && c.startsWith('#') ? c : '#9aa0a6';
+  }
+  return RF_COLOR_MODE === 'light' ? '#cfcfcf' : '#3a3a3a';
 }
 
 function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
@@ -1084,7 +1092,7 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
         nodeStrokeWidth={2}
         nodeColor={miniMapNodeColor}
         nodeStrokeColor="transparent"
-        maskColor="color-mix(in oklab, var(--vscode-foreground) 14%, transparent)"
+        maskColor={RF_COLOR_MODE === 'light' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'}
         style={{ border: '1px solid var(--feed-border)', borderRadius: 6 }}
       />
     </ReactFlow>
