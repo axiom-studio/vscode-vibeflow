@@ -95,6 +95,11 @@ export interface BrainstormBadge {
   openItems: number;
   /** Current round has pending personas + no new response within ~timeout. */
   stalled: boolean;
+  /** Roster for the expanded cluster (lead first); responseType = this persona's
+   *  response in the current round, if any. */
+  participants: { personaKey: string; responseType?: string; isLead: boolean }[];
+  /** Current-round hand-offs (from a response's target_persona_key), deduped. */
+  handoffs: { from: string; to: string }[];
 }
 
 /** Live-mode snapshot: every running session grouped into its branch's team. */
@@ -626,8 +631,9 @@ async function collectBrainstormBadge(client: VibeFlowClient, projectId: number)
   // current round (fall back to the round's start, then the session row).
   const pending = detail.progress?.pending ?? [];
   let latestActivity = Date.parse(s.updated_at ?? '') || Date.now();
+  let rd: Awaited<ReturnType<typeof client.getBrainstormRound>> | undefined;
   if (round > 0) {
-    const rd = await client.getBrainstormRound(active.id, round).catch((err: unknown) => {
+    rd = await client.getBrainstormRound(active.id, round).catch((err: unknown) => {
       console.warn(`[VibeFlow] dashboard: brainstorm round ${round} fetch failed`, err);
       return undefined;
     });
@@ -644,15 +650,35 @@ async function collectBrainstormBadge(client: VibeFlowClient, projectId: number)
   const timeoutMs = (cfg.timeout_per_persona > 0 ? cfg.timeout_per_persona : 120) * 1000;
   const stalled = pending.length > 0 && (Date.now() - latestActivity) > timeoutMs;
 
+  // Roster + hand-offs for the expandable cluster, from the current round's
+  // responses (already fetched above — no extra calls).
+  const leadKey = s.lead_persona_key;
+  const responses = rd?.responses ?? [];
+  const respTypeByPersona = new Map<string, string>();
+  for (const r of responses) { respTypeByPersona.set(r.persona_key, r.response_type); } // last wins
+  const participants = [leadKey, ...(cfg.participating_personas ?? []).filter(p => p !== leadKey)]
+    .map(pk => ({ personaKey: pk, responseType: respTypeByPersona.get(pk), isLead: pk === leadKey }));
+  const seen = new Set<string>();
+  const handoffs: { from: string; to: string }[] = [];
+  for (const r of responses) {
+    if (!r.target_persona_key) { continue; }
+    const key = `${r.persona_key}|${r.target_persona_key}`;
+    if (seen.has(key)) { continue; }
+    seen.add(key);
+    handoffs.push({ from: r.persona_key, to: r.target_persona_key });
+  }
+
   return {
     id: active.id,
-    leadPersonaKey: s.lead_persona_key,
+    leadPersonaKey: leadKey,
     leadSessionId: s.initiator_session_id,
     round,
     maxRounds: cfg.max_rounds,
     participantCount: (cfg.participating_personas?.length ?? 0) + 1, // + the lead
     openItems: (s.open_items ?? []).length,
     stalled,
+    participants,
+    handoffs,
   };
 }
 
