@@ -505,14 +505,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "vibeflow.refresh",
+          "command": "vibeflow.openBrainstorm",
           "when": "view == vibeflow.agentFleet",
           "group": "navigation@3"
         },
         {
-          "command": "vibeflow.showAllTerminals",
+          "command": "vibeflow.refresh",
           "when": "view == vibeflow.agentFleet",
           "group": "navigation@4"
+        },
+        {
+          "command": "vibeflow.showAllTerminals",
+          "when": "view == vibeflow.agentFleet",
+          "group": "navigation@5"
         },
         {
           "command": "vibeflow.createWorkItem",
@@ -525,19 +530,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "vibeflow.openBrainstorm",
+          "command": "vibeflow.openCompliance",
           "when": "view == vibeflow.workItems",
           "group": "navigation@3"
         },
         {
-          "command": "vibeflow.openCompliance",
-          "when": "view == vibeflow.workItems",
-          "group": "navigation@4"
-        },
-        {
           "command": "vibeflow.refresh",
           "when": "view == vibeflow.workItems",
-          "group": "navigation@5"
+          "group": "navigation@4"
         },
         {
           "command": "vibeflow.openSettings",
