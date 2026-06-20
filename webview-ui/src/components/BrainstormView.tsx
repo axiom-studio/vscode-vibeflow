@@ -456,6 +456,7 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
   const [tokenBudget, setTokenBudget] = useState(500_000);
   const [scopeGuard, setScopeGuard] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | undefined>();
 
   // Re-enable the Start button if the form is STILL mounted 4s after submit. On
   // success the panel flips to the live view and this form unmounts — the
@@ -475,7 +476,14 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
     // backend's one-active-brainstorm-per-project guard with a 409 (#2413).
     if (!valid || submitting) { return; }
     const lead = personas.find(p => p.key === selected[0]);
-    if (!lead) { return; }
+    // Don't hand the backend a dead/empty initiator session_id — the brainstorm
+    // POST returns an opaque 409 if the lead's session FK doesn't resolve. The
+    // lead must be a persona with a live session (#2414).
+    if (!lead || !lead.sessionId) {
+      setFormError('The lead persona has no live agent session — pick a persona whose agent is running.');
+      return;
+    }
+    setFormError(undefined);
     setSubmitting(true);
     vscode.postMessage({
       type: 'brainstormStart',
@@ -555,6 +563,7 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
         color: (valid && !submitting) ? '#0b0b0b' : 'var(--feed-muted)',
         cursor: (valid && !submitting) ? 'pointer' : 'not-allowed',
       }}>{submitting ? 'Starting…' : 'Start brainstorm'}</button>
+      {formError && <div style={{ fontSize: 11, color: 'var(--feed-error)', marginTop: -8 }}>{formError}</div>}
     </div>
   );
 }
