@@ -455,15 +455,28 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
   const [showAdv, setShowAdv] = useState(false);
   const [tokenBudget, setTokenBudget] = useState(500_000);
   const [scopeGuard, setScopeGuard] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Re-enable the Start button if the form is STILL mounted 4s after submit. On
+  // success the panel flips to the live view and this form unmounts — the
+  // cleanup clears the timer so we never setState on an unmounted form (#2413).
+  useEffect(() => {
+    if (!submitting) { return; }
+    const t = setTimeout(() => setSubmitting(false), 4000);
+    return () => clearTimeout(t);
+  }, [submitting]);
 
   const toggle = (key: string) => setSelected(s => (s.includes(key) ? s.filter(k => k !== key) : [...s, key]));
   const topicShort = topic.trim().length > 0 && topic.trim().length < 5;
   const valid = topic.trim().length >= 5 && selected.length >= 2;
 
   const submit = () => {
-    if (!valid) { return; }
+    // Guard re-entry: a double-click would POST twice → the 2nd hits the
+    // backend's one-active-brainstorm-per-project guard with a 409 (#2413).
+    if (!valid || submitting) { return; }
     const lead = personas.find(p => p.key === selected[0]);
     if (!lead) { return; }
+    setSubmitting(true);
     vscode.postMessage({
       type: 'brainstormStart',
       payload: {
@@ -476,6 +489,7 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
         token_budget: tokenBudget,
       },
     });
+    // Re-enable handled by the useEffect above (unmount-safe).
   };
 
   return (
@@ -535,12 +549,12 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
         </div>
       )}
 
-      <button onClick={submit} disabled={!valid} style={{
+      <button onClick={submit} disabled={!valid || submitting} style={{
         marginTop: 4, fontSize: 13, fontWeight: 600, padding: 10, borderRadius: 7, border: 'none',
-        background: valid ? 'var(--feed-link)' : 'var(--feed-border)',
-        color: valid ? '#0b0b0b' : 'var(--feed-muted)',
-        cursor: valid ? 'pointer' : 'not-allowed',
-      }}>Start brainstorm</button>
+        background: (valid && !submitting) ? 'var(--feed-link)' : 'var(--feed-border)',
+        color: (valid && !submitting) ? '#0b0b0b' : 'var(--feed-muted)',
+        cursor: (valid && !submitting) ? 'pointer' : 'not-allowed',
+      }}>{submitting ? 'Starting…' : 'Start brainstorm'}</button>
     </div>
   );
 }
