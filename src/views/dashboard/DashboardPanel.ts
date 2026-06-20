@@ -9,6 +9,7 @@ import type {
   VibeFlowComplianceFinding,
   VibeFlowWorkSummary,
 } from '../../api/types.js';
+import { pickActiveBrainstorm } from '../brainstorm/brainstormData.js';
 import type { DetectedProject } from '../../project/ProjectDetector.js';
 import type { TerminalRegistry } from '../../sessions/TerminalRegistry.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
@@ -76,10 +77,32 @@ export interface LiveBranch {
   branch: string;
   agents: LiveAgent[];
 }
+/**
+ * The collapsed brainstorm "huddle" badge (feature 472 v1, brainstorm #5 spec
+ * doc #365). Present only when a brainstorm is active for the project; the Live
+ * topology renders a pinned corner badge + a lead marker. Reuses the existing
+ * brainstorm REST poll — no new backend.
+ */
+export interface BrainstormBadge {
+  id: number;
+  leadPersonaKey: string;
+  /** The lead's session id (the brainstorm initiator) — so the topology marks
+   *  the RIGHT node when several sessions share the lead's persona key. */
+  leadSessionId: string;
+  round: number;
+  maxRounds: number;
+  participantCount: number;
+  openItems: number;
+  /** Current round has pending personas + no new response within ~timeout. */
+  stalled: boolean;
+}
+
 /** Live-mode snapshot: every running session grouped into its branch's team. */
 export interface LiveSnapshot {
   branches: LiveBranch[];
   total: number;
+  /** The active brainstorm's huddle badge, if any (undefined = no brainstorm). */
+  brainstorm?: BrainstormBadge;
 }
 
 interface DashboardSnapshot {
@@ -261,6 +284,10 @@ export class DashboardPanel {
         // Live topology click — open the (tmux-backed) session's chat-first panel.
         await vscode.commands.executeCommand('vibeflow.openSessionPanel', msg.payload.sessionId);
         return;
+      case 'dashboardOpenBrainstorm':
+        // Clicked the huddle badge on the Live topology — open the Brainstorm panel.
+        await vscode.commands.executeCommand('vibeflow.openBrainstorm');
+        return;
       case 'dashboardOpenWorkItem': {
         // User clicked an item in a persona node's queue hover-card.
         // Defensive-parse (mirrors CompliancePanel): only todo/issue with a
@@ -414,7 +441,7 @@ async function composeSnapshot(
 ): Promise<DashboardSnapshot> {
   const errors: string[] = [];
 
-  const [sessionsR, swimR, summaryR, branchR, findingsR, doneTodosR, doneIssuesR] = await Promise.allSettled([
+  const [sessionsR, swimR, summaryR, branchR, findingsR, doneTodosR, doneIssuesR, brainstormR] = await Promise.allSettled([
     client.listSessions(project.projectId),
     client.getSwimlane(),
     client.getWorkSummary(project.projectId),
@@ -422,6 +449,7 @@ async function composeSnapshot(
     client.listComplianceFindings(project.projectId, { status: 'open' }),
     client.listTodosByProject(project.projectId, { status: 'done' }),
     client.listIssues(project.projectId, { status: 'done' }),
+    collectBrainstormBadge(client, project.projectId),
   ]);
 
   const sessions: VibeFlowSession[] = sessionsR.status === 'fulfilled'
@@ -443,6 +471,12 @@ async function composeSnapshot(
   const findings: VibeFlowComplianceFinding[] = findingsR.status === 'fulfilled'
     ? findingsR.value
     : (errors.push(`compliance: ${describeRejection(findingsR.reason)}`), []);
+
+  // The brainstorm huddle badge (undefined = no active brainstorm). A failure
+  // here only drops the badge, never the rest of the dashboard.
+  const brainstorm: BrainstormBadge | undefined = brainstormR.status === 'fulfilled'
+    ? brainstormR.value
+    : (errors.push(`brainstorm: ${describeRejection(brainstormR.reason)}`), undefined);
 
   // Pending-QA computation source — full rows carry `qa_verified`,
   // unlike the swimlane items. Failure here only collapses the QA
@@ -482,7 +516,7 @@ async function composeSnapshot(
     personaQueueItems: collectPersonaQueueItems(swimlane, project.projectId, qaItems),
     kanbanCards: swimlane ? flattenForProject(swimlane, project.projectId) : [],
     sessions: tallySessions(sessions),
-    live: collectLiveSnapshot(sessions, client.getBaseUrl()),
+    live: { ...collectLiveSnapshot(sessions, client.getBaseUrl()), brainstorm },
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
     workSummary: summary
@@ -568,6 +602,58 @@ function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): Li
     .sort((a, b) => a.branch.localeCompare(b.branch));
 
   return { branches, total };
+}
+
+/**
+ * Build the collapsed brainstorm huddle badge for the Live topology (feature 472
+ * v1, brainstorm #5 spec doc #365). Reuses the brainstorm REST poll — no new
+ * backend. Returns undefined when no brainstorm is active. v1 shows round
+ * progress + a progressing/stalled signal (NOT a convergence %: the backend's
+ * convergence_score is unwired/always-0, and the honest client proxy needs every
+ * round's responses — too costly for the 5s dashboard poll; left as a follow-up).
+ */
+async function collectBrainstormBadge(client: VibeFlowClient, projectId: number): Promise<BrainstormBadge | undefined> {
+  const active = pickActiveBrainstorm(await client.listBrainstorms(projectId));
+  if (!active) { return undefined; }
+
+  const detail = await client.getBrainstorm(active.id);
+  const s = detail.session;
+  const cfg = s.config;
+  const round = s.round_number;
+
+  // Stalled = the current round still has pending personas AND no fresh activity
+  // within the per-persona timeout. Latest activity = newest response in the
+  // current round (fall back to the round's start, then the session row).
+  const pending = detail.progress?.pending ?? [];
+  let latestActivity = Date.parse(s.updated_at ?? '') || Date.now();
+  if (round > 0) {
+    const rd = await client.getBrainstormRound(active.id, round).catch((err: unknown) => {
+      console.warn(`[VibeFlow] dashboard: brainstorm round ${round} fetch failed`, err);
+      return undefined;
+    });
+    const times = (rd?.responses ?? [])
+      .map(r => Date.parse(r.created_at))
+      .filter(n => !Number.isNaN(n));
+    if (times.length) {
+      latestActivity = Math.max(...times);
+    } else if (rd?.round?.created_at) {
+      const t = Date.parse(rd.round.created_at);
+      if (!Number.isNaN(t)) { latestActivity = t; }
+    }
+  }
+  const timeoutMs = (cfg.timeout_per_persona > 0 ? cfg.timeout_per_persona : 120) * 1000;
+  const stalled = pending.length > 0 && (Date.now() - latestActivity) > timeoutMs;
+
+  return {
+    id: active.id,
+    leadPersonaKey: s.lead_persona_key,
+    leadSessionId: s.initiator_session_id,
+    round,
+    maxRounds: cfg.max_rounds,
+    participantCount: (cfg.participating_personas?.length ?? 0) + 1, // + the lead
+    openItems: (s.open_items ?? []).length,
+    stalled,
+  };
 }
 
 function derivePersonaStatus(sessions: VibeFlowSession[]): Record<string, PersonaStatus> {
