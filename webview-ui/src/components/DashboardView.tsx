@@ -67,6 +67,8 @@ interface BrainstormBadge {
   participantCount: number;
   openItems: number;
   stalled: boolean;
+  participants: { personaKey: string; responseType?: string; isLead: boolean }[];
+  handoffs: { from: string; to: string }[];
 }
 interface LiveSnapshot { branches: LiveBranch[]; total: number; brainstorm?: BrainstormBadge; }
 
@@ -1096,42 +1098,138 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
 function RoundRing({ round, max }: { round: number; max: number }) {
   const pct = max > 0 ? Math.max(0, Math.min(1, round / max)) : 0;
   const r = 8, c = 2 * Math.PI * r;
+  // stroke via `style` (CSS), not the presentation attribute — var() doesn't
+  // evaluate in SVG attributes (the MiniMap lesson, #2342).
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} aria-hidden>
-      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--feed-border)" strokeWidth="2.5" />
-      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--feed-link)" strokeWidth="2.5" strokeLinecap="round"
-        strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
+      <circle cx="10" cy="10" r={r} fill="none" strokeWidth="2.5" style={{ stroke: 'var(--feed-border)' }} />
+      <circle cx="10" cy="10" r={r} fill="none" strokeWidth="2.5" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - pct)} style={{ stroke: 'var(--feed-link)' }} />
     </svg>
   );
 }
 
-/** Collapsed huddle badge — "a brainstorm is live here and progressing vs. stalled",
- *  the topology's unique value-add (doc #365). Click → the Brainstorm panel. */
+// Response-type accents for the cluster (subset of the Brainstorm panel's vocab).
+const HANDOFF_TAG: Record<string, { color: string; label: string }> = {
+  challenge: { color: '#d08b3f', label: 'challenge' },
+  risk: { color: '#e0574f', label: 'risk' },
+  question: { color: '#4d9fff', label: 'question' },
+  needs_input: { color: '#3bb6b8', label: 'needs input' },
+  scope: { color: '#b483ff', label: 'scope' },
+  approved: { color: '#43d782', label: 'approved' },
+  escalate: { color: '#e0574f', label: 'escalate' },
+  disagree: { color: '#d08b3f', label: 'disagree' },
+  followup_answer: { color: '#3bb6b8', label: 'answer' },
+};
+const HUDDLE_ACCENT = '#4d9fff'; // theme-agnostic so SVG attrs render in light + dark
+
+/** The huddle badge — collapsed: "a brainstorm is live here, progressing vs. stalled"
+ *  (doc #365); expands (click) into the cluster (participants + hand-off arrows). */
 function HuddleBadge({ b }: { b: BrainstormBadge }) {
+  const [expanded, setExpanded] = useState(false);
   const live = !b.stalled;
   const dot = live ? 'var(--feed-success, #43d782)' : 'var(--feed-warning)';
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        title="Show the brainstorm cluster"
+        className={live ? 'persona-pulse' : undefined}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer',
+          padding: '7px 12px', borderRadius: 999,
+          border: '1px dashed color-mix(in oklab, var(--feed-link) 60%, transparent)',
+          background: 'var(--vscode-editor-background)', color: 'var(--feed-fg)',
+          fontSize: 11.5, fontWeight: 600, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+          ...(live ? { ['--persona-pulse-color' as string]: 'var(--feed-link)' } : {}),
+        }}
+      >
+        <RoundRing round={b.round} max={b.maxRounds} />
+        <span>💡 Brainstorm</span>
+        <span style={{ color: 'var(--feed-muted)', fontWeight: 500 }}>R{b.round}/{b.maxRounds} · {b.participantCount}👤{b.openItems > 0 ? ` · ${b.openItems} open` : ''}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dot }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+          {live ? 'live' : 'stalled'}
+        </span>
+        <span style={{ color: 'var(--feed-muted)', fontSize: 10 }}>⌄</span>
+      </button>
+    );
+  }
+
   return (
-    <button
-      onClick={() => vscode.postMessage({ type: 'dashboardOpenBrainstorm' })}
-      title="Open the Brainstorm panel"
-      className={live ? 'persona-pulse' : undefined}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer',
-        padding: '7px 12px', borderRadius: 999,
-        border: '1px dashed color-mix(in oklab, var(--feed-link) 60%, transparent)',
-        background: 'var(--vscode-editor-background)', color: 'var(--feed-fg)',
-        fontSize: 11.5, fontWeight: 600, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
-        ...(live ? { ['--persona-pulse-color' as string]: 'var(--feed-link)' } : {}),
-      }}
-    >
-      <RoundRing round={b.round} max={b.maxRounds} />
-      <span>💡 Brainstorm</span>
-      <span style={{ color: 'var(--feed-muted)', fontWeight: 500 }}>R{b.round}/{b.maxRounds} · {b.participantCount}👤{b.openItems > 0 ? ` · ${b.openItems} open` : ''}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dot }}>
-        <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
-        {live ? 'live' : 'stalled'}
-      </span>
-    </button>
+    <div style={{
+      padding: 12, borderRadius: 12, maxWidth: 420,
+      border: '1px dashed color-mix(in oklab, var(--feed-link) 55%, transparent)',
+      background: 'var(--vscode-editor-background)', boxShadow: '0 4px 16px rgba(0,0,0,0.24)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <RoundRing round={b.round} max={b.maxRounds} />
+        <span style={{ fontWeight: 700, fontSize: 12, color: 'var(--feed-fg)' }}>💡 Brainstorm</span>
+        <span style={{ color: 'var(--feed-muted)', fontSize: 11 }}>R{b.round}/{b.maxRounds}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dot, fontSize: 11, fontWeight: 600 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot }} />{live ? 'live' : 'stalled'}
+        </span>
+        <button onClick={() => setExpanded(false)} title="Collapse" style={{ marginLeft: 'auto', background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--feed-muted)', fontSize: 13 }}>⌃</button>
+      </div>
+      <HuddleCluster b={b} />
+      <button
+        onClick={() => vscode.postMessage({ type: 'dashboardOpenBrainstorm' })}
+        style={{ marginTop: 10, width: '100%', fontSize: 11.5, fontWeight: 600, padding: '6px 10px', borderRadius: 6, border: 'none', cursor: 'pointer', background: 'var(--feed-link)', color: '#0b0b0b' }}>
+        Open Brainstorm panel
+      </button>
+    </div>
+  );
+}
+
+/** Participant chips in a row + animated SVG hand-off arcs (target_persona_key). */
+function HuddleCluster({ b }: { b: BrainstormBadge }) {
+  const reduce = prefersReducedMotion();
+  const parts = b.participants;
+  const idx = new Map(parts.map((p, i) => [p.personaKey, i] as const));
+  const COL = 96, ARC_H = 30;
+  const width = Math.max(COL, parts.length * COL);
+  const cx = (i: number) => i * COL + COL / 2;
+  const arcs = b.handoffs.filter(h => idx.has(h.from) && idx.has(h.to) && h.from !== h.to);
+
+  return (
+    <div style={{ position: 'relative', width, overflowX: 'auto' }}>
+      <svg width={width} height={ARC_H} style={{ display: 'block' }} aria-hidden>
+        <defs>
+          <marker id="huddle-arrow" markerWidth="7" markerHeight="7" refX="5.5" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill={HUDDLE_ACCENT} />
+          </marker>
+        </defs>
+        {arcs.map((h, k) => {
+          const x1 = cx(idx.get(h.from)!), x2 = cx(idx.get(h.to)!);
+          const mx = (x1 + x2) / 2;
+          const d = `M ${x1} ${ARC_H - 2} Q ${mx} 0 ${x2} ${ARC_H - 2}`;
+          return (
+            <path key={k} d={d} fill="none" stroke={HUDDLE_ACCENT} strokeWidth={1.5} strokeDasharray="4 4" markerEnd="url(#huddle-arrow)" opacity={0.75}>
+              {!reduce && <animate attributeName="stroke-dashoffset" from="16" to="0" dur="0.9s" repeatCount="indefinite" />}
+            </path>
+          );
+        })}
+      </svg>
+      <div style={{ display: 'flex' }}>
+        {parts.map(p => {
+          const color = PERSONA_COLORS[p.personaKey] ?? 'var(--vscode-foreground)';
+          const tag = p.responseType ? HANDOFF_TAG[p.responseType] : undefined;
+          return (
+            <div key={p.personaKey} style={{ width: COL, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, textAlign: 'center' }}>
+              <span style={{ width: 13, height: 13, borderRadius: '50%', background: color, boxSizing: 'border-box', border: p.isLead ? '2px solid var(--feed-link)' : '1px solid var(--feed-border)' }} />
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: COL - 6 }}>
+                {p.isLead ? '💡 ' : ''}{PERSONA_DISPLAY[p.personaKey] ?? p.personaKey}
+              </span>
+              {tag
+                ? <span style={{ fontSize: 8.5, fontWeight: 700, color: tag.color }}>{tag.label}</span>
+                : <span style={{ fontSize: 8.5, color: 'var(--feed-muted)' }}>—</span>}
+            </div>
+          );
+        })}
+      </div>
+      {arcs.length === 0 && <div style={{ fontSize: 9.5, color: 'var(--feed-muted)', marginTop: 4, textAlign: 'center' }}>No hand-offs this round</div>}
+    </div>
   );
 }
 
