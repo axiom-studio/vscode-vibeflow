@@ -5,6 +5,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  Panel,
   Position,
   MarkerType,
   NodeToolbar,
@@ -56,7 +57,18 @@ interface LiveAgent {
   pendingPrompts?: number;
 }
 interface LiveBranch { branch: string; agents: LiveAgent[]; }
-interface LiveSnapshot { branches: LiveBranch[]; total: number; }
+/** Collapsed brainstorm "huddle" badge (feature 472 v1) — mirrors host BrainstormBadge. */
+interface BrainstormBadge {
+  id: number;
+  leadPersonaKey: string;
+  leadSessionId: string;
+  round: number;
+  maxRounds: number;
+  participantCount: number;
+  openItems: number;
+  stalled: boolean;
+}
+interface LiveSnapshot { branches: LiveBranch[]; total: number; brainstorm?: BrainstormBadge; }
 
 // Branch readiness card is hidden in v1.1; the host still sends this
 // data so the card can return without a wire change. Kept as a partial
@@ -1070,7 +1082,56 @@ function LiveTopology({ live }: { live: LiveSnapshot | undefined }) {
       {/* Zoom +/- · fit controls, themed via colorMode above (defaults are
        *  light-on-light). MiniMap removed (#2343) — low value for stacked bands. */}
       <Controls showInteractive={false} />
+      {/* Brainstorm "huddle" badge (feature 472 v1, doc #365) — pinned at a
+       *  consistent corner; the lead's node carries a 💡 marker (the tether). */}
+      {live.brainstorm && (
+        <Panel position="top-left">
+          <HuddleBadge b={live.brainstorm} />
+        </Panel>
+      )}
     </ReactFlow>
+  );
+}
+
+function RoundRing({ round, max }: { round: number; max: number }) {
+  const pct = max > 0 ? Math.max(0, Math.min(1, round / max)) : 0;
+  const r = 8, c = 2 * Math.PI * r;
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} aria-hidden>
+      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--feed-border)" strokeWidth="2.5" />
+      <circle cx="10" cy="10" r={r} fill="none" stroke="var(--feed-link)" strokeWidth="2.5" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
+    </svg>
+  );
+}
+
+/** Collapsed huddle badge — "a brainstorm is live here and progressing vs. stalled",
+ *  the topology's unique value-add (doc #365). Click → the Brainstorm panel. */
+function HuddleBadge({ b }: { b: BrainstormBadge }) {
+  const live = !b.stalled;
+  const dot = live ? 'var(--feed-success, #43d782)' : 'var(--feed-warning)';
+  return (
+    <button
+      onClick={() => vscode.postMessage({ type: 'dashboardOpenBrainstorm' })}
+      title="Open the Brainstorm panel"
+      className={live ? 'persona-pulse' : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer',
+        padding: '7px 12px', borderRadius: 999,
+        border: '1px dashed color-mix(in oklab, var(--feed-link) 60%, transparent)',
+        background: 'var(--vscode-editor-background)', color: 'var(--feed-fg)',
+        fontSize: 11.5, fontWeight: 600, boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+        ...(live ? { ['--persona-pulse-color' as string]: 'var(--feed-link)' } : {}),
+      }}
+    >
+      <RoundRing round={b.round} max={b.maxRounds} />
+      <span>💡 Brainstorm</span>
+      <span style={{ color: 'var(--feed-muted)', fontWeight: 500 }}>R{b.round}/{b.maxRounds} · {b.participantCount}👤{b.openItems > 0 ? ` · ${b.openItems} open` : ''}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: dot }}>
+        <span style={{ width: 7, height: 7, borderRadius: '50%', background: dot, flexShrink: 0 }} />
+        {live ? 'live' : 'stalled'}
+      </span>
+    </button>
   );
 }
 
@@ -1139,6 +1200,14 @@ const NODE_W = 186, NODE_H = 52, BAND_HEADER = 40, BAND_PAD = 16, BAND_VGAP = 30
 async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ nodes: Node[]; edges: Edge[] }> {
   if (!live) { return { nodes: [], edges: [] }; }
   const edgeType = prefersReducedMotion() ? 'default' : 'flow';
+  // The brainstorm lead's node gets a 💡 marker — the "tether" that ties the
+  // pinned huddle badge to which session is leading (#2417, doc #365). Match by
+  // the lead's SESSION id (so two sessions sharing the lead's persona key don't
+  // both get marked); fall back to persona key only if no session id is known.
+  const leadSessionId = live.brainstorm?.leadSessionId;
+  const leadKey = live.brainstorm?.leadPersonaKey;
+  const isLead = (a: LiveAgent): boolean =>
+    leadSessionId ? a.sessionId === leadSessionId : (!!leadKey && a.personaKey === leadKey);
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   let y = 0;
@@ -1177,7 +1246,7 @@ async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ node
       nodes.push({
         id: eid(a), type: 'liveAgent',
         position: { x: bandW - BAND_PAD - NODE_W - i * (NODE_W + 12), y: BAND_HEADER + BAND_PAD },
-        data: { agent: a, observer: true }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
+        data: { agent: a, observer: true, isBrainstormLead: isLead(a) }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
       });
     });
 
@@ -1189,7 +1258,7 @@ async function buildLiveGraphElk(live: LiveSnapshot | undefined): Promise<{ node
       nodes.push({
         id: eid(a), type: 'liveAgent',
         position: { x: BAND_PAD + (c?.x ?? 0), y: BAND_HEADER + BAND_PAD + observerH + (c?.y ?? i * (NODE_H + 18)) },
-        data: { agent: a }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
+        data: { agent: a, isBrainstormLead: isLead(a) }, parentId: groupId, extent: 'parent', draggable: false, selectable: false,
       });
     });
 
@@ -1318,22 +1387,31 @@ function LiveBranchNode({ data }: NodeProps) {
 /** A team member card (child of a branch band). One node type for every role;
  *  hidden handles carry the intra-lane upstream→code→review flow edges. */
 function LiveAgentNode({ data }: NodeProps) {
-  const { agent, observer } = data as { agent: LiveAgent; observer?: boolean };
+  const { agent, observer, isBrainstormLead } = data as { agent: LiveAgent; observer?: boolean; isBrainstormLead?: boolean };
   const [hov, setHov] = useState(false);
   const color = PERSONA_COLORS[agent.personaKey] ?? 'var(--vscode-foreground)';
   return (
     <div
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
-      title="Click to open this agent's chat"
+      title={isBrainstormLead ? 'Brainstorm lead · click to open this agent’s chat' : 'Click to open this agent’s chat'}
       style={{
+        position: 'relative',
         display: 'flex', alignItems: 'center', gap: 8, width: 186, padding: '4px 8px 4px 4px', borderRadius: 8,
-        border: observer ? '1px dashed var(--feed-border)' : '1px solid var(--feed-border)',
+        border: isBrainstormLead
+          ? '1px solid color-mix(in oklab, var(--feed-link) 65%, transparent)'
+          : observer ? '1px dashed var(--feed-border)' : '1px solid var(--feed-border)',
         background: 'var(--vscode-editor-background)',
         opacity: observer ? 0.82 : 1,
         cursor: 'pointer',
       }}
     >
+      {isBrainstormLead && (
+        <span title="Brainstorm lead" style={{
+          position: 'absolute', top: -8, right: -6, fontSize: 11, lineHeight: 1, padding: '1px 3px', borderRadius: 999,
+          background: 'var(--vscode-editor-background)', border: '1px solid color-mix(in oklab, var(--feed-link) 50%, transparent)',
+        }}>💡</span>
+      )}
       <Handle type="target" position={Position.Left} style={HIDDEN_HANDLE} isConnectable={false} />
       <Handle type="source" position={Position.Right} style={HIDDEN_HANDLE} isConnectable={false} />
       <AgentDetailToolbar agent={agent} visible={hov} />
