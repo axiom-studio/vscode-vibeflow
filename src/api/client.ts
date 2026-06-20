@@ -103,7 +103,19 @@ export class VibeFlowClient {
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.status} ${response.statusText}`);
+      // Surface the server's JSON error body — many endpoints (e.g. the
+      // brainstorm POST, which returns 409 for ANY failure) carry the real
+      // reason in `{ "error": "..." }`. Without this the caller only sees
+      // "API error: 409 Conflict" and can't tell a true conflict from a
+      // mislabeled DB/scoping failure. Mirrors the multipart upload path below.
+      const raw = await response.text().catch(() => '');
+      let detail = raw;
+      try { const j = JSON.parse(raw); detail = j.error ?? j.message ?? raw; } catch { /* not JSON — keep raw */ }
+      detail = (detail ?? '').toString().slice(0, 300);
+      const err = new Error(`API error: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`) as Error & { status?: number; body?: string };
+      err.status = response.status;
+      err.body = detail;
+      throw err;
     }
 
     return response.json() as Promise<T>;
