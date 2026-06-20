@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import { assertNever, type BrainstormClientMessage, type BrainstormHostMessage } from '../../core/webviewMessages.js';
-import { composeBrainstormSnapshot, pickCurrentBrainstorm } from './brainstormData.js';
+import { composeBrainstormSnapshot, pickActiveBrainstorm } from './brainstormData.js';
 
 // Brainstorm moves faster than the Kanban (rounds advance live), so poll at 5s
 // — matching the axiomcloud web UI (BrainstormView.jsx:66-70). SSE is cookie-only
@@ -21,9 +21,11 @@ export class BrainstormPanel {
   private readonly panel: vscode.WebviewPanel;
   private pollTimer: ReturnType<typeof setInterval> | undefined;
   private lastFetchAt = 0;
-  // When the user picks a past session from the history dropdown, pin it;
-  // otherwise the panel shows the active (or most-recent) brainstorm.
+  // When the user picks a brainstorm (from the list / history dropdown), pin it.
   private selectedId: number | undefined;
+  // When true, force the landing list even if a brainstorm could be shown
+  // (the user explicitly backed out to it). Reset when a brainstorm is selected.
+  private showList = false;
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -90,14 +92,21 @@ export class BrainstormPanel {
       case 'brainstormRefresh':
         await this.sendSnapshot();
         return;
+      case 'brainstormShowList':
+        this.showList = true;
+        this.selectedId = undefined;
+        await this.sendSnapshot();
+        return;
       case 'brainstormSelectSession':
         this.selectedId = msg.payload.id;
+        this.showList = false;
         await this.sendSnapshot();
         return;
       case 'brainstormStart': {
         try {
           const created = await this.client.startBrainstorm({ ...msg.payload, project_id: this.projectId });
           this.selectedId = created.id;
+          this.showList = false;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const status = (err as { status?: number })?.status;
@@ -128,7 +137,8 @@ export class BrainstormPanel {
       case 'brainstormDelete': {
         try {
           await this.client.deleteBrainstorm(msg.payload.id);
-          if (this.selectedId === msg.payload.id) { this.selectedId = undefined; }
+          // After deleting the one being viewed, return to the list.
+          if (this.selectedId === msg.payload.id) { this.selectedId = undefined; this.showList = true; }
         } catch (err) {
           vscode.window.showErrorMessage(`VibeFlow: Failed to delete brainstorm — ${err instanceof Error ? err.message : String(err)}`);
         }
@@ -167,9 +177,14 @@ export class BrainstormPanel {
         .filter(s => s.active)
         .map(s => ({ key: s.persona_key, sessionId: s.session_id }));
 
-      const current = this.selectedId !== undefined
-        ? list.find(b => b.id === this.selectedId)
-        : pickCurrentBrainstorm(list);
+      // showList → land on the list; else a pinned selection; else auto-open
+      // ONLY an active brainstorm (never a finished one — that's what stranded
+      // the panel on the done #5). No active + nothing pinned → list.
+      const current = this.showList
+        ? undefined
+        : this.selectedId !== undefined
+          ? list.find(b => b.id === this.selectedId)
+          : pickActiveBrainstorm(list);
 
       let detail;
       let roundResponses: Record<number, import('../../api/types.js').VibeFlowBrainstormResponse[]> | undefined;
@@ -195,14 +210,14 @@ export class BrainstormPanel {
       }
 
       const snapshot = composeBrainstormSnapshot({
-        serverUrl, detail, roundResponses, documentMarkdown, activePersonas, history: list,
+        serverUrl, listMode: this.showList, detail, roundResponses, documentMarkdown, activePersonas, history: list,
       });
       this.post({ type: 'brainstormSnapshot', payload: snapshot });
-      // Poll while a brainstorm is running ('live') OR while none exists yet
-      // ('empty') — so the start view self-corrects the moment a brainstorm is
-      // created (here, by an agent, or elsewhere) and flips to live. Stop only
-      // on a terminal/finished brainstorm ('closed', i.e. done/cancelled) — the
-      // #2346 stop-on-terminal contract (design doc #361 §4.2).
+      // Poll while a brainstorm is running ('live') OR while the landing list is
+      // shown ('list') — so a newly-created/started brainstorm flips the list to
+      // live without a manual refresh. Stop only on a finished brainstorm's
+      // detail ('closed', i.e. done/cancelled) — the #2346 stop-on-terminal
+      // contract (design doc #361 §4.2).
       if (snapshot.mode === 'closed') { this.stopPolling(); } else { this.startPolling(); }
     } catch (err) {
       this.post({ type: 'brainstormError', payload: { message: err instanceof Error ? err.message : String(err) } });

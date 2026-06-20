@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   composeBrainstormSnapshot,
   isActiveBrainstorm,
-  pickCurrentBrainstorm,
+  pickActiveBrainstorm,
+  computeConvergence,
   TERMINAL_BRAINSTORM_STATUSES,
 } from './brainstormData';
 import type {
@@ -47,33 +48,81 @@ describe('brainstormData — isActiveBrainstorm', () => {
   });
 });
 
-describe('brainstormData — pickCurrentBrainstorm', () => {
-  it('prefers the active session even over a newer finished one', () => {
-    const done = session({ id: 1, status: 'done', created_at: '2026-06-19T09:00:00Z' });
-    const active = session({ id: 2, status: 'active', created_at: '2026-06-19T07:00:00Z' });
-    expect(pickCurrentBrainstorm([done, active])?.id).toBe(2);
-  });
-  it('falls back to most-recent when none active', () => {
-    const a = session({ id: 1, status: 'done', created_at: '2026-06-19T07:00:00Z' });
-    const b = session({ id: 2, status: 'cancelled', created_at: '2026-06-19T09:00:00Z' });
-    expect(pickCurrentBrainstorm([a, b])?.id).toBe(2);
-  });
-  it('returns undefined for an empty list', () => {
-    expect(pickCurrentBrainstorm([])).toBeUndefined();
-  });
-});
-
 describe('brainstormData — composeBrainstormSnapshot', () => {
-  it('no detail → empty mode, carries activePersonas + history', () => {
+  it('no detail → list mode, carries activePersonas + history', () => {
     const snap = composeBrainstormSnapshot({
       serverUrl: 'https://x', activePersonas: [{ key: 'pm', sessionId: 's' }], history: [session()],
     });
-    expect(snap.mode).toBe('empty');
+    expect(snap.mode).toBe('list');
     expect(snap.session).toBeUndefined();
     expect(snap.activePersonas).toHaveLength(1);
     expect(snap.history).toHaveLength(1);
   });
 
+  it('listMode forces list even when a detail is present', () => {
+    const snap = composeBrainstormSnapshot({
+      serverUrl: 'https://x', listMode: true,
+      detail: { session: session({ status: 'active' }) },
+      history: [session()],
+    });
+    expect(snap.mode).toBe('list');
+    expect(snap.session).toBeUndefined();
+  });
+
+  it('live session → computes a client-side convergence from resolved items', () => {
+    const detail: BrainstormDetailResponse = {
+      session: session({ status: 'active' }),
+      rounds: [{ id: 1, organization_id: 'org', brainstorm_id: 1, round_number: 1, scope_warnings: '', convergence_score: 0, created_at: 'a' }],
+    };
+    const snap = composeBrainstormSnapshot({
+      serverUrl: 'https://x', detail,
+      roundResponses: { 1: [
+        resp({ id: 1, response_type: 'challenge', resolution_status: 'addressed' }),
+        resp({ id: 2, response_type: 'question', resolution_status: 'open' }),
+      ] },
+    });
+    // 2 actionable, 1 open → (2-1)/2 = 0.5 (backend score is 0 so the proxy wins)
+    expect(snap.convergence).toBe(0.5);
+  });
+});
+
+describe('brainstormData — pickActiveBrainstorm', () => {
+  it('returns the active one, never a finished one', () => {
+    const done = session({ id: 1, status: 'done', created_at: '2026-06-19T09:00:00Z' });
+    const active = session({ id: 2, status: 'active' });
+    expect(pickActiveBrainstorm([done, active])?.id).toBe(2);
+  });
+  it('returns undefined when all are terminal (so the panel shows the list, not a done one)', () => {
+    expect(pickActiveBrainstorm([session({ status: 'done' }), session({ status: 'cancelled' })])).toBeUndefined();
+  });
+});
+
+describe('brainstormData — computeConvergence', () => {
+  const round = (responses: ReturnType<typeof resp>[], convergence_score = 0) => ({ convergence_score, responses });
+  it('no responses → 0', () => {
+    expect(computeConvergence([round([])])).toBe(0);
+  });
+  it('all actionable resolved → 1', () => {
+    expect(computeConvergence([round([resp({ response_type: 'challenge', resolution_status: 'addressed' })])])).toBe(1);
+  });
+  it('half resolved → 0.5', () => {
+    expect(computeConvergence([round([
+      resp({ response_type: 'risk', resolution_status: 'addressed' }),
+      resp({ response_type: 'risk', resolution_status: 'open' }),
+    ])])).toBe(0.5);
+  });
+  it('only approvals/answers (no actionable) → 1', () => {
+    expect(computeConvergence([round([
+      resp({ response_type: 'approved' }),
+      resp({ response_type: 'followup_answer' }),
+    ])])).toBe(1);
+  });
+  it('prefers a real backend score when any round reports one > 0', () => {
+    expect(computeConvergence([round([resp({ resolution_status: 'open' })], 0.8)])).toBe(0.8);
+  });
+});
+
+describe('brainstormData — composeBrainstormSnapshot (detail modes)', () => {
   it('active session → live mode; rounds merged with responses + sorted ascending', () => {
     const detail: BrainstormDetailResponse = {
       session: session({ status: 'active' }),

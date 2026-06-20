@@ -50,12 +50,21 @@ export function BrainstormView() {
   const [pane, setPane] = useState<'doc' | 'chat'>('chat');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
+  // Webview-local route for the start form (reached from the list's "New").
+  const [route, setRoute] = useState<'start' | null>(null);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
       const m = e.data;
-      if (m?.type === 'brainstormSnapshot') { setSnap(m.payload as BrainstormSnapshot); setError(undefined); }
-      else if (m?.type === 'brainstormError') { setError(m.payload?.message ?? 'Failed to load brainstorm'); }
+      if (m?.type === 'brainstormSnapshot') {
+        const p = m.payload as BrainstormSnapshot;
+        setSnap(p); setError(undefined);
+        // A brainstorm is now being shown (e.g. the one we just started) →
+        // leave the start form.
+        if (p.mode === 'live' || p.mode === 'closed') { setRoute(null); }
+      } else if (m?.type === 'brainstormError') {
+        setError(m.payload?.message ?? 'Failed to load brainstorm');
+      }
     }
     window.addEventListener('message', onMessage);
     vscode.postMessage({ type: 'brainstormLoad' });
@@ -65,27 +74,54 @@ export function BrainstormView() {
   }, []);
 
   const refresh = useCallback(() => vscode.postMessage({ type: 'brainstormRefresh' }), []);
+  const backToList = useCallback(() => { setRoute(null); vscode.postMessage({ type: 'brainstormShowList' }); }, []);
+
+  // Reset transient detail-view state whenever we land on the list — otherwise a
+  // stale confirm modal (whose action closes over the PREVIOUS brainstorm's id),
+  // an expanded open-items drawer, or the last-viewed pane would leak into the
+  // next brainstorm opened. Covers the back button, delete, and async flips
+  // (#2416 review).
+  useEffect(() => {
+    if (snap?.mode === 'list') { setConfirm(null); setDrawerOpen(false); setPane('chat'); }
+  }, [snap?.mode]);
 
   if (!snap) {
     return (
       <Centered>
         {error
           ? <div style={{ color: 'var(--feed-error)', fontSize: 13 }}>{error}</div>
-          : <><SpinnerIcon size={20} /><div style={{ marginTop: 10, fontSize: 13, color: 'var(--feed-muted)' }}>Loading brainstorm…</div></>}
+          : <><SpinnerIcon size={20} /><div style={{ marginTop: 10, fontSize: 13, color: 'var(--feed-muted)' }}>Loading brainstorms…</div></>}
       </Centered>
     );
   }
 
-  if (snap.mode === 'empty' || !snap.session) {
-    return <EmptyState personas={snap.activePersonas} onRefresh={refresh} />;
+  // A specific brainstorm (active or finished) → detail view. Takes precedence
+  // so that starting one flips us straight from the form to its live view.
+  if ((snap.mode === 'live' || snap.mode === 'closed') && snap.session) {
+    return <BrainstormDetail snap={snap} onRefresh={refresh} onBack={backToList} confirm={confirm} setConfirm={setConfirm} pane={pane} setPane={setPane} drawerOpen={drawerOpen} setDrawerOpen={setDrawerOpen} error={error} />;
   }
 
-  const s = snap.session;
+  // Start a new brainstorm (from the list's "New brainstorm").
+  if (route === 'start') {
+    return <StartLanding personas={snap.activePersonas} onBack={() => setRoute(null)} />;
+  }
+
+  // Default landing: the list of brainstorms.
+  return <BrainstormList snap={snap} onSelect={(id) => vscode.postMessage({ type: 'brainstormSelectSession', payload: { id } })} onNew={() => setRoute('start')} onRefresh={refresh} error={error} />;
+}
+
+function BrainstormDetail({ snap, onRefresh, onBack, confirm, setConfirm, pane, setPane, drawerOpen, setDrawerOpen, error }: {
+  snap: BrainstormSnapshot; onRefresh: () => void; onBack: () => void;
+  confirm: ConfirmSpec | null; setConfirm: (s: ConfirmSpec | null) => void;
+  pane: 'doc' | 'chat'; setPane: (p: 'doc' | 'chat') => void;
+  drawerOpen: boolean; setDrawerOpen: (f: (o: boolean) => boolean) => void; error?: string;
+}) {
+  const s = snap.session!;
   const prog = snap.progress;
 
   return (
     <div style={{ width: '100%', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--feed-bg)', overflow: 'hidden' }}>
-      <Header snap={snap} onRefresh={refresh} onConfirm={setConfirm} />
+      <Header snap={snap} onRefresh={onRefresh} onBack={onBack} onConfirm={setConfirm} />
       {error && <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--feed-error)', background: 'rgba(224,87,79,0.1)' }}>{error}</div>}
 
       <ProgressDashboard session={s} progress={prog} convergence={currentConvergence(snap)} />
@@ -121,14 +157,15 @@ const paneStyle: CSSProperties = {
   background: 'var(--vscode-editor-background)',
 };
 
+// Convergence for the detail view — provided by the composer (client-side proxy,
+// since the backend's convergence_score is currently always 0). Falls back to 0.
 function currentConvergence(snap: BrainstormSnapshot): number {
-  const rounds = snap.rounds ?? [];
-  return rounds.length ? rounds[rounds.length - 1].convergence_score : 0;
+  return snap.convergence ?? 0;
 }
 
 // ---------------------------------------------------------------- Header
 
-function Header({ snap, onRefresh, onConfirm }: { snap: BrainstormSnapshot; onRefresh: () => void; onConfirm: (s: ConfirmSpec) => void }) {
+function Header({ snap, onRefresh, onBack, onConfirm }: { snap: BrainstormSnapshot; onRefresh: () => void; onBack: () => void; onConfirm: (s: ConfirmSpec) => void }) {
   const s = snap.session!;
   const pill = STATUS_PILL[s.status] ?? { bg: 'rgba(160,160,160,0.16)', fg: 'var(--feed-muted)', label: s.status };
   const openCount = (s.open_items ?? []).length;
@@ -136,6 +173,7 @@ function Header({ snap, onRefresh, onConfirm }: { snap: BrainstormSnapshot; onRe
   const live = s.status !== 'done' && s.status !== 'cancelled';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--feed-border)', flexShrink: 0 }}>
+      <button onClick={onBack} title="All brainstorms" style={{ ...ghostBtn, padding: '4px 9px' }}>← Brainstorms</button>
       <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--feed-fg)' }}>Brainstorm #{s.id}</span>
       <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 9px', borderRadius: 999, background: pill.bg, color: pill.fg }}>{pill.label}</span>
       <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>
@@ -186,7 +224,10 @@ function ProgressDashboard({ session, progress, convergence }: {
     <div style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '10px 16px', borderBottom: '1px solid var(--feed-border)', flexShrink: 0, flexWrap: 'wrap' }}>
       <RoundStepper current={session.round_number} max={cfg.max_rounds} />
       <ConvergenceRing value={convergence} />
-      <TokenBar used={cfg.tokens_used} budget={cfg.token_budget} />
+      {/* The backend's tokens_used is currently always 0 (RecordTokenUsage is
+          unwired) — only show the bar once usage is actually tracked, rather
+          than a misleading "0K / 500K". (#2416) */}
+      {cfg.tokens_used > 0 && <TokenBar used={cfg.tokens_used} budget={cfg.token_budget} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {personas.map(p => {
           const did = responded[p];
@@ -400,13 +441,83 @@ function OpenItemsDrawer({ items, open, onToggle }: { items: BrainstormOpenItem[
   );
 }
 
-// ---------------------------------------------------------------- Empty state + bits
+// ---------------------------------------------------------------- Brainstorm list (landing)
 
-function EmptyState({ personas, onRefresh }: { personas: { key: string; sessionId: string }[]; onRefresh: () => void }) {
+const isTerminalStatus = (status: string) => status === 'done' || status === 'cancelled';
+
+function BrainstormList({ snap, onSelect, onNew, onRefresh, error }: {
+  snap: BrainstormSnapshot; onSelect: (id: number) => void; onNew: () => void; onRefresh: () => void; error?: string;
+}) {
+  const history = [...(snap.history ?? [])].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+  const hasActive = history.some(b => !isTerminalStatus(b.status));
+  const enoughPersonas = snap.activePersonas.length >= 2;
+  // One active brainstorm per project (backend invariant) → can't start a 2nd.
+  const newDisabled = hasActive || !enoughPersonas;
+  const newHint = hasActive
+    ? 'A brainstorm is already active — open or end it first.'
+    : !enoughPersonas ? `Need ≥2 personas with running agents (currently ${snap.activePersonas.length}).` : undefined;
+
+  return (
+    <div style={{ width: '100%', height: '100vh', overflow: 'auto', background: 'var(--feed-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 620, padding: '28px 24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{ fontSize: 20 }}>💡</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--feed-fg)' }}>Brainstorms</div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={onRefresh} style={ghostBtn}>Refresh</button>
+            <button onClick={() => { if (!newDisabled) { onNew(); } }} disabled={newDisabled} title={newHint}
+              style={{ fontSize: 12, fontWeight: 600, padding: '6px 13px', borderRadius: 6, border: 'none', cursor: newDisabled ? 'not-allowed' : 'pointer', background: newDisabled ? 'var(--feed-border)' : 'var(--feed-link)', color: newDisabled ? 'var(--feed-muted)' : '#0b0b0b' }}>+ New brainstorm</button>
+          </div>
+        </div>
+        {error && <div style={{ fontSize: 11, color: 'var(--feed-error)', marginBottom: 10 }}>{error}</div>}
+        {newHint && <div style={{ fontSize: 11, color: 'var(--feed-muted)', marginBottom: 12 }}>{newHint}</div>}
+
+        {history.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--feed-muted)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--feed-fg)', marginBottom: 6 }}>No brainstorms yet</div>
+            <div style={{ fontSize: 12, lineHeight: 1.5, maxWidth: 380, margin: '0 auto' }}>
+              A brainstorm is a multi-persona working session — a lead drafts, the others review in rounds until they converge. Start one above.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {history.map(b => {
+              const pill = STATUS_PILL[b.status] ?? { bg: 'rgba(160,160,160,0.16)', fg: 'var(--feed-muted)', label: b.status };
+              return (
+                <button key={b.id} onClick={() => onSelect(b.id)} style={{
+                  display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', cursor: 'pointer',
+                  padding: '11px 14px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)',
+                }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--feed-muted)', flexShrink: 0 }}>#{b.id}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: 'var(--feed-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.config?.topics?.[0]?.name ?? topicFromSession(b)}
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: 10.5, color: 'var(--feed-muted)' }}>R{b.round_number}/{b.config?.max_rounds ?? '?'}</span>
+                  <span style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: pill.bg, color: pill.fg }}>{pill.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The list session row has no topic field of its own (the REST list returns the
+// session, whose topic lives on the linked document). Fall back to a stable label.
+function topicFromSession(b: VibeFlowBrainstormSession): string {
+  return `Brainstorm #${b.id}`;
+}
+
+// ---------------------------------------------------------------- Start landing
+
+function StartLanding({ personas, onBack }: { personas: { key: string; sessionId: string }[]; onBack: () => void }) {
   const canStart = personas.length >= 2;
   return (
     <div style={{ width: '100%', height: '100vh', overflow: 'auto', background: 'var(--feed-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 560, padding: '32px 24px' }}>
+      <div style={{ width: '100%', maxWidth: 560, padding: '24px 24px 32px' }}>
+        <button onClick={onBack} style={{ ...ghostBtn, marginBottom: 14 }}>← Brainstorms</button>
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ fontSize: 30, marginBottom: 6 }}>💡</div>
           <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--feed-fg)' }}>Start a brainstorm</div>
@@ -419,8 +530,7 @@ function EmptyState({ personas, onRefresh }: { personas: { key: string; sessionI
           ? <StartBrainstormForm personas={personas} />
           : (
             <div style={{ marginTop: 18, padding: 16, borderRadius: 8, border: '1px solid var(--feed-border)', background: 'rgba(234,179,8,0.08)', fontSize: 12, color: 'var(--feed-warning)', textAlign: 'center', lineHeight: 1.5 }}>
-              Need at least <b>2 personas with running agents</b> to brainstorm (currently {personas.length}). Fan-out only reaches heartbeating sessions — launch more agents, then refresh.
-              <div><button onClick={onRefresh} style={{ ...ghostBtn, marginTop: 10 }}>Refresh</button></div>
+              Need at least <b>2 personas with running agents</b> to brainstorm (currently {personas.length}). Fan-out only reaches heartbeating sessions — launch more agents, then go back and retry.
             </div>
           )}
       </div>
