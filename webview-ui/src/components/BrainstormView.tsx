@@ -448,6 +448,14 @@ function HowItWorks() {
   );
 }
 
+// The backend builds the working-draft doc title as `"Brainstorm: " + topic`
+// (12-char prefix) and stores it in a varchar(255) column with no truncation,
+// so cap the topic to keep the title under 255 (#2415). The axiomcloud web form
+// has no cap either — this is really a backend bug (it should truncate the
+// title); the cap here is a client-side guardrail so the extension never trips
+// it. Note: this matches the per-client reality, not a divergence from the web.
+const TOPIC_MAX = 240;
+
 function StartBrainstormForm({ personas }: { personas: { key: string; sessionId: string }[] }) {
   const [topic, setTopic] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -504,10 +512,11 @@ function StartBrainstormForm({ personas }: { personas: { key: string; sessionId:
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <Field label="Topic" hint={topicShort ? 'At least 5 characters' : undefined}>
         <textarea
-          value={topic} onChange={e => setTopic(e.target.value)} rows={2} autoFocus
+          value={topic} onChange={e => setTopic(e.target.value)} rows={2} autoFocus maxLength={TOPIC_MAX}
           placeholder="What should the team brainstorm? e.g. “Design the rate-limiting strategy for the public API”"
           style={{ width: '100%', resize: 'vertical', fontSize: 13, padding: 9, borderRadius: 6, border: '1px solid var(--feed-border)', background: 'var(--vscode-input-background, var(--feed-bg))', color: 'var(--feed-fg)', fontFamily: 'inherit', boxSizing: 'border-box' }}
         />
+        <div style={{ fontSize: 10, textAlign: 'right', marginTop: 3, color: topic.length >= TOPIC_MAX ? 'var(--feed-warning)' : 'var(--feed-muted)' }}>{topic.length}/{TOPIC_MAX}</div>
       </Field>
 
       <Field label="Team — pick ≥2 · first pick leads">
