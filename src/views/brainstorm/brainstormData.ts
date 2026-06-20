@@ -25,19 +25,47 @@ export function isActiveBrainstorm(session: { status: string }): boolean {
 }
 
 /**
- * Pick the one brainstorm to show. There's at most one ACTIVE per project
- * (backend invariant), so prefer it; otherwise fall back to the most recent
- * (ISO `created_at` sorts lexicographically) so the panel can replay history.
+ * The one brainstorm to AUTO-OPEN on panel load — only an active one. We
+ * deliberately do NOT fall back to the most-recent finished brainstorm here:
+ * when nothing is active the panel should land on the LIST (so the user can
+ * start a new one), not get stuck showing a done session (#2416).
  */
-export function pickCurrentBrainstorm(list: VibeFlowBrainstormSession[]): VibeFlowBrainstormSession | undefined {
-  const active = list.find(isActiveBrainstorm);
-  if (active) { return active; }
-  return [...list].sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))[0];
+export function pickActiveBrainstorm(list: VibeFlowBrainstormSession[]): VibeFlowBrainstormSession | undefined {
+  return list.find(isActiveBrainstorm);
+}
+
+/**
+ * Convergence 0..1 for the detail view. The backend's `convergence_score` is
+ * currently always 0 (CheckConvergence + UpdateBrainstormRoundSnapshot are
+ * unwired in axiomcloud), so we compute the proxy the backend WOULD compute —
+ * the fraction of actionable responses that are resolved — but prefer a real
+ * backend value if any round ever reports one (> 0). (#2416)
+ */
+export function computeConvergence(
+  rounds: { convergence_score?: number; responses: VibeFlowBrainstormResponse[] }[],
+): number {
+  const backendMax = rounds.reduce((m, r) => Math.max(m, r.convergence_score ?? 0), 0);
+  if (backendMax > 0) { return Math.min(1, backendMax); }
+
+  let actionable = 0, open = 0, total = 0;
+  for (const r of rounds) {
+    for (const resp of r.responses) {
+      total++;
+      if (resp.response_type === 'approved' || resp.response_type === 'followup_answer') { continue; }
+      actionable++;
+      if ((resp.resolution_status ?? 'open') === 'open') { open++; }
+    }
+  }
+  if (total === 0) { return 0; }                 // nothing said yet → 0%
+  if (actionable === 0) { return 1; }            // everything was approval/answer → fully converged
+  return (actionable - open) / actionable;       // resolved fraction of actionable items
 }
 
 export interface ComposeBrainstormInput {
   serverUrl: string;
-  /** GET /brainstorms/{id} for the current brainstorm; absent → empty state. */
+  /** Force the landing list (user backed out of a detail view). */
+  listMode?: boolean;
+  /** GET /brainstorms/{id} for the selected/active brainstorm; absent → list. */
   detail?: BrainstormDetailResponse;
   /** round_number → that round's responses (GET /brainstorms/{id}/rounds/{n}). */
   roundResponses?: Record<number, VibeFlowBrainstormResponse[]>;
@@ -51,10 +79,12 @@ export interface ComposeBrainstormInput {
 
 /** Fold the fetched REST pieces into one snapshot for the webview. */
 export function composeBrainstormSnapshot(input: ComposeBrainstormInput): BrainstormSnapshot {
-  const { serverUrl, detail, roundResponses, documentMarkdown, activePersonas = [], history } = input;
+  const { serverUrl, listMode, detail, roundResponses, documentMarkdown, activePersonas = [], history } = input;
 
-  if (!detail) {
-    return { serverUrl, mode: 'empty', activePersonas, history };
+  // No detail (or explicitly backed out) → the landing list. The list view
+  // renders the history + a "New brainstorm" entry (and its own empty state).
+  if (listMode || !detail) {
+    return { serverUrl, mode: 'list', activePersonas, history };
   }
 
   const mode: BrainstormSnapshot['mode'] = isActiveBrainstorm(detail.session) ? 'live' : 'closed';
@@ -76,6 +106,7 @@ export function composeBrainstormSnapshot(input: ComposeBrainstormInput): Brains
     session: detail.session,
     progress: detail.progress,
     rounds,
+    convergence: computeConvergence(rounds),
     documentMarkdown,
     history,
   };

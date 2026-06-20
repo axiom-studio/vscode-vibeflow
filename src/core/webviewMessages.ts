@@ -466,16 +466,22 @@ export type CommentsClientMessage =
 export interface BrainstormSnapshot {
   // Server origin so the webview can build persona-avatar URLs.
   serverUrl: string;
-  // Computed host-side: no active brainstorm | one running | one finished.
-  mode: 'empty' | 'live' | 'closed';
+  // Computed host-side: 'list' = the landing list (no active brainstorm shown,
+  // or the user backed out to it); 'live' = an active brainstorm's detail;
+  // 'closed' = a finished brainstorm's detail.
+  mode: 'list' | 'live' | 'closed';
   // Personas with a live (heartbeating) session — powers the start-flow gate.
   activePersonas: { key: string; sessionId: string }[];
   session?: VibeFlowBrainstormSession;
   progress?: BrainstormProgress;
   // Per-round metadata merged with that round's responses.
   rounds?: { round_number: number; convergence_score: number; responses: VibeFlowBrainstormResponse[] }[];
+  // Convergence 0..1 for the detail view. Computed client-side (the backend's
+  // convergence_score is currently always 0 — CheckConvergence is unwired), but
+  // prefers the backend value if it's ever > 0.
+  convergence?: number;
   documentMarkdown?: string;
-  // Past + present sessions for the header history dropdown (list result).
+  // All brainstorms for the project (the landing list + header history dropdown).
   history?: VibeFlowBrainstormSession[];
 }
 
@@ -487,6 +493,7 @@ export type BrainstormClientMessage =
   | { type: 'brainstormLoad' }
   | { type: 'ready' }
   | { type: 'brainstormRefresh' }
+  | { type: 'brainstormShowList' }
   | { type: 'brainstormStart'; payload: Omit<StartBrainstormBody, 'project_id'> }
   | { type: 'brainstormEnd'; payload: { id: number; cancel: boolean } }
   | { type: 'brainstormDelete'; payload: { id: number } }
