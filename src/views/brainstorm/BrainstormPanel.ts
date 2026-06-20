@@ -99,7 +99,15 @@ export class BrainstormPanel {
           const created = await this.client.startBrainstorm({ ...msg.payload, project_id: this.projectId });
           this.selectedId = created.id;
         } catch (err) {
-          vscode.window.showErrorMessage(`VibeFlow: Failed to start brainstorm — ${err instanceof Error ? err.message : String(err)}`);
+          const message = err instanceof Error ? err.message : String(err);
+          // 409 = the backend already has an active brainstorm for this project
+          // (one-per-project invariant). Not a failure to surface as an error —
+          // just open the existing one (the refetch below flips us to live).
+          if (/\b409\b|already exists|conflict/i.test(message)) {
+            vscode.window.showInformationMessage('VibeFlow: A brainstorm is already active for this project — opening it.');
+          } else {
+            vscode.window.showErrorMessage(`VibeFlow: Failed to start brainstorm — ${message}`);
+          }
         }
         await this.sendSnapshot();
         return;
@@ -186,11 +194,12 @@ export class BrainstormPanel {
         serverUrl, detail, roundResponses, documentMarkdown, activePersonas, history: list,
       });
       this.post({ type: 'brainstormSnapshot', payload: snapshot });
-      // Poll only while a brainstorm is actively running. A done/cancelled (or
-      // absent) brainstorm is terminal — do this one final fetch, then stop the
-      // timer (design doc #361 §4.2). Polling resumes on the next focus / refresh
-      // / start if a live brainstorm appears.
-      if (snapshot.mode === 'live') { this.startPolling(); } else { this.stopPolling(); }
+      // Poll while a brainstorm is running ('live') OR while none exists yet
+      // ('empty') — so the start view self-corrects the moment a brainstorm is
+      // created (here, by an agent, or elsewhere) and flips to live. Stop only
+      // on a terminal/finished brainstorm ('closed', i.e. done/cancelled) — the
+      // #2346 stop-on-terminal contract (design doc #361 §4.2).
+      if (snapshot.mode === 'closed') { this.stopPolling(); } else { this.startPolling(); }
     } catch (err) {
       this.post({ type: 'brainstormError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
