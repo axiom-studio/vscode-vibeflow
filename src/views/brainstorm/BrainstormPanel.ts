@@ -100,10 +100,14 @@ export class BrainstormPanel {
           this.selectedId = created.id;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          // 409 = the backend already has an active brainstorm for this project
-          // (one-per-project invariant). Not a failure to surface as an error —
-          // just open the existing one (the refetch below flips us to live).
-          if (/\b409\b|already exists|conflict/i.test(message)) {
+          const status = (err as { status?: number })?.status;
+          // StartBrainstormREST returns 409 for ANY StartBrainstorm failure, not
+          // just the one-per-project conflict. So ONLY a genuine "already exists"
+          // (now visible via the surfaced error body) should silently open the
+          // existing brainstorm; every other 409 (bad session_id FK, scoping, …)
+          // is a real failure and must show its actual reason.
+          const isGenuineConflict = (status === 409 || /\b409\b/.test(message)) && /already exists/i.test(message);
+          if (isGenuineConflict) {
             vscode.window.showInformationMessage('VibeFlow: A brainstorm is already active for this project — opening it.');
           } else {
             vscode.window.showErrorMessage(`VibeFlow: Failed to start brainstorm — ${message}`);
