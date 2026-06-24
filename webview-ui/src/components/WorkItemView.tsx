@@ -713,7 +713,10 @@ const descriptionWrapStyle: CSSProperties = {
   padding: 'var(--vf-sp-4)',
   background: 'var(--vscode-textBlockQuote-background)',
   border: '1px solid var(--feed-border)', borderRadius: 'var(--vf-r-md)',
-  lineHeight: 1.6, maxHeight: '40vh', overflowY: 'auto',
+  // No inner scroll cap — the description grows to fit its content and the panel
+  // itself scrolls (single scroll context + sticky header), so the whole body is
+  // visible without a nested scrollbar. (#2571)
+  lineHeight: 1.6,
   boxShadow: 'inset 0 1px 0 color-mix(in oklab, var(--vscode-foreground) 4%, transparent)',
 };
 const emptyStyle: CSSProperties = {
