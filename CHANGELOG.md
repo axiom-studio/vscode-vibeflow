@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.1.0 (2026-06-25)
+
+A big feature release. Two brand-new collaboration surfaces — a live Brainstorm workspace and a real-time Agent Topology — land alongside a top-to-bottom redesign of the work-management views (Kanban, Dashboard, the Work Item detail panel, and a new Browse sidebar) and a refreshed Session Chat. The extension now also runs in Cursor and other VS Code–compatible editors. (Covers everything since the last published notes, 1.0.3.)
+
+### Added
+
+- **Brainstorm workspace.** A dedicated panel to start, watch, and steer multi-agent brainstorms in real time. Kick one off from a topic, follow the round-by-round discussion as it converges live, see honest convergence and token-usage indicators, and step in with lifecycle controls and deep links. Open it from the Agent Fleet toolbar.
+- **Live Agent Topology.** The Dashboard now has an **Explain ↔ Live** toggle. *Live* lays out your actual running agents as a team per branch, with work visibly flowing between personas — animated hand-offs, breathing activity rings, and staleness cues — plus a "huddle" badge when a team is brainstorming. Click any agent to jump straight into its chat session.
+- **Browse sidebar.** A new Browse section with one-click access to Todos, Issues, Features, Backlog, Security Review, and Pending QA — each showing a live count.
+- **Work-item table views.** Todos, Security Review, Pending QA and more now open as fast, cloud-style tables with instant search, group-by, status-filter pills, inline status changes, and security/QA badges — replacing the older tree lists. Click any row to open its detail panel in a new editor tab.
+- **Pull Requests view.** A sidebar list of the project's pull requests.
+- **Cursor and multi-editor support.** The extension now installs and runs in Cursor and other VS Code–compatible editors, with documentation tailored to each.
+
+### Changed
+
+- **Work Item detail panel — full redesign.** A modern layout with an at-a-glance header (status, priority, branch, and review gates), a full-width description and metadata area, a grouped easy-to-scan Timeline with relative dates, and an Execution Logs view that renders formatted Markdown in full by default. The review tab is now labelled **QA & Security** since it surfaces both gates.
+- **Kanban board overhaul.** All eight workflow columns are shown, with a column-visibility control and smooth horizontal/vertical scrolling; live auto-refresh on a configurable interval with a visible countdown; instant drag feedback that reliably persists; in-board search, type tabs, and a feature filter; per-column info popovers; and the board can now be embedded right under the Dashboard topology behind a toggle.
+- **Dashboard queue insight.** Hover any persona to see exactly which work items make up its badge, and click through to open them. Badge counts are now accurate across every persona.
+- **Session Chat redesign.** A refreshed persona-conversation layout with a vibrant per-persona color palette, a smoother skeleton loading state, a clearer tmux-attach button, and tidier handling of split diffs and chat-first (no-rail) mode.
+- **Guided first run.** New users are now greeted by a Welcome view and walked through setup before the workspace unlocks, so connecting for the first time is a clear, guided path.
+
+### Fixed
+
+- Work-item tables now surface real load failures instead of showing a misleading empty list.
+- The Browse → Todos list now loads correctly.
+- The Work Item **Change status** action always offers the correct next transitions.
+- Server URL validation now accepts IPv6 loopback addresses.
+- Brainstorm robustness: duplicate-start protection, clearer error messages, and graceful handling of long topics.
+
+### Security
+
+- Local Gemini credentials are now kept out of version control automatically.
+
 ## 1.0.3 (2026-05-26)
 
 A reliability + UX pass on the Session Chat panel. Most of the effort went into fixing the rough edges that surfaced as people actually used chat-first sessions for multi-turn work. Plus a quality push (test scaffolding, integration tests, a meaningful refactor of `sessionCommands.ts`) and a new user-facing documentation suite.
