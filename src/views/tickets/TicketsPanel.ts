@@ -140,6 +140,9 @@ export class TicketsPanel {
     try {
       const [rows, features] = await Promise.all([
         this.collectRows(),
+        // The feature-filter dropdown only — degraded on purpose: an empty filter
+        // shouldn't blank the table (PR #1 review). The 'features' MODE fetches
+        // listFeatures un-caught inside collectRows so it DOES surface errors.
         this.client.listFeatures(this.projectId).catch(() => []),
       ]);
       this.post({
@@ -163,7 +166,9 @@ export class TicketsPanel {
 
   private async collectRows(): Promise<TicketRow[]> {
     // Resolve claimed_by (a session id) → persona display name, same map the
-    // WorkItemsTreeProvider builds.
+    // WorkItemsTreeProvider builds. Degraded on purpose: if this fails, claimant()
+    // falls back to a truncated id — the table still renders, so a name-resolution
+    // failure must not blank it (PR #1 review).
     const sessions = await this.client.listSessions(this.projectId).catch(() => []);
     const personaMap = new Map<string, string>();
     for (const s of sessions) {
@@ -187,9 +192,15 @@ export class TicketsPanel {
       }));
     }
 
+    // PRIMARY table data — do NOT swallow. A real fetch failure here propagates
+    // to sendData()'s try/catch, which posts `ticketsError` so the panel shows a
+    // banner instead of a misleading empty table (PR #1 review). The supplementary
+    // fetches above/below (listSessions for claimant names, listFeatures for the
+    // filter) stay degraded on purpose — a cosmetic-resolution failure shouldn't
+    // blank the whole table.
     const [todos, issues] = await Promise.all([
-      this.client.listTodosByProject(this.projectId).catch(() => [] as VibeFlowTodo[]),
-      this.client.listIssues(this.projectId).catch(() => [] as VibeFlowIssue[]),
+      this.client.listTodosByProject(this.projectId),
+      this.client.listIssues(this.projectId),
     ]);
     const todoRow = (t: VibeFlowTodo): TicketRow => ({
       type: 'todo',
