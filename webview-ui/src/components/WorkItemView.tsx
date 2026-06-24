@@ -489,20 +489,45 @@ function ExecutionLogsSubtab({ snapshot, autoRefresh }: {
   }
   return (
     <div style={logsContainerStyle}>
-      {logs.map((log, idx) => {
-        const time = new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const icon = LOG_ICONS[log.message_type ?? ''] ?? '📌';
-        const lines = (log.content ?? '').split('\n').slice(0, 5).join('\n');
-        const dotColor = logTypeColor(log.message_type ?? '');
-        return (
-          <div key={idx} style={logEntryStyle}>
-            <span aria-hidden style={{ position: 'absolute', left: -12, top: 6, width: 9, height: 9, borderRadius: 'var(--vf-r-pill)', background: 'var(--feed-bg)', border: `1.5px solid ${dotColor}`, boxSizing: 'border-box' }} />
-            <span aria-hidden style={{ flex: '0 0 auto', lineHeight: 1.4 }}>{icon}</span>
-            <span style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--feed-fg)', lineHeight: 1.45 }}>{lines}</span>
-            <span style={{ marginLeft: 'auto', flex: '0 0 auto', fontSize: 'var(--vf-text-xs)', color: 'var(--feed-muted)', fontVariantNumeric: 'tabular-nums', paddingLeft: 'var(--vf-sp-2)' }}>{time}</span>
-          </div>
-        );
-      })}
+      {logs.map((log, idx) => <LogEntry key={idx} log={log} />)}
+    </div>
+  );
+}
+
+function LogEntry({ log }: { log: WorkItemPanelSnapshot['execution_logs'][number] }) {
+  const [expanded, setExpanded] = useState(false);
+  const time = new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const type = log.message_type ?? '';
+  const icon = LOG_ICONS[type] ?? '📌';
+  const dotColor = logTypeColor(type);
+  // The content is markdown (publish_*_log summaries) — render it so `**bold**`,
+  // `code`, bullets and → don't show as literal noise. normalizeEscapedMarkdown
+  // handles agents that double-encoded their newlines (same as the Description).
+  const raw = normalizeEscapedMarkdown(log.content ?? '');
+  const allLines = raw.split('\n');
+  const truncatable = allLines.length > 5;
+  // Collapsed default keeps the original 5-line cap; expand reveals the rest.
+  const shown = (expanded || !truncatable) ? raw : allLines.slice(0, 5).join('\n');
+  return (
+    <div style={logEntryStyle}>
+      <span aria-hidden style={{ position: 'absolute', left: -12, top: 7, width: 9, height: 9, borderRadius: 'var(--vf-r-pill)', background: 'var(--feed-bg)', border: `1.5px solid ${dotColor}`, boxSizing: 'border-box' }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 3 }}>
+          <span aria-hidden style={{ flex: '0 0 auto' }}>{icon}</span>
+          {type && (
+            <span style={{ ...logTypeChipStyle, color: dotColor, border: `1px solid color-mix(in oklab, ${dotColor} 35%, transparent)` }}>{type.replace(/_/g, ' ')}</span>
+          )}
+          <span style={{ marginLeft: 'auto', flex: '0 0 auto', fontSize: 'var(--vf-text-xs)', color: 'var(--feed-muted)', fontVariantNumeric: 'tabular-nums' }}>{time}</span>
+        </div>
+        <div className="prose-vf-block" style={{ fontSize: 'var(--vf-text-sm)', lineHeight: 1.55 }}>
+          <MarkdownRenderer content={shown} inline />
+        </div>
+        {truncatable && (
+          <button className="wiv-seg" style={{ marginTop: 'var(--vf-sp-1)', padding: '2px 8px' }} onClick={() => setExpanded((v) => !v)}>
+            {expanded ? 'Show less' : `Show more (${allLines.length - 5} more lines)`}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -717,11 +742,15 @@ const segmentWrapStyle: CSSProperties = {
 };
 const logsContainerStyle: CSSProperties = {
   maxHeight: '50vh', overflowY: 'auto', position: 'relative', paddingLeft: 'var(--vf-sp-4)',
-  fontFamily: 'var(--vf-font-mono)', fontSize: 'var(--vf-text-sm)',
+  fontSize: 'var(--vf-text-sm)',
   borderLeft: '1px solid var(--feed-border)', marginLeft: 6,
 };
 const logEntryStyle: CSSProperties = {
-  position: 'relative', display: 'flex', gap: 'var(--vf-sp-2)', padding: 'var(--vf-sp-1) 0', alignItems: 'flex-start',
+  position: 'relative', display: 'flex', gap: 'var(--vf-sp-2)', padding: '2px 0 var(--vf-sp-3)', alignItems: 'flex-start',
+};
+const logTypeChipStyle: CSSProperties = {
+  fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+  padding: '0 5px', borderRadius: 'var(--vf-r-sm)', background: 'transparent', flex: '0 0 auto',
 };
 const findingStyle: CSSProperties = {
   position: 'relative', padding: 'var(--vf-sp-3) var(--vf-sp-3) var(--vf-sp-3) calc(var(--vf-sp-3) + 4px)',
