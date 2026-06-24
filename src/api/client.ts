@@ -23,6 +23,7 @@ import type {
   VibeFlowSecurityReview,
   VibeFlowQAReview,
   VibeFlowBrainstormSession,
+  VibeFlowPullRequest,
   BrainstormDetailResponse,
   BrainstormRoundResponse,
   StartBrainstormBody,
@@ -307,6 +308,20 @@ export class VibeFlowClient {
   //     Brainstorm has a full REST surface (axiomcloud handlers/
   //     vibeflow_brainstorm_rest.go), so we avoid the #2890 MCP-mutation
   //     unreliability entirely. See design doc #361.
+
+  /**
+   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Robust to
+   * the response wrapper key — the server returns the rows under one of these.
+   */
+  async listPullRequests(projectId: number): Promise<VibeFlowPullRequest[]> {
+    const r = await this.request<
+      { prs?: VibeFlowPullRequest[]; pull_requests?: VibeFlowPullRequest[]; results?: VibeFlowPullRequest[] } | VibeFlowPullRequest[]
+    >(`/rest/v1/vibeflow/projects/${projectId}/prs`);
+    if (Array.isArray(r)) {
+      return r;
+    }
+    return r.prs ?? r.pull_requests ?? r.results ?? [];
+  }
 
   async listBrainstorms(projectId: number): Promise<VibeFlowBrainstormSession[]> {
     const r = await this.request<{ brainstorms: VibeFlowBrainstormSession[] }>(

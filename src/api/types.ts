@@ -560,6 +560,28 @@ export interface BrainstormOpenItem {
   section?: string;
 }
 
+/** One row from GET /projects/{id}/prs (ListProjectPRs, vibeflow_features.go). */
+export interface VibeFlowPullRequest {
+  provider: string;
+  vibeflow_type: string;
+  vibeflow_id: number;
+  feature_id?: number;
+  issue_id?: number;
+  pr_number: number | null;
+  state: string;
+  title?: string;
+  repo: string;
+  pr_url?: string;
+  head_ref?: string;
+  base_ref?: string;
+  author?: string;
+  author_avatar?: string;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
+  commits?: number;
+}
+
 /** A brainstorm session. `status`: setup | seeding | active | converging | done | cancelled. */
 export interface VibeFlowBrainstormSession {
   id: number;
