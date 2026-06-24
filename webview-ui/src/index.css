@@ -412,3 +412,62 @@ select:focus-visible {
 
 /* React Flow Controls + MiniMap are themed via the `<ReactFlow colorMode>` prop
  * in the Live topology (DashboardView) — no manual control-button CSS needed. */
+
+/* ============================================================
+ * Work Item detail panel (WorkItemView) — #2568 redesign.
+ * Interaction states (hover / active / focus) that inline styles can't express.
+ * All motion is caught by the global prefers-reduced-motion shield above; the
+ * static look comes from inline token styles in the component.
+ * ============================================================ */
+.wiv-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px;
+  border-radius: var(--vf-r-sm); border: 1px solid transparent;
+  font-size: var(--vf-text-sm); font-weight: var(--vf-weight-semibold);
+  font-family: inherit; cursor: pointer; white-space: nowrap;
+  transition: background var(--vf-t-micro) var(--vf-ease),
+              border-color var(--vf-t-micro) var(--vf-ease),
+              transform var(--vf-t-micro) var(--vf-ease);
+}
+.wiv-btn:active { transform: scale(0.97); }
+.wiv-btn:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.wiv-btn-primary { background: var(--feed-button-bg); color: var(--feed-button-fg); }
+.wiv-btn-primary:hover { background: var(--feed-button-hover); }
+.wiv-btn-affirm {
+  color: var(--feed-success);
+  background: color-mix(in oklab, var(--feed-success) 14%, transparent);
+  border-color: color-mix(in oklab, var(--feed-success) 30%, transparent);
+}
+.wiv-btn-affirm:hover { background: color-mix(in oklab, var(--feed-success) 22%, transparent); }
+.wiv-btn-ghost { background: transparent; color: var(--feed-fg); border-color: var(--feed-border); }
+.wiv-btn-ghost:hover { background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
+.wiv-btn-danger {
+  color: var(--feed-error); background: transparent;
+  border-color: color-mix(in oklab, var(--feed-error) 30%, transparent);
+}
+.wiv-btn-danger:hover { background: color-mix(in oklab, var(--feed-error) 14%, transparent); }
+
+.wiv-tab {
+  appearance: none; background: transparent; border: none; cursor: pointer;
+  padding: 0 2px 8px; margin-bottom: -1px;
+  font-size: var(--vf-text-sm); font-weight: var(--vf-weight-medium); font-family: inherit;
+  color: var(--feed-muted); border-bottom: 2px solid transparent;
+  display: inline-flex; align-items: center; gap: var(--vf-sp-2);
+  transition: color var(--vf-t-micro) var(--vf-ease), border-color var(--vf-t-quick) var(--vf-ease);
+}
+.wiv-tab:hover { color: var(--feed-fg); }
+.wiv-tab[aria-selected="true"] { color: var(--feed-fg); font-weight: var(--vf-weight-semibold); border-bottom-color: var(--feed-link); }
+.wiv-tab:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; border-radius: 3px; }
+
+.wiv-seg {
+  appearance: none; border: none; cursor: pointer; padding: 3px 10px; border-radius: 3px;
+  font-size: var(--vf-text-xs); font-family: inherit; background: transparent; color: var(--feed-muted);
+  transition: background var(--vf-t-micro) var(--vf-ease), color var(--vf-t-micro) var(--vf-ease);
+}
+.wiv-seg:hover { background: var(--vscode-list-hoverBackground); }
+.wiv-seg[aria-selected="true"] { background: color-mix(in oklab, var(--feed-link) 18%, transparent); color: var(--feed-link); font-weight: var(--vf-weight-semibold); }
+
+.wiv-att-row { transition: background var(--vf-t-micro) var(--vf-ease); }
+.wiv-att-row:hover { background: var(--vscode-list-hoverBackground); }
+.wiv-att-remove { opacity: 0; transition: opacity var(--vf-t-micro) var(--vf-ease); }
+.wiv-att-row:hover .wiv-att-remove, .wiv-att-row:focus-within .wiv-att-remove { opacity: 1; }
