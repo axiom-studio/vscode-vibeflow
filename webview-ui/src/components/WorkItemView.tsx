@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, type CSSProperties, type ReactNode } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { GitBranchIcon } from './_shared/icons';
 import { getVsCodeApi } from '../vscodeApi';
 import type {
   WorkItemPanelClientMessage,
@@ -326,22 +327,55 @@ function DetailsTab({ snapshot }: { snapshot: WorkItemPanelSnapshot | null }) {
       )}
 
       <div style={{ ...sectionLabelStyle, marginTop: 'var(--vf-sp-5)' }}>Timeline</div>
-      <div style={detailsGridStyle}>
-        <span style={labelStyle}>Created</span>
-        <span style={numCell}>{fmtDate(snapshot?.created_at) || '—'}</span>
-        <span style={labelStyle}>Updated</span>
-        <span style={numCell}>{fmtDate(snapshot?.updated_at) || '—'}</span>
-        <span style={labelStyle}>Created by</span>
-        <span>{snapshot?.user_email || '—'}</span>
-        <span style={labelStyle}>Claimed by</span>
-        <span>{snapshot?.claimed_by || '—'}</span>
-        <span style={labelStyle}>Feature</span>
-        <span>{snapshot?.feature_name || '—'}</span>
-        <span style={labelStyle}>Branch</span>
-        <span style={{ fontFamily: 'var(--vf-font-mono)' }}>{snapshot?.target_branch || '—'}</span>
-      </div>
+      <Timeline snapshot={snapshot} />
     </div>
   );
+}
+
+function Timeline({ snapshot }: { snapshot: WorkItemPanelSnapshot | null }) {
+  const branch = snapshot?.target_branch;
+  return (
+    <div style={timelineCardStyle}>
+      <TimelineRow label="Created"><DateValue iso={snapshot?.created_at} /></TimelineRow>
+      <TimelineRow label="Updated"><DateValue iso={snapshot?.updated_at} /></TimelineRow>
+      <TimelineRow label="Created by" groupStart>{snapshot?.user_email || <Dash />}</TimelineRow>
+      <TimelineRow label="Claimed by">{snapshot?.claimed_by || <Dash />}</TimelineRow>
+      <TimelineRow label="Feature" groupStart>{snapshot?.feature_name || <Dash />}</TimelineRow>
+      <TimelineRow label="Branch">
+        {branch
+          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--vf-font-mono)' }}><GitBranchIcon size={12} />{branch}</span>
+          : <Dash />}
+      </TimelineRow>
+    </div>
+  );
+}
+
+function TimelineRow({ label, groupStart, children }: { label: string; groupStart?: boolean; children: ReactNode }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '108px 1fr', alignItems: 'baseline',
+      gap: 'var(--vf-sp-4)', padding: 'var(--vf-sp-2) 0',
+      ...(groupStart ? { borderTop: '1px solid var(--feed-border)', marginTop: 'var(--vf-sp-1)', paddingTop: 'var(--vf-sp-3)' } : null),
+    }}>
+      <span style={labelStyle}>{label}</span>
+      <span style={{ color: 'var(--feed-fg)', minWidth: 0, overflowWrap: 'anywhere' }}>{children}</span>
+    </div>
+  );
+}
+
+function DateValue({ iso }: { iso?: string }) {
+  const abs = fmtDate(iso);
+  if (!abs) { return <Dash />; }
+  const rel = relativeTime(iso);
+  return (
+    <span style={numCell}>
+      {abs}{rel && <span style={{ color: 'var(--feed-muted)' }}> · {rel}</span>}
+    </span>
+  );
+}
+
+function Dash() {
+  return <span style={{ color: 'var(--feed-muted)' }}>—</span>;
 }
 
 function AttachmentsTab({ snapshot, onUpload, onDelete }: {
@@ -495,19 +529,14 @@ function ExecutionLogsSubtab({ snapshot, autoRefresh }: {
 }
 
 function LogEntry({ log }: { log: WorkItemPanelSnapshot['execution_logs'][number] }) {
-  const [expanded, setExpanded] = useState(false);
   const time = new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const type = log.message_type ?? '';
   const icon = LOG_ICONS[type] ?? '📌';
   const dotColor = logTypeColor(type);
-  // The content is markdown (publish_*_log summaries) — render it so `**bold**`,
-  // `code`, bullets and → don't show as literal noise. normalizeEscapedMarkdown
-  // handles agents that double-encoded their newlines (same as the Description).
-  const raw = normalizeEscapedMarkdown(log.content ?? '');
-  const allLines = raw.split('\n');
-  const truncatable = allLines.length > 5;
-  // Collapsed default keeps the original 5-line cap; expand reveals the rest.
-  const shown = (expanded || !truncatable) ? raw : allLines.slice(0, 5).join('\n');
+  // Full content, always — rendered as markdown (publish_*_log summaries) so
+  // `**bold**`, `code`, bullets and → don't show as literal noise.
+  // normalizeEscapedMarkdown handles agents that double-encoded their newlines.
+  const content = normalizeEscapedMarkdown(log.content ?? '');
   return (
     <div style={logEntryStyle}>
       <span aria-hidden style={{ position: 'absolute', left: -12, top: 7, width: 9, height: 9, borderRadius: 'var(--vf-r-pill)', background: 'var(--feed-bg)', border: `1.5px solid ${dotColor}`, boxSizing: 'border-box' }} />
@@ -520,13 +549,8 @@ function LogEntry({ log }: { log: WorkItemPanelSnapshot['execution_logs'][number
           <span style={{ marginLeft: 'auto', flex: '0 0 auto', fontSize: 'var(--vf-text-xs)', color: 'var(--feed-muted)', fontVariantNumeric: 'tabular-nums' }}>{time}</span>
         </div>
         <div className="prose-vf-block" style={{ fontSize: 'var(--vf-text-sm)', lineHeight: 1.55 }}>
-          <MarkdownRenderer content={shown} inline />
+          <MarkdownRenderer content={content} inline />
         </div>
-        {truncatable && (
-          <button className="wiv-seg" style={{ marginTop: 'var(--vf-sp-1)', padding: '2px 8px' }} onClick={() => setExpanded((v) => !v)}>
-            {expanded ? 'Show less' : `Show more (${allLines.length - 5} more lines)`}
-          </button>
-        )}
       </div>
     </div>
   );
@@ -612,6 +636,19 @@ function fmtDate(s: string | undefined): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) { return s; }
   return d.toLocaleString();
+}
+
+function relativeTime(iso: string | undefined): string {
+  if (!iso) { return ''; }
+  const t = Date.parse(iso);
+  if (isNaN(t)) { return ''; }
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 60) { return 'just now'; }
+  const min = Math.floor(sec / 60); if (min < 60) { return `${min}m ago`; }
+  const hr = Math.floor(min / 60); if (hr < 24) { return `${hr}h ago`; }
+  const day = Math.floor(hr / 24); if (day < 30) { return `${day}d ago`; }
+  const mo = Math.floor(day / 30); if (mo < 12) { return `${mo}mo ago`; }
+  return `${Math.floor(mo / 12)}y ago`;
 }
 
 function humanSize(n: number): string {
@@ -727,9 +764,10 @@ const emptyDashedStyle: CSSProperties = {
   padding: 'var(--vf-sp-4)', textAlign: 'center', color: 'var(--feed-muted)',
   fontStyle: 'italic', fontSize: 'var(--vf-text-sm)',
 };
-const detailsGridStyle: CSSProperties = {
-  display: 'grid', gridTemplateColumns: 'max-content 1fr',
-  gap: 'var(--vf-sp-2) var(--vf-sp-4)', fontSize: 'var(--vf-text-base)', alignItems: 'baseline',
+const timelineCardStyle: CSSProperties = {
+  border: '1px solid var(--feed-border)', borderRadius: 'var(--vf-r-md)',
+  background: 'var(--vscode-textBlockQuote-background)',
+  padding: '2px var(--vf-sp-4)', maxWidth: 560, fontSize: 'var(--vf-text-base)',
 };
 const labelStyle: CSSProperties = {
   fontSize: 'var(--vf-text-xs)', color: 'var(--feed-muted)',
@@ -744,7 +782,7 @@ const segmentWrapStyle: CSSProperties = {
   display: 'inline-flex', border: '1px solid var(--feed-border)', borderRadius: 'var(--vf-r-sm)', overflow: 'hidden', padding: 1, gap: 1,
 };
 const logsContainerStyle: CSSProperties = {
-  maxHeight: '50vh', overflowY: 'auto', position: 'relative', paddingLeft: 'var(--vf-sp-4)',
+  position: 'relative', paddingLeft: 'var(--vf-sp-4)',
   fontSize: 'var(--vf-text-sm)',
   borderLeft: '1px solid var(--feed-border)', marginLeft: 6,
 };
