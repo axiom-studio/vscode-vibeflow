@@ -36,7 +36,8 @@ const viewById = (id: string) => vibeflowViews.find(v => v.id === id);
 const GATED_SECTION_VIEWS = [
   'vibeflow.agentFleet',
   'vibeflow.workItems',
-  'vibeflow.projectItems',
+  'vibeflow.browse',
+  'vibeflow.pullRequests',
   'vibeflow.documents',
 ];
 
