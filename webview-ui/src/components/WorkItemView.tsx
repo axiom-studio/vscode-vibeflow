@@ -312,7 +312,7 @@ function TabButton({ label, badge, active, onClick }: { label: string; badge?: n
 function DetailsTab({ snapshot }: { snapshot: WorkItemPanelSnapshot | null }) {
   const description = normalizeEscapedMarkdown(snapshot?.description ?? '').trim();
   return (
-    <div style={{ maxWidth: 820 }}>
+    <div>
       <div style={sectionLabelStyle}>Description</div>
       {description ? (
         <div style={descriptionWrapStyle}>
@@ -349,7 +349,7 @@ function AttachmentsTab({ snapshot, onUpload, onDelete }: {
 }) {
   const list = snapshot?.attachments ?? [];
   return (
-    <div style={{ maxWidth: 820 }}>
+    <div>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--vf-sp-3)' }}>
         <button className="wiv-btn wiv-btn-ghost" onClick={onUpload}>+ Attach file…</button>
         <span style={{ marginLeft: 'auto', color: 'var(--feed-muted)', fontSize: 'var(--vf-text-xs)', fontVariantNumeric: 'tabular-nums' }}>Max 32 MB</span>
