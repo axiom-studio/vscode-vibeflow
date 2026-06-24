@@ -91,13 +91,6 @@
           "when": "vibeflow.configured"
         },
         {
-          "id": "vibeflow.projectItems",
-          "name": "Project Items",
-          "type": "tree",
-          "visibility": "collapsed",
-          "when": "vibeflow.configured"
-        },
-        {
           "id": "vibeflow.browse",
           "name": "Browse",
           "type": "tree",
@@ -560,16 +553,6 @@
         {
           "command": "vibeflow.openSettings",
           "when": "view == vibeflow.workItems",
-          "group": "navigation@99"
-        },
-        {
-          "command": "vibeflow.refresh",
-          "when": "view == vibeflow.projectItems",
-          "group": "navigation@1"
-        },
-        {
-          "command": "vibeflow.openSettings",
-          "when": "view == vibeflow.projectItems",
           "group": "navigation@99"
         },
         {
