@@ -52,8 +52,9 @@ const MIME_BY_EXT: Record<string, string> = {
  * Tabs (Phase B): Details | Attachments | Logs.
  *  - Details: description (markdown), Timeline metadata, compliance tags.
  *  - Attachments: list with filename + size; upload/delete in Phase D.
- *  - Logs: sub-tabs Security Review (compliance findings) and Execution
- *    Logs (the existing log stream) with Auto-refresh + Refresh controls.
+ *  - Logs: sub-tabs QA & Security (QA + security verdicts + compliance
+ *    findings) and Execution Logs (the existing log stream) with
+ *    Auto-refresh + Refresh controls.
  *
  * Action toolbar lives above the tabs and gates buttons on the live
  * status / qa_verified / security_reviewed fields per the canonical
