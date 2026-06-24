@@ -8,6 +8,10 @@ import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.j
 import { ProjectItemsTreeProvider } from './views/projectItems/ProjectItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
+import { TodosTreeProvider } from './views/surface/TodosTreeProvider.js';
+import { ReviewQueueTreeProvider } from './views/surface/ReviewQueueTreeProvider.js';
+import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
+import { BrainstormSessionsTreeProvider } from './views/surface/BrainstormSessionsTreeProvider.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar,
   type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem,
@@ -90,6 +94,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectItemsProvider = new ProjectItemsTreeProvider(workItemsProvider);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
+  // Surface-parity views matching axiomcloud's nav. Todos / Security Review /
+  // Pending QA derive from WorkItemsTreeProvider's already-fetched data (no
+  // extra polling); Pull Requests and Brainstorm Sessions fetch on the shared
+  // refresh cycle.
+  const todosProvider = new TodosTreeProvider(workItemsProvider);
+  const securityReviewProvider = new ReviewQueueTreeProvider(
+    workItemsProvider,
+    item => item.status === 'done' && !item.security_reviewed,
+    'Nothing awaiting security review',
+  );
+  const pendingQAProvider = new ReviewQueueTreeProvider(
+    workItemsProvider,
+    item => item.status === 'done' && !!item.security_reviewed && !item.qa_verified,
+    'Nothing awaiting QA',
+  );
+  const pullRequestsProvider = new PullRequestsTreeProvider();
+  const brainstormSessionsProvider = new BrainstormSessionsTreeProvider();
 
   // --- Activity Feed empty/connection state controller ---
   // Centralizes the four facts the empty-state UX depends on (auth,
@@ -322,6 +343,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionsProvider.connect(client, project.projectId);
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
+    pullRequestsProvider.connect(client, project.projectId);
+    brainstormSessionsProvider.connect(client, project.projectId);
 
     // Wire the response path so PromptNotifier.collectAndSendResponse
     // actually hits the backend instead of silently no-op'ing. Project id
@@ -750,6 +773,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: documentsProvider,
     showCollapseAll: true,
   });
+
+  const todosView = vscode.window.createTreeView('vibeflow.todos', {
+    treeDataProvider: todosProvider,
+    showCollapseAll: true,
+  });
+  const pullRequestsView = vscode.window.createTreeView('vibeflow.pullRequests', {
+    treeDataProvider: pullRequestsProvider,
+  });
+  const brainstormSessionsView = vscode.window.createTreeView('vibeflow.brainstormSessions', {
+    treeDataProvider: brainstormSessionsProvider,
+  });
+  const securityReviewView = vscode.window.createTreeView('vibeflow.securityReview', {
+    treeDataProvider: securityReviewProvider,
+  });
+  const pendingQAView = vscode.window.createTreeView('vibeflow.pendingQA', {
+    treeDataProvider: pendingQAProvider,
+  });
+  context.subscriptions.push(
+    todosView, pullRequestsView, brainstormSessionsView, securityReviewView, pendingQAView,
+    todosProvider, securityReviewProvider, pendingQAProvider, pullRequestsProvider, brainstormSessionsProvider,
+  );
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
@@ -1199,6 +1243,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessionsProvider.refresh();
       workItemsProvider.refresh();
       documentsProvider.refresh();
+      pullRequestsProvider.refresh();
+      brainstormSessionsProvider.refresh();
       void branchReviewStatusBar.refresh();
     }),
   );
