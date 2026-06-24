@@ -5,7 +5,6 @@ import { validateServerUrl } from './auth/serverUrl.js';
 import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
-import { ProjectItemsTreeProvider } from './views/projectItems/ProjectItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
@@ -87,11 +86,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
-  // "Project Items" tree — hierarchical (Features → Todos + Issues)
-  // companion to Work Items' status/kanban view. Reads the same data
-  // off the WorkItemsTreeProvider via its onDidRefresh event, so no
-  // duplicate polling.
-  const projectItemsProvider = new ProjectItemsTreeProvider(workItemsProvider);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
   // Pull Requests stays a tree (row opens the PR in the browser). Todos /
@@ -99,7 +93,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // cloud-style table panels (TicketsPanel), reached from the Browse nav.
   // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
   const pullRequestsProvider = new PullRequestsTreeProvider();
-  const ticketsNavProvider = new TicketsNavTreeProvider();
+  const ticketsNavProvider = new TicketsNavTreeProvider(workItemsProvider);
 
   // --- Activity Feed empty/connection state controller ---
   // Centralizes the four facts the empty-state UX depends on (auth,
@@ -752,11 +746,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true,
   });
 
-  const projectItemsView = vscode.window.createTreeView('vibeflow.projectItems', {
-    treeDataProvider: projectItemsProvider,
-    showCollapseAll: true,
-  });
-
   const documentsView = vscode.window.createTreeView('vibeflow.documents', {
     treeDataProvider: documentsProvider,
     showCollapseAll: true,
@@ -768,7 +757,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const pullRequestsView = vscode.window.createTreeView('vibeflow.pullRequests', {
     treeDataProvider: pullRequestsProvider,
   });
-  context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider);
+  context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider, ticketsNavProvider);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
@@ -1248,13 +1237,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     promptNotifier,
     sessionsProvider,
     workItemsProvider,
-    projectItemsProvider,
     documentsProvider,
     sessionPanelManager,
     workItemPanelManager,
     sessionsView,
     workItemsView,
-    projectItemsView,
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,
