@@ -8,10 +8,10 @@ import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.j
 import { ProjectItemsTreeProvider } from './views/projectItems/ProjectItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
-import { TodosTreeProvider } from './views/surface/TodosTreeProvider.js';
-import { ReviewQueueTreeProvider } from './views/surface/ReviewQueueTreeProvider.js';
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
-import { BrainstormSessionsTreeProvider } from './views/surface/BrainstormSessionsTreeProvider.js';
+import { TicketsPanel } from './views/tickets/TicketsPanel.js';
+import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
+import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar,
   type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem,
@@ -94,23 +94,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectItemsProvider = new ProjectItemsTreeProvider(workItemsProvider);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
-  // Surface-parity views matching axiomcloud's nav. Todos / Security Review /
-  // Pending QA derive from WorkItemsTreeProvider's already-fetched data (no
-  // extra polling); Pull Requests and Brainstorm Sessions fetch on the shared
-  // refresh cycle.
-  const todosProvider = new TodosTreeProvider(workItemsProvider);
-  const securityReviewProvider = new ReviewQueueTreeProvider(
-    workItemsProvider,
-    item => item.status === 'done' && !item.security_reviewed,
-    'Nothing awaiting security review',
-  );
-  const pendingQAProvider = new ReviewQueueTreeProvider(
-    workItemsProvider,
-    item => item.status === 'done' && !!item.security_reviewed && !item.qa_verified,
-    'Nothing awaiting QA',
-  );
+  // Pull Requests stays a tree (row opens the PR in the browser). Todos /
+  // Issues / Features / Backlog / Security Review / Pending QA moved to
+  // cloud-style table panels (TicketsPanel), reached from the Browse nav.
+  // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
   const pullRequestsProvider = new PullRequestsTreeProvider();
-  const brainstormSessionsProvider = new BrainstormSessionsTreeProvider();
+  const ticketsNavProvider = new TicketsNavTreeProvider();
 
   // --- Activity Feed empty/connection state controller ---
   // Centralizes the four facts the empty-state UX depends on (auth,
@@ -344,7 +333,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
     pullRequestsProvider.connect(client, project.projectId);
-    brainstormSessionsProvider.connect(client, project.projectId);
 
     // Wire the response path so PromptNotifier.collectAndSendResponse
     // actually hits the backend instead of silently no-op'ing. Project id
@@ -774,26 +762,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true,
   });
 
-  const todosView = vscode.window.createTreeView('vibeflow.todos', {
-    treeDataProvider: todosProvider,
-    showCollapseAll: true,
+  const browseView = vscode.window.createTreeView('vibeflow.browse', {
+    treeDataProvider: ticketsNavProvider,
   });
   const pullRequestsView = vscode.window.createTreeView('vibeflow.pullRequests', {
     treeDataProvider: pullRequestsProvider,
   });
-  const brainstormSessionsView = vscode.window.createTreeView('vibeflow.brainstormSessions', {
-    treeDataProvider: brainstormSessionsProvider,
-  });
-  const securityReviewView = vscode.window.createTreeView('vibeflow.securityReview', {
-    treeDataProvider: securityReviewProvider,
-  });
-  const pendingQAView = vscode.window.createTreeView('vibeflow.pendingQA', {
-    treeDataProvider: pendingQAProvider,
-  });
-  context.subscriptions.push(
-    todosView, pullRequestsView, brainstormSessionsView, securityReviewView, pendingQAView,
-    todosProvider, securityReviewProvider, pendingQAProvider, pullRequestsProvider, brainstormSessionsProvider,
-  );
+  context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
@@ -1126,6 +1101,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
+    vscode.commands.registerCommand('vibeflow.openTickets', (mode?: TicketsMode) => {
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos');
+    }),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
       const project = detector.getCachedProject();
       if (!project) {
@@ -1244,7 +1235,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       workItemsProvider.refresh();
       documentsProvider.refresh();
       pullRequestsProvider.refresh();
-      brainstormSessionsProvider.refresh();
       void branchReviewStatusBar.refresh();
     }),
   );

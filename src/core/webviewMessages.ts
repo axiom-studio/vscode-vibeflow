@@ -381,6 +381,52 @@ export type KanbanClientMessage =
   | { type: 'kanbanSetRefreshInterval'; payload: { ms: number } };
 
 // ============================================================
+// Tickets Panel — cloud-style table views (Todos / Issues / Features /
+// Backlog / Security Review / Pending QA). One parameterized webview opened
+// per "mode" in its own editor tab; rows open the work-item detail in a new
+// tab via vibeflow.openWorkItemPanel.
+// ============================================================
+
+export type TicketsMode = 'todos' | 'issues' | 'features' | 'backlog' | 'security' | 'qa';
+
+/** One table row. `type` is the underlying entity the row maps to. */
+export interface TicketRow {
+  type: 'todo' | 'issue' | 'feature';
+  id: number;
+  title: string;
+  status: string;
+  priority?: string;
+  featureName?: string;
+  userEmail?: string;
+  /** Resolved persona display name (or short session id) for claimed_by. */
+  claimedBy?: string;
+  branch?: string;
+  securityReviewed?: boolean;
+  qaVerified?: boolean;
+  updatedAt?: string;
+}
+
+export interface TicketsDataPayload {
+  mode: TicketsMode;
+  title: string;
+  projectName: string;
+  rows: TicketRow[];
+  /** Distinct features in this project, for the row's feature filter. */
+  features: { id: number; name: string }[];
+  generatedAt: string;
+}
+
+export type TicketsHostMessage =
+  | { type: 'ticketsData'; payload: TicketsDataPayload }
+  | { type: 'ticketsError'; payload: { message: string } };
+
+export type TicketsClientMessage =
+  | { type: 'ticketsLoad' }
+  | { type: 'ticketsRefresh' }
+  | { type: 'ticketsOpenItem'; payload: { itemType: 'todo' | 'issue' | 'feature'; itemId: number; title: string } }
+  | { type: 'ticketsChangeStatus'; payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string } };
+
+// ============================================================
 // Dashboard Panel
 // ============================================================
 
