@@ -98,36 +98,14 @@
           "when": "vibeflow.configured"
         },
         {
-          "id": "vibeflow.todos",
-          "name": "Todos",
+          "id": "vibeflow.browse",
+          "name": "Browse",
           "type": "tree",
-          "visibility": "collapsed",
           "when": "vibeflow.configured"
         },
         {
           "id": "vibeflow.pullRequests",
           "name": "Pull Requests",
-          "type": "tree",
-          "visibility": "collapsed",
-          "when": "vibeflow.configured"
-        },
-        {
-          "id": "vibeflow.brainstormSessions",
-          "name": "Brainstorm Sessions",
-          "type": "tree",
-          "visibility": "collapsed",
-          "when": "vibeflow.configured"
-        },
-        {
-          "id": "vibeflow.securityReview",
-          "name": "Security Review",
-          "type": "tree",
-          "visibility": "collapsed",
-          "when": "vibeflow.configured"
-        },
-        {
-          "id": "vibeflow.pendingQA",
-          "name": "Pending QA",
           "type": "tree",
           "visibility": "collapsed",
           "when": "vibeflow.configured"
@@ -239,6 +217,11 @@
         "command": "vibeflow.openKanban",
         "title": "VibeFlow: Open Kanban Board",
         "icon": "$(layout-centered)"
+      },
+      {
+        "command": "vibeflow.openTickets",
+        "title": "VibeFlow: Open Tickets Table",
+        "icon": "$(table)"
       },
       {
         "command": "vibeflow.openCompliance",
