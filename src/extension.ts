@@ -5,9 +5,12 @@ import { validateServerUrl } from './auth/serverUrl.js';
 import { VibeFlowClient } from './api/client.js';
 import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
-import { ProjectItemsTreeProvider } from './views/projectItems/ProjectItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
+import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
+import { TicketsPanel } from './views/tickets/TicketsPanel.js';
+import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
+import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar,
   type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem,
@@ -83,13 +86,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- TreeView data providers ---
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
-  // "Project Items" tree — hierarchical (Features → Todos + Issues)
-  // companion to Work Items' status/kanban view. Reads the same data
-  // off the WorkItemsTreeProvider via its onDidRefresh event, so no
-  // duplicate polling.
-  const projectItemsProvider = new ProjectItemsTreeProvider(workItemsProvider);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider();
+  // Pull Requests stays a tree (row opens the PR in the browser). Todos /
+  // Issues / Features / Backlog / Security Review / Pending QA moved to
+  // cloud-style table panels (TicketsPanel), reached from the Browse nav.
+  // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
+  const pullRequestsProvider = new PullRequestsTreeProvider();
+  const ticketsNavProvider = new TicketsNavTreeProvider(workItemsProvider);
 
   // --- Activity Feed empty/connection state controller ---
   // Centralizes the four facts the empty-state UX depends on (auth,
@@ -322,6 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     sessionsProvider.connect(client, project.projectId);
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
+    pullRequestsProvider.connect(client, project.projectId);
 
     // Wire the response path so PromptNotifier.collectAndSendResponse
     // actually hits the backend instead of silently no-op'ing. Project id
@@ -741,15 +746,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     showCollapseAll: true,
   });
 
-  const projectItemsView = vscode.window.createTreeView('vibeflow.projectItems', {
-    treeDataProvider: projectItemsProvider,
-    showCollapseAll: true,
-  });
-
   const documentsView = vscode.window.createTreeView('vibeflow.documents', {
     treeDataProvider: documentsProvider,
     showCollapseAll: true,
   });
+
+  const browseView = vscode.window.createTreeView('vibeflow.browse', {
+    treeDataProvider: ticketsNavProvider,
+  });
+  const pullRequestsView = vscode.window.createTreeView('vibeflow.pullRequests', {
+    treeDataProvider: pullRequestsProvider,
+  });
+  context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider, ticketsNavProvider);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
@@ -1082,6 +1090,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
+    vscode.commands.registerCommand('vibeflow.openTickets', (mode?: TicketsMode) => {
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos');
+    }),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
       const project = detector.getCachedProject();
       if (!project) {
@@ -1199,6 +1223,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       sessionsProvider.refresh();
       workItemsProvider.refresh();
       documentsProvider.refresh();
+      pullRequestsProvider.refresh();
       void branchReviewStatusBar.refresh();
     }),
   );
@@ -1212,13 +1237,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     promptNotifier,
     sessionsProvider,
     workItemsProvider,
-    projectItemsProvider,
     documentsProvider,
     sessionPanelManager,
     workItemPanelManager,
     sessionsView,
     workItemsView,
-    projectItemsView,
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,

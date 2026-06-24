@@ -91,8 +91,14 @@
           "when": "vibeflow.configured"
         },
         {
-          "id": "vibeflow.projectItems",
-          "name": "Project Items",
+          "id": "vibeflow.browse",
+          "name": "Browse",
+          "type": "tree",
+          "when": "vibeflow.configured"
+        },
+        {
+          "id": "vibeflow.pullRequests",
+          "name": "Pull Requests",
           "type": "tree",
           "visibility": "collapsed",
           "when": "vibeflow.configured"
@@ -204,6 +210,11 @@
         "command": "vibeflow.openKanban",
         "title": "VibeFlow: Open Kanban Board",
         "icon": "$(layout-centered)"
+      },
+      {
+        "command": "vibeflow.openTickets",
+        "title": "VibeFlow: Open Tickets Table",
+        "icon": "$(table)"
       },
       {
         "command": "vibeflow.openCompliance",
@@ -542,16 +553,6 @@
         {
           "command": "vibeflow.openSettings",
           "when": "view == vibeflow.workItems",
-          "group": "navigation@99"
-        },
-        {
-          "command": "vibeflow.refresh",
-          "when": "view == vibeflow.projectItems",
-          "group": "navigation@1"
-        },
-        {
-          "command": "vibeflow.openSettings",
-          "when": "view == vibeflow.projectItems",
           "group": "navigation@99"
         },
         {

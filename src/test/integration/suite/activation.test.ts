@@ -30,7 +30,8 @@ const EXPECTED_COMMANDS = [
 const EXPECTED_VIEWS = [
   'vibeflow.agentFleet',
   'vibeflow.workItems',
-  'vibeflow.projectItems',
+  'vibeflow.browse',
+  'vibeflow.pullRequests',
   'vibeflow.documents',
   'vibeflow.activityFeed',
 ];
