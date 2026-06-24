@@ -86,7 +86,7 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
 
   /**
    * Fired after every successful poll. Lets sibling tree providers
-   * (e.g. ProjectItemsTreeProvider) consume the same fetched data
+   * (e.g. the Browse nav) consume the same fetched data
    * without polling independently. Keeps the network footprint flat
    * regardless of how many trees read this data.
    */
@@ -179,7 +179,7 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       // the baseline silently — items that were already done before the
       // window opened don't get spurious notifications.
       this.notifyCompletions();
-      // Tell sibling tree providers (ProjectItemsTreeProvider) that
+      // Tell sibling tree providers (the Browse nav) that
       // fresh data is available. Fires only on successful polls so
       // consumers don't refresh on transient errors.
       this._onDidRefresh.fire();
