@@ -419,7 +419,7 @@ function LogsTab({ snapshot, subtab, setSubtab, autoRefresh, setAutoRefresh, onR
     <>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 'var(--vf-sp-3)', gap: 'var(--vf-sp-3)', flexWrap: 'wrap' }}>
         <div style={segmentWrapStyle} role="tablist">
-          <button className="wiv-seg" role="tab" aria-selected={subtab === 'security'} onClick={() => setSubtab('security')}>Security Review</button>
+          <button className="wiv-seg" role="tab" aria-selected={subtab === 'security'} onClick={() => setSubtab('security')}>QA &amp; Security</button>
           <button className="wiv-seg" role="tab" aria-selected={subtab === 'execution'} onClick={() => setSubtab('execution')}>Execution Logs</button>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 'var(--vf-sp-3)', alignItems: 'center', fontSize: 'var(--vf-text-sm)' }}>
