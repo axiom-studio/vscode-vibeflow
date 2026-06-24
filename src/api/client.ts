@@ -23,6 +23,7 @@ import type {
   VibeFlowSecurityReview,
   VibeFlowQAReview,
   VibeFlowBrainstormSession,
+  VibeFlowPullRequest,
   BrainstormDetailResponse,
   BrainstormRoundResponse,
   StartBrainstormBody,
@@ -247,7 +248,7 @@ export class VibeFlowClient {
   /**
    * Project-scoped todo listing with status filter. Wraps
    * `/rest/v1/vibeflow/projects/{id}/todos` which is always paginated
-   * (envelope: `{ Items, TotalCount, Page, PageSize, TotalPages, ... }`),
+   * (envelope: `{ items, total_count, page, page_size, total_pages, ... }`),
    * so we walk pages until we've pulled everything matching the filter.
    * Used by the dashboard to compute "pending QA" client-side because
    * the swimlane wire shape doesn't carry `qa_verified`.
@@ -268,14 +269,19 @@ export class VibeFlowClient {
       });
       if (opts?.status) { params.set('status', opts.status); }
       try {
+        // The backend serializes database.PaginatedResult with snake_case json
+        // tags — `items` / `total_pages`, NOT `Items` / `TotalPages` (the Go
+        // field names). Reading the capitalized keys yielded `undefined` →
+        // every page parsed as empty → the project-todos table was always blank
+        // (and the dashboard's QA-pending todo count silently 0). #3175.
         const data = await this.request<{
-          Items?: VibeFlowTodo[];
-          TotalPages?: number;
+          items?: VibeFlowTodo[];
+          total_pages?: number;
         }>(`/rest/v1/vibeflow/projects/${projectId}/todos?${params}`);
-        const items = data.Items ?? [];
+        const items = data.items ?? [];
         all.push(...items);
         if (items.length < limit) { break; }
-        if (data.TotalPages !== undefined && page >= data.TotalPages) { break; }
+        if (data.total_pages !== undefined && page >= data.total_pages) { break; }
         page++;
       } catch {
         break;
@@ -307,6 +313,20 @@ export class VibeFlowClient {
   //     Brainstorm has a full REST surface (axiomcloud handlers/
   //     vibeflow_brainstorm_rest.go), so we avoid the #2890 MCP-mutation
   //     unreliability entirely. See design doc #361.
+
+  /**
+   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Robust to
+   * the response wrapper key — the server returns the rows under one of these.
+   */
+  async listPullRequests(projectId: number): Promise<VibeFlowPullRequest[]> {
+    const r = await this.request<
+      { prs?: VibeFlowPullRequest[]; pull_requests?: VibeFlowPullRequest[]; results?: VibeFlowPullRequest[] } | VibeFlowPullRequest[]
+    >(`/rest/v1/vibeflow/projects/${projectId}/prs`);
+    if (Array.isArray(r)) {
+      return r;
+    }
+    return r.prs ?? r.pull_requests ?? r.results ?? [];
+  }
 
   async listBrainstorms(projectId: number): Promise<VibeFlowBrainstormSession[]> {
     const r = await this.request<{ brainstorms: VibeFlowBrainstormSession[] }>(
