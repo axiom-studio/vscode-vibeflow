@@ -183,6 +183,16 @@ export class WorkItemPanelManager implements vscode.Disposable {
     const fresh: VibeFlowTodo | VibeFlowIssue | undefined =
       freshRes.status === 'fulfilled' ? freshRes.value : undefined;
 
+    // Keep the panel's stored status in sync with the latest fetch so the
+    // "Change…" button (which reads item.status) offers transitions from the
+    // REAL current status — not the open-time argument, which the tree click
+    // commands populate with the row's description (claimant/feature), not its
+    // status. Without this, changeStatus looked up VALID_TRANSITIONS[<desc>] and
+    // showed "No valid transitions from this status."
+    if (fresh?.status) {
+      item.status = fresh.status;
+    }
+
     const snapshot: WorkItemSnapshot = {
       status: fresh?.status ?? item.status,
       qa_verified: fresh?.qa_verified ?? false,
