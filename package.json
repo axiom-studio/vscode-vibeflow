@@ -98,6 +98,41 @@
           "when": "vibeflow.configured"
         },
         {
+          "id": "vibeflow.todos",
+          "name": "Todos",
+          "type": "tree",
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
+        },
+        {
+          "id": "vibeflow.pullRequests",
+          "name": "Pull Requests",
+          "type": "tree",
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
+        },
+        {
+          "id": "vibeflow.brainstormSessions",
+          "name": "Brainstorm Sessions",
+          "type": "tree",
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
+        },
+        {
+          "id": "vibeflow.securityReview",
+          "name": "Security Review",
+          "type": "tree",
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
+        },
+        {
+          "id": "vibeflow.pendingQA",
+          "name": "Pending QA",
+          "type": "tree",
+          "visibility": "collapsed",
+          "when": "vibeflow.configured"
+        },
+        {
           "id": "vibeflow.documents",
           "name": "Documents",
           "type": "tree",
