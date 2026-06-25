@@ -105,7 +105,7 @@ function kindHint(k: MentionKind): string {
     case 'todo': return 'work item';
     case 'issue': return 'bug / standalone';
     case 'feature': return 'feature container';
-    case 'reference': return 'Confluence page';
+    case 'reference': return 'external doc';
     case 'symbol': return 'workspace symbol (LSP)';
   }
 }
