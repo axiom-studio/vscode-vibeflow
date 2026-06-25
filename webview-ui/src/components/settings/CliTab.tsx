@@ -190,7 +190,11 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
         style={{
           position: 'relative', width: 36, height: 20, borderRadius: 10, border: 'none',
           flexShrink: 0, cursor: 'pointer',
-          background: checked ? 'var(--feed-link)' : 'var(--vscode-input-background)',
+          // Off-state uses --feed-border (a visible separator color in light,
+          // dark, and high-contrast themes) rather than --vscode-input-background,
+          // which is near-white in light themes and made the OFF toggle vanish
+          // against the light card (#3198). Matches the shared Toggle in _shared.tsx.
+          background: checked ? 'var(--feed-link)' : 'var(--feed-border)',
           transition: 'background 0.15s',
         }}
       >
@@ -202,6 +206,9 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: 
           height: 16,
           borderRadius: '50%',
           background: 'white',
+          // Drop shadow keeps the white thumb visible even on a light off-track
+          // (e.g. a high-contrast-light theme where --feed-border is faint) — #3198.
+          boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
           transition: 'left 0.15s',
         }} />
       </button>
