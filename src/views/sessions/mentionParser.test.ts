@@ -10,7 +10,7 @@ import {
 
 describe('MENTION_KINDS', () => {
   it('contains the six documented kinds in stable order', () => {
-    expect(MENTION_KINDS).toEqual(['document', 'context', 'todo', 'issue', 'feature', 'symbol']);
+    expect(MENTION_KINDS).toEqual(['document', 'context', 'todo', 'issue', 'feature', 'reference', 'symbol']);
   });
 });
 
@@ -121,6 +121,10 @@ describe('formatMentionToken', () => {
 
   it('accepts a string id (symbols use file#line)', () => {
     expect(formatMentionToken('symbol', 'src/foo.ts#42', 'handleClick')).toBe('[symbol:src/foo.ts#42 "handleClick"]');
+  });
+
+  it('formats a Confluence reference token', () => {
+    expect(formatMentionToken('reference', 42, 'Onboarding Guide')).toBe('[reference:42 "Onboarding Guide"]');
   });
 
   it('escapes embedded double quotes in the name', () => {
