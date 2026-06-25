@@ -861,6 +861,22 @@ function readInitialMeta(): SessionMeta {
   };
 }
 
+/**
+ * Two prompts render identically when the fields the chat UI shows are
+ * equal. The host re-fetches still-pending rows every poll (to catch the
+ * pending→responded flip); they arrive as fresh deserialized objects with
+ * NEW references but unchanged content. Treating those as a no-op (keeping
+ * the existing object reference) is what lets MessageBubble's React.memo
+ * actually hold instead of re-rendering — and re-flashing an inline image
+ * AssetCard (spinner → reload) — every 5s while a message is pending (#3199).
+ */
+function samePromptRender(a: ChatPrompt, b: ChatPrompt): boolean {
+  return a.status === b.status
+    && a.response_text === b.response_text
+    && a.responded_at === b.responded_at
+    && a.updated_at === b.updated_at;
+}
+
 function mergeAppend(prev: ChatPrompt[], incoming: ChatPrompt[]): ChatPrompt[] {
   if (incoming.length === 0) { return prev; }
   // Upsert by id. The host re-fetches the recent window when a prompt
@@ -876,7 +892,11 @@ function mergeAppend(prev: ChatPrompt[], incoming: ChatPrompt[]): ChatPrompt[] {
     const fresh = incomingById.get(p.id);
     if (!fresh) { return p; }
     incomingById.delete(p.id);
-    if (fresh === p) { return p; }
+    // Preserve the existing reference when nothing the UI renders changed, so
+    // the periodic pending-row re-fetch doesn't bust MessageBubble's memo (and
+    // re-flash inline images) every poll. Only swap in `fresh` on a real
+    // change (e.g. pending→responded, new response_text) — #3199.
+    if (fresh === p || samePromptRender(p, fresh)) { return p; }
     changed = true;
     return fresh;
   });
