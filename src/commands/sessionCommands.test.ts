@@ -6,6 +6,7 @@ import {
   detectExternalAuth,
   validateProviderKey,
   buildProvidersWithAvailability,
+  runLaunchGuarded,
 } from './sessionCommands.js';
 
 /**
@@ -33,11 +34,18 @@ describe('detectExternalAuth', () => {
   let prevValue: string | undefined;
   let prevHome: string | undefined;
   let tmpDir: string | undefined;
+  // The 'MCP_TOKEN'-probe test below asserts detectExternalAuth('MCP_TOKEN')
+  // is null, but this var is exported in real VibeFlow agent shells (the MCP
+  // connection token), which made the test non-hermetic — it passed on CI yet
+  // failed inside an agent session. Save/clear/restore it like ENV_VAR + HOME.
+  let prevMcpToken: string | undefined;
 
   beforeEach(() => {
     prevValue = process.env[ENV_VAR];
     delete process.env[ENV_VAR];
     prevHome = process.env.HOME;
+    prevMcpToken = process.env.MCP_TOKEN;
+    delete process.env.MCP_TOKEN;
   });
 
   afterEach(() => {
@@ -45,6 +53,8 @@ describe('detectExternalAuth', () => {
     else { process.env[ENV_VAR] = prevValue; }
     if (prevHome === undefined) { delete process.env.HOME; }
     else { process.env.HOME = prevHome; }
+    if (prevMcpToken === undefined) { delete process.env.MCP_TOKEN; }
+    else { process.env.MCP_TOKEN = prevMcpToken; }
     if (tmpDir) {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* fine */ }
       tmpDir = undefined;
@@ -253,5 +263,84 @@ describe('buildProvidersWithAvailability', () => {
         expect(p.description).toMatch(/not installed/);
       }
     }
+  });
+});
+
+/**
+ * Tests for the launch-guard wrapper added in #3195.
+ *
+ * Regression target: the Agent Fleet play button invoked `launchSession` /
+ * `openCli` without `await`/`.catch`, so an un-try/caught throw inside the
+ * wizard became an unhandled promise rejection — the session silently never
+ * started ("pressed play, nothing happened" in a demo). `runLaunchGuarded`
+ * must catch every failure mode and route it to one actionable message.
+ *
+ * No mocks: the error reporter is a real closure that records calls; actions
+ * are real async functions that succeed / throw / reject.
+ */
+describe('runLaunchGuarded', () => {
+  it('runs the action and reports nothing on success (returns null)', async () => {
+    const reported: string[] = [];
+    let ran = false;
+    const result = await runLaunchGuarded(
+      'Launch Session',
+      async () => { ran = true; },
+      msg => reported.push(msg),
+    );
+    expect(ran).toBe(true);
+    expect(result).toBeNull();
+    expect(reported).toEqual([]);
+  });
+
+  it('catches a thrown Error, reports one actionable message, and returns it (never re-throws)', async () => {
+    const reported: string[] = [];
+    const boom = new Error('git not found');
+    const result = await runLaunchGuarded(
+      'Launch Session',
+      async () => { throw boom; },
+      msg => reported.push(msg),
+    );
+    expect(result).toBe(boom);
+    expect(reported).toEqual(['VibeFlow: Launch Session failed — git not found']);
+  });
+
+  it('wraps a non-Error throw (string) into an Error and still reports', async () => {
+    const reported: string[] = [];
+    const result = await runLaunchGuarded(
+      'Open CLI',
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      async () => { throw 'kaboom'; },
+      msg => reported.push(msg),
+    );
+    expect(result).toBeInstanceOf(Error);
+    expect(result?.message).toBe('kaboom');
+    expect(reported).toEqual(['VibeFlow: Open CLI failed — kaboom']);
+  });
+
+  it('handles a rejected promise identically to a synchronous throw', async () => {
+    const reported: string[] = [];
+    const result = await runLaunchGuarded(
+      'Launch Session',
+      () => Promise.reject(new Error('boom')),
+      msg => reported.push(msg),
+    );
+    expect(result?.message).toBe('boom');
+    expect(reported).toHaveLength(1);
+  });
+
+  it('reports exactly once per failure (no duplicate toasts)', async () => {
+    const reported: string[] = [];
+    await runLaunchGuarded(
+      'Launch Session',
+      async () => { throw new Error('e'); },
+      msg => reported.push(msg),
+    );
+    expect(reported).toHaveLength(1);
+  });
+
+  it('embeds the label so the user can tell which action failed', async () => {
+    const reported: string[] = [];
+    await runLaunchGuarded('Open CLI', async () => { throw new Error('x'); }, msg => reported.push(msg));
+    expect(reported[0]).toContain('Open CLI');
   });
 });
