@@ -19,7 +19,7 @@ import { createBranchReviewStatusBar } from './statusBar/branchReview.js';
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
 import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
-import { launchSession } from './commands/sessionCommands.js';
+import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
 import { openCli } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
@@ -781,9 +781,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       disconnect();
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
-    vscode.commands.registerCommand('vibeflow.openCli', () => {
+    vscode.commands.registerCommand('vibeflow.openCli', async () => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      void openCli(root);
+      await runLaunchGuarded('Open CLI', () => openCli(root), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
       try {
@@ -799,17 +799,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
       }
     }),
-    vscode.commands.registerCommand('vibeflow.launchSession', () => {
+    vscode.commands.registerCommand('vibeflow.launchSession', async () => {
       // CLI mode owns session management — short-circuit and route to
       // the TUI launcher so we don't spawn duplicate per-persona
       // terminals that would race with the CLI's tmux-managed sessions.
+      const reportError = (msg: string) => vscode.window.showErrorMessage(msg);
       const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', false);
       if (cliEnabled) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        void openCli(root);
+        await runLaunchGuarded('Open CLI', () => openCli(root), reportError);
         return;
       }
-      launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, tmuxBacking, connectToProject);
+      // Guard the launch so an un-try/caught throw inside the wizard
+      // (getGitBranch / ensureMcpConfig / ensureAllAgentDocs) surfaces a
+      // clear error instead of a silent unhandled rejection (issue #3195).
+      await runLaunchGuarded(
+        'Launch Session',
+        () => launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, tmuxBacking, connectToProject),
+        reportError,
+      );
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
