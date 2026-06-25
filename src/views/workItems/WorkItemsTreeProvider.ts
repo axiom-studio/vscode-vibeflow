@@ -35,8 +35,8 @@ const STATUS_GROUP_CONFIG: { key: string; label: string; icon: string; statuses:
   { key: 'done', label: 'Done', icon: 'check', statuses: ['done'] },
   // Terminal states get their own bucket so users can audit closed work
   // without scrolling — and so items in `archived` or `rejected` don't
-  // silently vanish (which they did pre-fix, with the same set missing
-  // from VALID_TRANSITIONS in workItemCommands.ts).
+  // silently vanish (which they did pre-fix, the same way Done/Rejected
+  // were once missing from the Change-Status picker in workItemCommands.ts).
   { key: 'closed', label: 'Closed', icon: 'archive', statuses: ['archived', 'rejected'] },
 ];
 
