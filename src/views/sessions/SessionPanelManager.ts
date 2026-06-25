@@ -1019,6 +1019,15 @@ export class SessionPanelManager implements vscode.Disposable {
           .slice(0, 20)
           .map(i => ({ id: i.id, name: i.title, detail: i.status }));
       }
+      if (k === 'reference') {
+        // Confluence references attached to the project. Match on the
+        // user-facing label (falls back to the page title), and surface
+        // the space name as the detail line.
+        const refs = await this.client.listReferences(this.projectId!);
+        return refs.filter(r => match(r.label || r.confluence_page_title))
+          .slice(0, 20)
+          .map(r => ({ id: r.id, name: r.label || r.confluence_page_title, detail: r.confluence_space_name }));
+      }
       if (k === 'symbol') {
         // VS Code workspace symbol provider — LSP-backed, async.
         // Empty query returns the top-N most relevant symbols for

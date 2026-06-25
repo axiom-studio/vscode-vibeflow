@@ -13,14 +13,16 @@
  */
 
 /**
- * The supported mention kinds. `symbol` is IDE-only: it resolves
- * via VS Code's workspace-symbol provider (LSP-backed) and is not
- * understood by axiomcloud's parser. The token still embeds with
- * a stable `[symbol:<file>#<line> "<name>"]` shape so a server
- * roundtrip is not lossy — the agent can decode the location
- * even if axiomcloud cannot.
+ * The supported mention kinds. `reference` is a Confluence reference —
+ * a read-only pointer to an external Atlassian page, server-backed via
+ * the references API; the agent resolves it with `get_reference_content`.
+ * `symbol` is IDE-only: it resolves via VS Code's workspace-symbol
+ * provider (LSP-backed) and is not understood by axiomcloud's parser.
+ * The token still embeds with a stable `[symbol:<file>#<line> "<name>"]`
+ * shape so a server roundtrip is not lossy — the agent can decode the
+ * location even if axiomcloud cannot.
  */
-export const MENTION_KINDS = ['document', 'context', 'todo', 'issue', 'feature', 'symbol'] as const;
+export const MENTION_KINDS = ['document', 'context', 'todo', 'issue', 'feature', 'reference', 'symbol'] as const;
 export type MentionKind = typeof MENTION_KINDS[number];
 
 /**
