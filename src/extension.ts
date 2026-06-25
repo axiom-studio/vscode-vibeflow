@@ -834,10 +834,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
       if (session) { killAndForgetSession(client, session, sessionsProvider, terminalRegistry); }
     }),
-    vscode.commands.registerCommand('vibeflow.restartSession', (idOrNode: string | { id?: string }) => {
+    vscode.commands.registerCommand('vibeflow.restartSession', async (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const session = id ? sessionsProvider.getSessionById(id) : undefined;
-      if (session) { restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels, contextProxy); }
+      // Guard the pre-spawn awaits (confirm modal, project/branch resolution)
+      // that sit outside restartSession's internal try/catch (#3197).
+      if (session) {
+        await runLaunchGuarded(
+          'Restart Session',
+          () => restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels, contextProxy),
+          msg => vscode.window.showErrorMessage(msg),
+        );
+      }
     }),
     vscode.commands.registerCommand('vibeflow.deleteSession', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -1206,25 +1214,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       void deleteWorktree(workDir, wt).then(() => sessionsProvider.refresh());
     }),
-    vscode.commands.registerCommand('vibeflow.createSessionInWorktree', (idOrNode: string | { id?: string }) => {
+    vscode.commands.registerCommand('vibeflow.createSessionInWorktree', async (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
       const wt = id ? sessionsProvider.getWorktreeById(id) : undefined;
       if (!wt) {
         vscode.window.showInformationMessage('VibeFlow: Worktree not found — try refreshing.');
         return;
       }
-      void launchSession(
-        client,
-        detector,
-        sessionsProvider,
-        context.extensionUri,
-        terminalRegistry,
-        stickyModels,
-        contextProxy,
-        streamRegistry,
-        tmuxBacking,
-        connectToProject,
-        { branch: wt.branch, workDir: wt.path },
+      // Same silent-rejection guard as the play button (#3195 / #3197) — an
+      // un-awaited launch here would swallow a pre-spawn throw and the
+      // "Create Session Here" action would silently do nothing.
+      await runLaunchGuarded(
+        'Create Session in Worktree',
+        () => launchSession(
+          client,
+          detector,
+          sessionsProvider,
+          context.extensionUri,
+          terminalRegistry,
+          stickyModels,
+          contextProxy,
+          streamRegistry,
+          tmuxBacking,
+          connectToProject,
+          { branch: wt.branch, workDir: wt.path },
+        ),
+        msg => vscode.window.showErrorMessage(msg),
       );
     }),
     vscode.commands.registerCommand('vibeflow.refresh', () => {
