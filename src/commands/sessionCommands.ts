@@ -96,6 +96,40 @@ export interface LaunchSessionPrefill {
   workDir: string;
 }
 
+/**
+ * Guard a launch action so it can NEVER fail silently.
+ *
+ * The Agent Fleet play button (`vibeflow.launchSession` / `vibeflow.openCli`)
+ * used to invoke async work (`launchSession`, `openCli`) with neither `await`
+ * nor `.catch`. Several awaited/throwing steps inside `launchSession` —
+ * `detector.getGitBranch()`, `ensureAllAgentDocs()`, `ensureMcpConfig()` — run
+ * OUTSIDE its per-persona try/catch, so an environment-dependent throw (git not
+ * on PATH, fs/permission) became an UNHANDLED promise rejection: the wizard
+ * died mid-flight, no session started, and the user saw nothing. That is the
+ * reported "pressed play, nothing happened, it was weird" demo failure —
+ * intermittent precisely because those steps fail on some machines, not the
+ * dev box.
+ *
+ * This wrapper awaits `action` and converts ANY throw into a single actionable
+ * message via the injected `reportError`. It is intentionally free of `vscode`
+ * (the reporter is injected) so it is unit-testable. Returns the caught Error
+ * (or null on success) for callers/tests that want it; it never re-throws.
+ */
+export async function runLaunchGuarded(
+  label: string,
+  action: () => Promise<void>,
+  reportError: (message: string) => void,
+): Promise<Error | null> {
+  try {
+    await action();
+    return null;
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    reportError(`VibeFlow: ${label} failed — ${error.message}`);
+    return error;
+  }
+}
+
 export async function launchSession(
   client: VibeFlowClient,
   detector: ProjectDetector,
