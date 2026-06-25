@@ -188,7 +188,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
     // "Change…" button (which reads item.status) offers transitions from the
     // REAL current status — not the open-time argument, which the tree click
     // commands populate with the row's description (claimant/feature), not its
-    // status. Without this, changeStatus looked up VALID_TRANSITIONS[<desc>] and
+    // status. Without this, changeStatus computed transitionsFor(<desc>) and
     // showed "No valid transitions from this status."
     if (fresh?.status) {
       item.status = fresh.status;

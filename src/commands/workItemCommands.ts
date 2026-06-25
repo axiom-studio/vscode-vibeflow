@@ -16,84 +16,55 @@ const PRIORITIES = [
 ];
 
 /**
- * Allowed status transitions surfaced in the "Change Status" Quick Pick.
+ * Statuses offered in the "Change Status" Quick Pick.
  *
  * Backend canonical statuses (axiomcloud/database/vibeflow_models.go:36-46):
  *   in_review, needs_pm_input, needs_ux_input, planning, ready_to_implement,
  *   architecture_review_complete, implementing, done, archived, rejected.
  *
- * The backend enforces ONE transition rule (from `rejected` only `in_review`
- * is allowed — see VibeflowStatusRejected check in vibeflow_models.go); all
- * other source/target pairs are accepted. These lists are pure UX guidance:
- * they show the most-likely "next state" from each source so the user isn't
- * picking from all 10 every time.
+ * The backend enforces exactly ONE transition rule: from `rejected` only
+ * `in_review` is accepted (VibeflowStatusRejected check in vibeflow_models.go).
+ * Every other source→target pair is allowed, so we surface the FULL set
+ * (minus the current status) to match the web UI's status dropdown. The
+ * earlier curated per-source lists silently HID valid targets — most visibly
+ * Done and Rejected, which were unreachable from `planning` and several other
+ * sources.
  *
- * Verified 2026-05-04 against axiomcloud — VibeflowStatus.IsValid() lists 10
- * statuses, and we cover every source: 8 active flow + archived + rejected.
+ * `archived` is intentionally NOT a target here: archiving is a separate
+ * action and the web's status dropdown omits it too (9 statuses, no archived).
+ * Verified 2026-05-04 against axiomcloud — VibeflowStatus.IsValid() lists 10.
  */
-const VALID_TRANSITIONS: Record<string, { label: string; value: string }[]> = {
-  in_review: [
-    { label: 'Planning', value: 'planning' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'Needs PM Input', value: 'needs_pm_input' },
-    { label: 'Needs UX Input', value: 'needs_ux_input' },
-  ],
-  needs_pm_input: [
-    { label: 'Planning', value: 'planning' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'In Review', value: 'in_review' },
-  ],
-  needs_ux_input: [
-    { label: 'Planning', value: 'planning' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'In Review', value: 'in_review' },
-  ],
-  planning: [
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'Architecture Review Complete', value: 'architecture_review_complete' },
-    { label: 'In Review', value: 'in_review' },
-    { label: 'Needs PM Input', value: 'needs_pm_input' },
-    { label: 'Needs UX Input', value: 'needs_ux_input' },
-  ],
-  ready_to_implement: [
-    { label: 'Implementing', value: 'implementing' },
-    { label: 'Architecture Review Complete', value: 'architecture_review_complete' },
-    { label: 'Planning', value: 'planning' },
-  ],
-  architecture_review_complete: [
-    { label: 'Implementing', value: 'implementing' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'Planning', value: 'planning' },
-  ],
-  implementing: [
-    { label: 'Done', value: 'done' },
-    { label: 'In Review', value: 'in_review' },
-    { label: 'Planning', value: 'planning' },
-    { label: 'Needs PM Input', value: 'needs_pm_input' },
-    { label: 'Needs UX Input', value: 'needs_ux_input' },
-  ],
-  done: [
-    { label: 'Implementing (rework — clears QA/Security)', value: 'implementing' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'In Review', value: 'in_review' },
-  ],
-  // Backend's only enforced transition rule: from rejected, only
-  // in_review is allowed (vibeflow_models.go:VibeflowStatusRejected
-  // check). Surface that as the lone option instead of leaving the
-  // user stuck on "No valid transitions" when they hit a rejected
-  // item from the tree.
-  rejected: [
-    { label: 'In Review (revive after rejection)', value: 'in_review' },
-  ],
-  // Archived has no backend-enforced restrictions; surface common
-  // un-archive moves so users can recover an item without leaving
-  // the editor for the web UI.
-  archived: [
-    { label: 'Planning', value: 'planning' },
-    { label: 'Ready to Implement', value: 'ready_to_implement' },
-    { label: 'In Review', value: 'in_review' },
-  ],
-};
+const SELECTABLE_STATUSES: { label: string; value: string }[] = [
+  { label: 'In Review', value: 'in_review' },
+  { label: 'Needs PM Input', value: 'needs_pm_input' },
+  { label: 'Needs UX Input', value: 'needs_ux_input' },
+  { label: 'Planning', value: 'planning' },
+  { label: 'Ready to Implement', value: 'ready_to_implement' },
+  { label: 'Architecture Review Complete', value: 'architecture_review_complete' },
+  { label: 'Implementing', value: 'implementing' },
+  { label: 'Done', value: 'done' },
+  { label: 'Rejected', value: 'rejected' },
+];
+
+/**
+ * Build the transition options for `currentStatus`: the full selectable set
+ * minus the current status, with two refinements —
+ *  - from `rejected` the backend only accepts `in_review`, so offer just that;
+ *  - from `done`, flag the `implementing` move as rework (the confirm dialog
+ *    below enforces that it clears QA/Security).
+ */
+function transitionsFor(currentStatus: string): { label: string; value: string }[] {
+  if (currentStatus === 'rejected') {
+    return [{ label: 'In Review (revive after rejection)', value: 'in_review' }];
+  }
+  return SELECTABLE_STATUSES
+    .filter(s => s.value !== currentStatus)
+    .map(s =>
+      currentStatus === 'done' && s.value === 'implementing'
+        ? { label: 'Implementing (rework — clears QA/Security)', value: 'implementing' }
+        : s,
+    );
+}
 
 /**
  * Multi-step Quick Pick for creating a new work item.
@@ -175,8 +146,8 @@ export async function changeStatus(
   currentStatus: string,
   workItemsProvider: WorkItemsTreeProvider,
 ): Promise<void> {
-  const transitions = VALID_TRANSITIONS[currentStatus];
-  if (!transitions || transitions.length === 0) {
+  const transitions = transitionsFor(currentStatus);
+  if (transitions.length === 0) {
     vscode.window.showInformationMessage('VibeFlow: No valid transitions from this status.');
     return;
   }
