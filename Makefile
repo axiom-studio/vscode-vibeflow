@@ -21,7 +21,7 @@ VSIX      := $(NAME)-$(VERSION).vsix
 
 .PHONY: help install build check package \
         openvsx-namespace openvsx-publish publish \
-        vscode-publish publish-all clean
+        vscode-publish publish-all release clean
 
 help:
 	@echo "VibeFlow — make targets"
@@ -40,6 +40,10 @@ help:
 	@echo "  make vscode-publish     Package and publish $(VSIX) to the VS Code Marketplace"
 	@echo ""
 	@echo "  make publish-all        Publish the same $(VSIX) to BOTH registries"
+	@echo ""
+	@echo "  Release (one command — needs OVSX_PAT and VSCE_PAT in the environment):"
+	@echo "  make release            Bump version, build, commit, tag, push, publish to both"
+	@echo "                          BUMP=patch|minor|major (default patch)"
 	@echo ""
 	@echo "  make clean              Remove built .vsix files"
 	@echo ""
@@ -83,6 +87,41 @@ vscode-publish: package
 
 # Publish the SAME built $(VSIX) to both registries. `package` runs once.
 publish-all: openvsx-publish vscode-publish
+
+# One-command release. Cuts a release end to end:
+#   bump package.json version -> build + package -> commit -> tag -> push -> publish to both registries.
+# Pick the bump (default patch):
+#   make release BUMP=patch    # 1.1.0 -> 1.1.1
+#   make release BUMP=minor    # 1.1.0 -> 1.2.0
+#   make release BUMP=major    # 1.1.0 -> 2.0.0
+# Publishing needs OVSX_PAT and VSCE_PAT in the environment (see publish-all).
+# Aborts unless the tree is clean, you are on `main`, and you are in sync with
+# origin/main — git stays the source of truth, so a publish failure leaves a
+# tagged+pushed commit you can re-publish with `make publish-all`.
+#
+# `$(MAKE) package` / `$(MAKE) publish-all` are sub-makes on purpose: VERSION/VSIX
+# are `:=` (parse-time), so the freshly bumped version is only picked up by a
+# re-parsed make. npm is used only to rewrite the version string (no git side
+# effects, no dependency install) — yarn 1's `version` is interactive-prone.
+BUMP ?= patch
+release:
+	@case "$(BUMP)" in patch|minor|major) ;; *) echo "ERROR: BUMP must be patch|minor|major (got '$(BUMP)')"; exit 1 ;; esac
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "ERROR: releases must be cut from 'main' (currently on $$(git rev-parse --abbrev-ref HEAD))"; exit 1; }
+	@git diff --quiet && git diff --cached --quiet || { echo "ERROR: working tree is dirty — commit or stash before releasing"; exit 1; }
+	@git fetch --quiet origin main
+	@test "$$(git rev-list --count HEAD..origin/main)" = "0" || { echo "ERROR: behind origin/main — run 'git pull' first"; exit 1; }
+	@test "$$(git rev-list --count origin/main..HEAD)" = "0" || { echo "ERROR: ahead of origin/main — push your commits before releasing"; exit 1; }
+	npm version $(BUMP) --no-git-tag-version
+	@$(MAKE) package
+	@v=$$(node -p "require('./package.json').version") && \
+	  git add package.json && \
+	  git commit -m "chore(release): v$$v" && \
+	  git tag "v$$v" && \
+	  git push origin main && \
+	  git push origin "v$$v" && \
+	  echo ">> released v$$v (tagged + pushed) — publishing to registries"
+	@$(MAKE) publish-all
+	@echo ">> done: published to Open VSX + VS Code Marketplace"
 
 clean:
 	rm -f $(NAME)-*.vsix
