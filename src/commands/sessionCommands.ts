@@ -5,7 +5,7 @@ import * as path from 'path';
 import type { VibeFlowClient } from '../api/client.js';
 import type { DetectedProject, ProjectDetector } from '../project/ProjectDetector.js';
 import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvider.js';
-import type { VibeFlowProject } from '../api/types.js';
+import type { VibeFlowProject, VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 import { createOrAttachWorktree } from './worktreeCommands.js';
@@ -681,6 +681,18 @@ export async function launchSession(
           terminalMode,
           initPrompt,
         });
+        // Optimistic "Starting…" row for the terminal path too — not just
+        // chat_first (#3196). The SessionsTreeProvider reconcile drops it once
+        // the agent registers and flips it to "Failed" after the stall
+        // threshold, so a launch that never boots stops looking like a success
+        // (especially for an advisory persona whose terminal is hidden in
+        // hybrid mode). Keyed by persona+branch (terminalRegistry's own key) so
+        // a relaunch reuses the row instead of stacking.
+        sessionsProvider.addPending({
+          handleId: `terminal:${persona}:${branch}`,
+          personaKey: persona,
+          branch,
+        });
       }
 
       // Remember the mode so a future window-reload reattach (or a
@@ -705,11 +717,64 @@ export async function launchSession(
       void waitForAgentSessionThenOpenPanel(client, project.projectId, persona, branch);
     }
   } else {
+    // Don't claim outright success — the terminal path has no realtime
+    // child-exit signal back here, so an agent that never boots/registers
+    // would otherwise leave an upbeat "Launched" toast as the last word
+    // (#3196). Show a non-committal toast, then confirm each persona actually
+    // registers within the window and warn if it doesn't. The Agent Fleet
+    // "Starting…/Failed" row (addPending above) is the durable surface; this
+    // is the active nudge for users not watching the tree.
     vscode.window.showInformationMessage(
-      `VibeFlow: Launched ${personas.length} session(s) on ${branch}: ${personas.join(', ')}`,
+      `VibeFlow: Launching ${personas.length} session(s) on ${branch}: ${personas.join(', ')}. Watch the Agent Fleet for status.`,
     );
+    for (const persona of personas) {
+      void waitForAgentRegistration(client, project.projectId, persona, branch);
+    }
   }
   sessionsProvider.refresh();
+}
+
+/**
+ * Pure predicate: find the active session matching a persona on a branch in a
+ * `listSessions` snapshot. Extracted so both launch watchdogs (chat-first
+ * panel-open + default-path registration warning) share one definition of
+ * "registered", and so it is unit-testable without the vscode module.
+ */
+export function findActiveSession(
+  sessions: VibeFlowSession[],
+  persona: string,
+  branch: string,
+): VibeFlowSession | undefined {
+  return sessions.find(s =>
+    s.persona_key === persona && s.git_branch === branch && s.active,
+  );
+}
+
+/**
+ * Poll `listSessions` until the persona registers an active session on the
+ * branch, or the timeout elapses. Returns the matching session, or null on
+ * timeout. Transient list errors are swallowed so a network blip doesn't abort
+ * the watch. Shared by both launch watchdogs below.
+ */
+async function pollForAgentRegistration(
+  client: VibeFlowClient,
+  projectId: number,
+  persona: string,
+  branch: string,
+  timeoutMs = 30000,
+  pollMs = 2000,
+): Promise<VibeFlowSession | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const found = findActiveSession(await client.listSessions(projectId), persona, branch);
+      if (found) { return found; }
+    } catch {
+      // Continue polling — transient errors should not abort.
+    }
+    await new Promise(resolve => setTimeout(resolve, pollMs));
+  }
+  return null;
 }
 
 /**
@@ -731,27 +796,38 @@ async function waitForAgentSessionThenOpenPanel(
   persona: string,
   branch: string,
 ): Promise<void> {
-  const timeoutMs = 30000;
-  const pollMs = 2000;
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const sessions = await client.listSessions(projectId);
-      const found = sessions.find(s =>
-        s.persona_key === persona && s.git_branch === branch && s.active,
-      );
-      if (found) {
-        await vscode.commands.executeCommand('vibeflow.openSessionPanel', found.session_id);
-        return;
-      }
-    } catch {
-      // Continue polling — transient errors should not abort.
-    }
-    await new Promise(resolve => setTimeout(resolve, pollMs));
+  const found = await pollForAgentRegistration(client, projectId, persona, branch);
+  if (found) {
+    await vscode.commands.executeCommand('vibeflow.openSessionPanel', found.session_id);
+    return;
   }
   vscode.window.showWarningMessage(
     `VibeFlow: ${persona} session is taking longer than 30s to register. Open the Chat panel manually from the Agent Fleet view once it appears.`,
   );
+}
+
+/**
+ * Default (non-chat_first) launch watchdog (#3196). The terminal path has no
+ * realtime child-exit signal back to the toast layer, so a spawned agent that
+ * never boots (binary not on the *terminal's* PATH, MCP misconfig) would
+ * otherwise leave an upbeat "Launched" toast as the last word. Poll for the
+ * persona to register; if it doesn't within the window, replace that false
+ * success with an actionable warning. The Agent Fleet "Failed" row (added via
+ * `addPending` at launch) is the durable counterpart; this is the active nudge.
+ */
+async function waitForAgentRegistration(
+  client: VibeFlowClient,
+  projectId: number,
+  persona: string,
+  branch: string,
+): Promise<void> {
+  const found = await pollForAgentRegistration(client, projectId, persona, branch);
+  if (!found) {
+    vscode.window.showWarningMessage(
+      `VibeFlow: ${persona} hasn't registered a session within 30s — it may have failed to start ` +
+      `(check the terminal, the Agent Fleet for a "Failed" row, and "VibeFlow: Agent Activity").`,
+    );
+  }
 }
 
 // Provider binary mapping (matches CLI defaults from config.go DefaultConfig).

@@ -7,7 +7,9 @@ import {
   validateProviderKey,
   buildProvidersWithAvailability,
   runLaunchGuarded,
+  findActiveSession,
 } from './sessionCommands.js';
+import type { VibeFlowSession } from '../api/types.js';
 
 /**
  * Tests for the pure-function helpers added in #2174 / #2179.
@@ -342,5 +344,54 @@ describe('runLaunchGuarded', () => {
     const reported: string[] = [];
     await runLaunchGuarded('Open CLI', async () => { throw new Error('x'); }, msg => reported.push(msg));
     expect(reported[0]).toContain('Open CLI');
+  });
+});
+
+/**
+ * `findActiveSession` is the pure "is this persona registered?" predicate
+ * shared by both launch watchdogs (chat-first panel-open + the #3196
+ * default-path registration warning). Real arrays, no mocks — exactly the
+ * decision logic the watchdogs branch on.
+ */
+describe('findActiveSession', () => {
+  const mk = (over: Partial<VibeFlowSession>): VibeFlowSession => ({
+    id: 1,
+    session_id: 'session-x',
+    project_id: 7,
+    working_directory: '/w',
+    git_branch: 'main',
+    agent_type: 'claude',
+    agent_model: 'claude-opus-4-8',
+    persona_key: 'developer',
+    created_at: '2026-06-26T00:00:00Z',
+    active: true,
+    ...over,
+  });
+
+  it('returns the session matching persona + branch + active', () => {
+    const sessions = [
+      mk({ session_id: 's-dev', persona_key: 'developer', git_branch: 'main' }),
+      mk({ session_id: 's-arch', persona_key: 'architect', git_branch: 'main' }),
+    ];
+    expect(findActiveSession(sessions, 'developer', 'main')?.session_id).toBe('s-dev');
+  });
+
+  it('does not match when the branch differs (per-branch isolation)', () => {
+    const sessions = [mk({ persona_key: 'developer', git_branch: 'feature-x' })];
+    expect(findActiveSession(sessions, 'developer', 'main')).toBeUndefined();
+  });
+
+  it('does not match an inactive (un-registered / dead) session', () => {
+    const sessions = [mk({ persona_key: 'developer', git_branch: 'main', active: false })];
+    expect(findActiveSession(sessions, 'developer', 'main')).toBeUndefined();
+  });
+
+  it('returns undefined on an empty list (the never-registered case the warning fires on)', () => {
+    expect(findActiveSession([], 'developer', 'main')).toBeUndefined();
+  });
+
+  it('requires both persona AND branch to match', () => {
+    const sessions = [mk({ persona_key: 'architect', git_branch: 'main' })];
+    expect(findActiveSession(sessions, 'developer', 'main')).toBeUndefined();
   });
 });
