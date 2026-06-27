@@ -21,6 +21,8 @@ const EXPECTED_COMMANDS = [
   'vibeflow.openKanban',
   'vibeflow.openCompliance',
   'vibeflow.installCli',
+  'vibeflow.bootstrapCli',
+  'vibeflow.uninstallCli',
   'vibeflow.pickProject',
   'vibeflow.reportIssue',
   'vibeflow.refresh',

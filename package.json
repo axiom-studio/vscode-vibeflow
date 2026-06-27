@@ -232,6 +232,16 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "vibeflow.bootstrapCli",
+        "title": "VibeFlow: Configure MCP for Coding Agents",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "vibeflow.uninstallCli",
+        "title": "VibeFlow: Remove MCP Config",
+        "icon": "$(trash)"
+      },
+      {
         "command": "vibeflow.pickProject",
         "title": "VibeFlow: Switch Project…",
         "icon": "$(folder)"

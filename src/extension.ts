@@ -23,6 +23,7 @@ import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
 import { openCli } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
+import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import { pickProject as runProjectPickerCommand } from './commands/projectCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
@@ -787,7 +788,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
       try {
-        await installCli(context);
+        const installedPath = await installCli(context);
+        // Configure the VibeFlow MCP server into the user's coding agents as
+        // part of install (Ranjan's "configure during install"). Auto mode:
+        // all supported agents, skips quietly if not signed in. Only runs on
+        // a successful install — installCli returns undefined on cancel.
+        if (installedPath) {
+          await bootstrapMcp(authService, { auto: true });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         const choice = await vscode.window.showErrorMessage(
@@ -798,6 +806,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.env.openExternal(vscode.Uri.parse('https://github.com/axiom-studio/vibeflow-cli#installation'));
         }
       }
+    }),
+    vscode.commands.registerCommand('vibeflow.bootstrapCli', async () => {
+      await bootstrapMcp(authService);
+    }),
+    vscode.commands.registerCommand('vibeflow.uninstallCli', async () => {
+      await uninstallMcp();
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', async () => {
       // CLI mode owns session management — short-circuit and route to
