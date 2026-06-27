@@ -242,6 +242,16 @@
         "icon": "$(trash)"
       },
       {
+        "command": "vibeflow.checkCliUpdate",
+        "title": "VibeFlow: Check for CLI Updates",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "vibeflow.browseCliBinary",
+        "title": "VibeFlow: Browse for CLI Binary…",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "vibeflow.pickProject",
         "title": "VibeFlow: Switch Project…",
         "icon": "$(folder)"
