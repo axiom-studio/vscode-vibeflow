@@ -61,6 +61,10 @@ export interface SettingsData {
   /** Installed vibeflow CLI version (from `vibeflow version`), or null when
    *  the binary isn't found. */
   cliVersion: string | null;
+  /** When `cli.binaryPath` is set but the file is missing, the stale path —
+   *  so the UI can say "configured path not found" instead of "not installed".
+   *  null when no override is set or the configured file exists. */
+  cliBinaryPathStale: string | null;
 
   // About
   version: string;
