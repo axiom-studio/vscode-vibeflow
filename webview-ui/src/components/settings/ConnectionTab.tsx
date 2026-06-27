@@ -45,6 +45,18 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Card
+        title="Integration Status"
+        description="At-a-glance: is everything wired up?"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <StatusRow label="Server" value={data.serverReachable === null ? 'Not tested' : data.serverReachable ? 'Connected' : 'Unreachable'} ok={data.serverReachable} />
+          <StatusRow label="API Key" value={data.apiKeySet ? 'Configured' : 'Not set'} ok={data.apiKeySet} />
+          <StatusRow label="VibeFlow CLI" value={data.cliInstalled ? (data.cliVersion ? `v${data.cliVersion}` : 'Installed') : 'Not installed'} ok={data.cliInstalled} />
+          <StatusRow label="MCP Servers" value={`${data.mcpAgents.filter(a => a.enabled).length} / ${data.mcpAgents.length} agents`} ok={data.mcpAgents.some(a => a.enabled)} />
+        </div>
+      </Card>
+
+      <Card
         title="Server URL"
         description="The VibeFlow API server your agents connect to. Default is Axiom Cloud. Change this if you're running a self-hosted instance."
       >
@@ -135,6 +147,41 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
             </a>
           )}
         </ActionRow>
+      </Card>
+
+      <Card
+        title="Configure MCP for Coding Agents"
+        description="Wire the VibeFlow MCP server into your coding agents so they can read and update VibeFlow work items. Uses the API key and server URL above — no re-entry. Also runs automatically when you install the CLI."
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 4 }}>
+          {data.mcpAgents.map(a => (
+            <div key={a.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <span style={{ width: 12, textAlign: 'center', color: a.enabled ? 'var(--feed-success)' : 'var(--feed-muted)' }}>
+                {a.enabled ? '✓' : '—'}
+              </span>
+              <span style={{ minWidth: 120, color: a.enabled ? 'var(--feed-fg)' : 'var(--feed-muted)' }}>{a.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>{a.enabled ? 'Enabled' : 'Not configured'}</span>
+            </div>
+          ))}
+        </div>
+        <ActionRow>
+          <Btn
+            label="Configure MCP"
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.bootstrapCli' })}
+            disabled={!data.cliInstalled}
+          />
+          <Btn
+            label="Remove MCP Config"
+            secondary
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.uninstallCli' })}
+            disabled={!data.cliInstalled || !data.mcpAgents.some(a => a.enabled)}
+          />
+        </ActionRow>
+        {!data.cliInstalled && (
+          <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
+            Install the VibeFlow CLI (Settings → CLI Interface) to configure or change MCP.
+          </div>
+        )}
       </Card>
 
       <Card
@@ -236,6 +283,19 @@ function Btn({ label, onClick, secondary, disabled }: { label: string; onClick: 
  */
 function prettyHost(url: string): string {
   try { return new URL(url).host; } catch { return url; }
+}
+
+function StatusRow({ label, value, ok }: { label: string; value: string; ok: boolean | null }) {
+  const color = ok === null ? 'var(--feed-muted)' : ok ? 'var(--feed-success)' : 'var(--feed-error)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+      <span style={{ color: 'var(--feed-muted)' }}>{label}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--feed-fg)' }}>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function StatusDot({ status }: { status: boolean | null }) {
