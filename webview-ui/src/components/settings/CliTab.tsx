@@ -62,6 +62,8 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
           Status: {installed ? (
             <span style={{ color: 'var(--feed-success)' }}>● binary detected{data.cliVersion ? ` · v${data.cliVersion}` : ''}</span>
+          ) : data.cliBinaryPathStale ? (
+            <span style={{ color: 'var(--feed-error)' }}>● configured path not found: {data.cliBinaryPathStale} — fix it with Browse… or Install Latest</span>
           ) : (
             <span style={{ color: 'var(--feed-error)' }}>● not found</span>
           )}

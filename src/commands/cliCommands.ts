@@ -73,6 +73,24 @@ export function resolveBinary(): string | undefined {
 }
 
 /**
+ * When `cli.binaryPath` is set but the file doesn't exist, returns that stale
+ * path so the UI/error can say "configured path not found" instead of the
+ * generic "not installed". Returns undefined when no override is set or the
+ * configured file exists. (resolveBinary still falls through to PATH, so a
+ * stale override plus an on-PATH binary resolves fine — this only flags the
+ * override-points-nowhere case.)
+ */
+export function staleCliBinaryPath(): string | undefined {
+  const override = vscode.workspace.getConfiguration('vibeflow').get<string>('cli.binaryPath', '').trim();
+  if (!override) { return undefined; }
+  try {
+    return fs.existsSync(override) ? undefined : override;
+  } catch {
+    return override;
+  }
+}
+
+/**
  * The installed CLI's version string (e.g. "1.0.10"), or undefined when the
  * binary isn't found or doesn't respond. Runs `vibeflow version` (whose first
  * line is `vibeflow <version>` — there is no --version flag) and parses the
