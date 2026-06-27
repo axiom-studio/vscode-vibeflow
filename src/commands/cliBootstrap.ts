@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { AuthService } from '../auth/AuthService.js';
-import { resolveBinary } from './cliCommands.js';
+import { resolveBinary, staleCliBinaryPath } from './cliCommands.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -197,7 +197,12 @@ export async function bootstrapMcp(
 ): Promise<void> {
   const binary = resolveBinary();
   if (!binary) {
-    vscode.window.showWarningMessage('VibeFlow CLI not found — install it first (Settings → CLI Interface).');
+    const stale = staleCliBinaryPath();
+    vscode.window.showWarningMessage(
+      stale
+        ? `The configured VibeFlow CLI path doesn't exist:\n${stale}\nUpdate it (Settings → CLI Interface → Browse) or Install Latest.`
+        : 'VibeFlow CLI not found — install it first (Settings → CLI Interface).',
+    );
     return;
   }
   const apiKey = authService?.getToken();
