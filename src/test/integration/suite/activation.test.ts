@@ -23,6 +23,8 @@ const EXPECTED_COMMANDS = [
   'vibeflow.installCli',
   'vibeflow.bootstrapCli',
   'vibeflow.uninstallCli',
+  'vibeflow.checkCliUpdate',
+  'vibeflow.browseCliBinary',
   'vibeflow.pickProject',
   'vibeflow.reportIssue',
   'vibeflow.refresh',

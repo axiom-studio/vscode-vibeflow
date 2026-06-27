@@ -23,7 +23,6 @@ const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installat
  */
 export function CliTab({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
-  const configured = data.mcpConfiguredAgents ?? [];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card
@@ -62,15 +61,26 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         />
         <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
           Status: {installed ? (
-            <span style={{ color: 'var(--feed-success)' }}>● binary detected</span>
+            <span style={{ color: 'var(--feed-success)' }}>● binary detected{data.cliVersion ? ` · v${data.cliVersion}` : ''}</span>
           ) : (
             <span style={{ color: 'var(--feed-error)' }}>● not found</span>
           )}
         </div>
         <ButtonRow>
           <Btn
+            label="Browse…"
+            secondary
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.browseCliBinary' })}
+          />
+          <Btn
             label="Install Latest"
             onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.installCli' })}
+          />
+          <Btn
+            label="Check for Updates"
+            secondary
+            disabled={!installed}
+            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.checkCliUpdate' })}
           />
         </ButtonRow>
         <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
@@ -78,30 +88,6 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           extension's local storage, and points the path above at the result. Re-run any time
           to upgrade.
         </div>
-      </Card>
-
-      <Card
-        title="Configure MCP for Coding Agents"
-        description="Wire the VibeFlow MCP server into your coding agents (Claude, Codex, Cursor, Gemini) so they can read and update VibeFlow work items. Uses your saved API key and server URL — no re-entry. This also runs automatically when you install the CLI."
-      >
-        <div style={{ fontSize: 11, marginBottom: 2, color: configured.length ? 'var(--feed-success)' : 'var(--feed-muted)' }}>
-          {configured.length
-            ? `✓ Configured for: ${configured.join(', ')}`
-            : 'Not configured yet'}
-        </div>
-        <ButtonRow>
-          <Btn
-            label="Configure MCP for Coding Agents"
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.bootstrapCli' })}
-            disabled={!installed}
-          />
-          <Btn
-            label="Remove MCP Config"
-            secondary
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.uninstallCli' })}
-            disabled={!installed || configured.length === 0}
-          />
-        </ButtonRow>
       </Card>
 
       <Card

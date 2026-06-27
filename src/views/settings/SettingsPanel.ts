@@ -6,8 +6,8 @@ import type { ProjectDetector, DetectedProject } from '../../project/ProjectDete
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
-import { isVibeflowInstalled } from '../../commands/cliCommands.js';
-import { detectConfiguredMcpAgents } from '../../commands/cliBootstrap.js';
+import { isVibeflowInstalled, getCliVersion } from '../../commands/cliCommands.js';
+import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
 
 /**
@@ -337,7 +337,7 @@ export class SettingsPanel {
           // webview is host-controlled.
           await vscode.commands.executeCommand(msg.payload);
           // The command may have changed derived state the tab renders
-          // (cliInstalled after installCli, mcpConfiguredAgents after
+          // (cliInstalled/cliVersion after installCli, mcpAgents after
           // bootstrap/uninstall) — re-push so the panel reflects it live.
           await pushSettings();
           break;
@@ -422,7 +422,8 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     cliEnabled: config.get('cli.enabled', false),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliInstalled: isVibeflowInstalled(),
-    mcpConfiguredAgents: detectConfiguredMcpAgents(),
+    cliVersion: getCliVersion() ?? null,
+    mcpAgents: mcpAgentStatuses(),
     version: vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow')?.packageJSON?.version ?? 'unknown',
   };
 }

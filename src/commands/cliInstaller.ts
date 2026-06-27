@@ -116,6 +116,20 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 /**
+ * The latest published CLI release tag (e.g. "v1.0.10") from GitHub, or
+ * undefined when the lookup fails (offline / rate-limited). Reuses the same
+ * release endpoint installCli downloads from.
+ */
+export async function fetchLatestCliTag(): Promise<string | undefined> {
+  try {
+    const manifest = await fetchJson<ReleaseManifest>(RELEASE_API);
+    return manifest.tag_name || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Stream-download to a temp file with a size cap. We don't buffer the
  * whole binary in memory — it's ~30MB and Node's Buffer per-request
  * cap is fine for that, but streaming is cheaper and lets the cap
