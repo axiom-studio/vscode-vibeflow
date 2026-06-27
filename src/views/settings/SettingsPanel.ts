@@ -6,7 +6,7 @@ import type { ProjectDetector, DetectedProject } from '../../project/ProjectDete
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
-import { isVibeflowInstalled, getCliVersion } from '../../commands/cliCommands.js';
+import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath } from '../../commands/cliCommands.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
 
@@ -423,6 +423,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliInstalled: isVibeflowInstalled(),
     cliVersion: getCliVersion() ?? null,
+    cliBinaryPathStale: staleCliBinaryPath() ?? null,
     mcpAgents: mcpAgentStatuses(),
     version: vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow')?.packageJSON?.version ?? 'unknown',
   };
