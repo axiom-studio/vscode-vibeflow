@@ -7,6 +7,7 @@ import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled } from '../../commands/cliCommands.js';
+import { detectConfiguredMcpAgents } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
 
 /**
@@ -335,6 +336,10 @@ export class SettingsPanel {
           // extension; we don't sanitize beyond that because the
           // webview is host-controlled.
           await vscode.commands.executeCommand(msg.payload);
+          // The command may have changed derived state the tab renders
+          // (cliInstalled after installCli, mcpConfiguredAgents after
+          // bootstrap/uninstall) — re-push so the panel reflects it live.
+          await pushSettings();
           break;
         default:
           assertNever(msg);
@@ -417,6 +422,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     cliEnabled: config.get('cli.enabled', false),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliInstalled: isVibeflowInstalled(),
+    mcpConfiguredAgents: detectConfiguredMcpAgents(),
     version: vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow')?.packageJSON?.version ?? 'unknown',
   };
 }
