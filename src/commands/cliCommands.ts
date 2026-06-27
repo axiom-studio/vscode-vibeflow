@@ -52,7 +52,7 @@ const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installat
  * stable path; the workspace's PATH inside a VS Code terminal can drift
  * from the launching shell's PATH.
  */
-function resolveBinary(): string | undefined {
+export function resolveBinary(): string | undefined {
   const config = vscode.workspace.getConfiguration('vibeflow');
   const override = config.get<string>('cli.binaryPath', '').trim();
   if (override) {
