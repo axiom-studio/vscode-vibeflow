@@ -49,7 +49,6 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         description="At-a-glance: is everything wired up?"
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <StatusRow label="Server" value={data.serverReachable === null ? 'Not tested' : data.serverReachable ? 'Connected' : 'Unreachable'} ok={data.serverReachable} />
           <StatusRow label="API Key" value={data.apiKeySet ? 'Configured' : 'Not set'} ok={data.apiKeySet} />
           <StatusRow label="VibeFlow CLI" value={data.cliInstalled ? (data.cliVersion ? `v${data.cliVersion}` : 'Installed') : 'Not installed'} ok={data.cliInstalled} />
           <StatusRow label="MCP Servers" value={`${data.mcpAgents.filter(a => a.enabled).length} / ${data.mcpAgents.length} agents`} ok={data.mcpAgents.some(a => a.enabled)} />
