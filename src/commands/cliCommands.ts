@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -70,6 +70,33 @@ export function resolveBinary(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The installed CLI's version string (e.g. "1.0.10"), or undefined when the
+ * binary isn't found or doesn't respond. Runs `vibeflow version` (whose first
+ * line is `vibeflow <version>` — there is no --version flag) and parses the
+ * version token.
+ */
+export function getCliVersion(): string | undefined {
+  const binary = resolveBinary();
+  if (!binary) { return undefined; }
+  try {
+    const out = execFileSync(binary, ['version'], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString();
+    return parseCliVersion(out);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Extract the version token from `vibeflow version` output, whose first line
+ * is `vibeflow <version>`. Pure (no process) so it's unit-testable.
+ */
+export function parseCliVersion(versionOutput: string): string | undefined {
+  const first = versionOutput.split(/\r?\n/)[0]?.trim() ?? '';
+  const m = first.match(/^vibeflow\s+(\S+)/i);
+  return m ? m[1] : undefined;
 }
 
 /**

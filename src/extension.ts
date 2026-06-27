@@ -21,8 +21,8 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { openCli } from './commands/cliCommands.js';
-import { installCli } from './commands/cliInstaller.js';
+import { openCli, getCliVersion } from './commands/cliCommands.js';
+import { installCli, fetchLatestCliTag } from './commands/cliInstaller.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import { pickProject as runProjectPickerCommand } from './commands/projectCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
@@ -812,6 +812,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.uninstallCli', async () => {
       await uninstallMcp();
+    }),
+    vscode.commands.registerCommand('vibeflow.checkCliUpdate', async () => {
+      const installed = getCliVersion();
+      if (!installed) {
+        vscode.window.showWarningMessage('VibeFlow CLI not found — install it first (Settings → CLI Interface).');
+        return;
+      }
+      const latest = await fetchLatestCliTag();
+      if (!latest) {
+        vscode.window.showWarningMessage(`VibeFlow CLI v${installed} — could not reach GitHub to check for updates.`);
+        return;
+      }
+      const norm = (v: string) => v.replace(/^v/, '');
+      if (norm(latest) === norm(installed)) {
+        vscode.window.showInformationMessage(`VibeFlow CLI is up to date (v${installed}).`);
+        return;
+      }
+      const choice = await vscode.window.showInformationMessage(
+        `VibeFlow CLI update available: v${installed} → ${latest}.`,
+        'Install Latest',
+      );
+      if (choice === 'Install Latest') {
+        await vscode.commands.executeCommand('vibeflow.installCli');
+      }
+    }),
+    vscode.commands.registerCommand('vibeflow.browseCliBinary', async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        openLabel: 'Select vibeflow binary',
+        title: 'Select the vibeflow CLI binary',
+      });
+      const file = picked?.[0];
+      if (file) {
+        await vscode.workspace.getConfiguration('vibeflow').update('cli.binaryPath', file.fsPath, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`VibeFlow CLI path set to ${file.fsPath}`);
+      }
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', async () => {
       // CLI mode owns session management — short-circuit and route to

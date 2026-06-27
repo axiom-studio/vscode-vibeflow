@@ -79,18 +79,24 @@ export function hasVibeflowEntry(content: string, type: AgentConfigType): boolea
  * "not configured" rather than erroring.
  */
 export function detectConfiguredMcpAgents(): string[] {
-  const configured: string[] = [];
-  for (const agent of MCP_AGENTS) {
+  return mcpAgentStatuses().filter(a => a.enabled).map(a => a.label);
+}
+
+/**
+ * Per-agent MCP status for the Settings UI: every supported agent paired with
+ * whether its config file currently declares the VibeFlow MCP server.
+ * Best-effort — a missing/unreadable config counts as not enabled.
+ */
+export function mcpAgentStatuses(): { key: string; label: string; enabled: boolean }[] {
+  return MCP_AGENTS.map(agent => {
+    let enabled = false;
     try {
-      const content = fs.readFileSync(agent.configPath(), 'utf-8');
-      if (hasVibeflowEntry(content, agent.type)) {
-        configured.push(agent.label);
-      }
+      enabled = hasVibeflowEntry(fs.readFileSync(agent.configPath(), 'utf-8'), agent.type);
     } catch {
-      // missing / unreadable → treat as not configured
+      // missing / unreadable → not enabled
     }
-  }
-  return configured;
+    return { key: agent.key, label: agent.label, enabled };
+  });
 }
 
 /**

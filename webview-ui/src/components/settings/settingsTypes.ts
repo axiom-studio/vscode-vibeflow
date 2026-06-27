@@ -54,10 +54,13 @@ export interface SettingsData {
    *  if set). Computed host-side so the tab can render install guidance
    *  inline without round-tripping a child_process call. */
   cliInstalled: boolean;
-  /** Human labels of the coding agents whose config currently has the
-   *  VibeFlow MCP server wired up (e.g. ["Claude CLI", "Cursor"]). Computed
-   *  host-side by scanning each agent's config file. Empty = not configured. */
-  mcpConfiguredAgents: string[];
+  /** Per-agent MCP wiring status — every supported coding agent paired with
+   *  whether its config currently declares the VibeFlow MCP server. Computed
+   *  host-side by scanning each agent's config file. */
+  mcpAgents: { key: string; label: string; enabled: boolean }[];
+  /** Installed vibeflow CLI version (from `vibeflow version`), or null when
+   *  the binary isn't found. */
+  cliVersion: string | null;
 
   // About
   version: string;
