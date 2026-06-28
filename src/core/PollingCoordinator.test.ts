@@ -133,4 +133,32 @@ describe('PollingCoordinator', () => {
     sched.tick();
     expect(fired).toBe(1);
   });
+
+  it('logs labeled fires and pause/resume when a log sink is provided', () => {
+    const sched = manualScheduler();
+    const focus = manualFocus(true);
+    const lines: string[] = [];
+    const coord = new PollingCoordinator(sched.scheduler, focus.source, 1000, (m) => lines.push(m));
+    coord.subscribe(1000, () => {}, 'sessions');
+
+    sched.tick();
+    expect(lines).toContain('fire · sessions');
+
+    focus.set(false);
+    expect(lines).toContain('paused (window blurred)');
+
+    lines.length = 0;
+    focus.set(true); // regain → resume + re-fire
+    expect(lines.some((l) => l.startsWith('resumed — refreshing'))).toBe(true);
+    expect(lines).toContain('fire · sessions');
+  });
+
+  it('labels an unlabeled subscriber by its interval', () => {
+    const sched = manualScheduler();
+    const lines: string[] = [];
+    const coord = new PollingCoordinator(sched.scheduler, undefined, 1000, (m) => lines.push(m));
+    coord.subscribe(5000, () => {});
+    for (let i = 0; i < 5; i++) { sched.tick(); } // 5000ms
+    expect(lines).toContain('fire · 5000ms');
+  });
 });

@@ -151,7 +151,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
     // Poll every 5s. Auto-refresh toggle in the webview only controls the
     // Execution Logs tail re-render — the snapshot itself always refreshes
     // so action visibility, attachment count, and finding list stay live.
-    const sub = this.coordinator.subscribe(5000, () => this.refreshSnapshot(item, panel));
+    const sub = this.coordinator.subscribe(5000, () => this.refreshSnapshot(item, panel), `work-item:${key}`);
     this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {

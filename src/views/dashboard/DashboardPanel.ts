@@ -406,7 +406,7 @@ export class DashboardPanel {
     if (this.pollSub) { return; }
     this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
-    });
+    }, 'dashboard');
   }
 
   private dispose(): void {

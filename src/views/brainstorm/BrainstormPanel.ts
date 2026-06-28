@@ -237,7 +237,7 @@ export class BrainstormPanel {
     this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       // Only poll while visible — a hidden panel doesn't need to wake its tree.
       if (this.panel.visible) { void this.sendSnapshot(); }
-    });
+    }, 'brainstorm');
   }
 
   private stopPolling(): void {
