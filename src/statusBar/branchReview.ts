@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector } from '../project/ProjectDetector.js';
 import type { BranchReviewStatus } from '../api/types.js';
+import type { PollingCoordinator, Disposer } from '../core/PollingCoordinator.js';
 
 /**
  * Right-aligned status bar item that surfaces branch review readiness so
@@ -27,14 +28,14 @@ export interface BranchReviewBarItem extends vscode.StatusBarItem {
   refresh(): Promise<void>;
 }
 
-export function createBranchReviewStatusBar(): BranchReviewBarItem {
+export function createBranchReviewStatusBar(coordinator: PollingCoordinator): BranchReviewBarItem {
   const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99) as BranchReviewBarItem;
   item.command = 'vibeflow.checkBranchStatus';
   // Hidden until we have a project. Don't flash "checking..." into the
   // status bar on activation when the user hasn't connected yet.
   item.hide();
 
-  let timer: ReturnType<typeof setInterval> | undefined;
+  let pollSub: Disposer | undefined;
   let activeClient: VibeFlowClient | undefined;
   let activeDetector: ProjectDetector | undefined;
 
@@ -107,15 +108,13 @@ export function createBranchReviewStatusBar(): BranchReviewBarItem {
     item.stop();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    timer = setInterval(refreshOnce, interval);
+    pollSub = coordinator.subscribe(interval, () => void refreshOnce());
     void refreshOnce();
   };
 
   item.stop = () => {
-    if (timer) {
-      clearInterval(timer);
-      timer = undefined;
-    }
+    pollSub?.dispose();
+    pollSub = undefined;
     activeClient = undefined;
     activeDetector = undefined;
     item.hide();

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { personaDisplayName } from '../../sessions/personas.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 
 /**
  * What the persona is doing to the file. Drives the human-readable verb in
@@ -47,7 +48,7 @@ export class AgentFileDecorationProvider implements vscode.FileDecorationProvide
    */
   private committedBy = new Map<string, string>();
 
-  private sweepTimer: ReturnType<typeof setInterval>;
+  private sweepSub: Disposer;
 
   /**
    * Role-tier shape + per-persona color. Shape conveys the *function* at a
@@ -75,8 +76,8 @@ export class AgentFileDecorationProvider implements vscode.FileDecorationProvide
     delete: 'deleting',
   };
 
-  constructor() {
-    this.sweepTimer = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS);
+  constructor(private readonly coordinator: PollingCoordinator) {
+    this.sweepSub = this.coordinator.subscribe(SWEEP_INTERVAL_MS, () => this.sweep());
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
@@ -223,7 +224,7 @@ export class AgentFileDecorationProvider implements vscode.FileDecorationProvide
   }
 
   dispose(): void {
-    clearInterval(this.sweepTimer);
+    this.sweepSub.dispose();
     this._onDidChangeFileDecorations.dispose();
   }
 }

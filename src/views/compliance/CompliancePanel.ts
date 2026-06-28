@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import type { VibeFlowComplianceFinding } from '../../api/types.js';
 import {
   assertNever,
@@ -81,7 +82,7 @@ export class CompliancePanel {
   private static instance: CompliancePanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   // Same throttle pattern as DashboardPanel — dedupe the mount-time
   // `complianceLoad` against the panel's "became visible" event.
   private lastFetchAt = 0;
@@ -91,6 +92,7 @@ export class CompliancePanel {
     private readonly client: VibeFlowClient,
     private readonly projectId: number,
     private readonly projectName: string,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
@@ -100,6 +102,7 @@ export class CompliancePanel {
     client: VibeFlowClient,
     projectId: number,
     projectName: string,
+    coordinator: PollingCoordinator,
   ): void {
     if (CompliancePanel.instance) {
       CompliancePanel.instance.panel.reveal();
@@ -120,7 +123,7 @@ export class CompliancePanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new CompliancePanel(panel, client, projectId, projectName);
+    const instance = new CompliancePanel(panel, client, projectId, projectName, coordinator);
     CompliancePanel.instance = instance;
     instance.attach();
   }
@@ -228,17 +231,15 @@ export class CompliancePanel {
   }
 
   private startPolling(): void {
-    if (this.pollTimer) { return; }
-    this.pollTimer = setInterval(() => {
+    if (this.pollSub) { return; }
+    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
-    }, POLL_INTERVAL_MS);
+    });
   }
 
   private dispose(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     if (CompliancePanel.instance === this) {
       CompliancePanel.instance = undefined;
     }

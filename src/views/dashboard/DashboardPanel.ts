@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import type {
   BranchReviewStatus,
   VibeFlowSession,
@@ -187,7 +188,7 @@ export class DashboardPanel {
   private static instance: DashboardPanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   // Suppress double-refresh in the very first second after `dashboardLoad`
   // — the webview fires it on mount, and the panel also reports a
   // visibility change as it becomes active. Without this guard we'd
@@ -205,6 +206,7 @@ export class DashboardPanel {
     private readonly project: DetectedProject,
     private readonly terminalRegistry: TerminalRegistry,
     private readonly contextProxy: ContextProxy,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
@@ -215,6 +217,7 @@ export class DashboardPanel {
     project: DetectedProject,
     terminalRegistry: TerminalRegistry,
     contextProxy: ContextProxy,
+    coordinator: PollingCoordinator,
   ): void {
     if (DashboardPanel.instance) {
       DashboardPanel.instance.panel.reveal();
@@ -235,7 +238,7 @@ export class DashboardPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new DashboardPanel(panel, client, project, terminalRegistry, contextProxy);
+    const instance = new DashboardPanel(panel, client, project, terminalRegistry, contextProxy, coordinator);
     DashboardPanel.instance = instance;
     instance.attach();
   }
@@ -400,17 +403,15 @@ export class DashboardPanel {
   }
 
   private startPolling(): void {
-    if (this.pollTimer) { return; }
-    this.pollTimer = setInterval(() => {
+    if (this.pollSub) { return; }
+    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
-    }, POLL_INTERVAL_MS);
+    });
   }
 
   private dispose(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     if (this.positionsWriteTimer) {
       clearTimeout(this.positionsWriteTimer);
       this.positionsWriteTimer = undefined;

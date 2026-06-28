@@ -62,10 +62,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const detector = new ProjectDetector(contextProxy);
   const promptNotifier = new PromptNotifier();
 
+  // One timer drives every poller and pauses while the window is unfocused;
+  // views and status bars subscribe through this coordinator instead of each
+  // owning a setInterval (Phase 5 todo C — full consolidation).
+  const pollingCoordinator = new PollingCoordinator(intervalScheduler, vscodeFocusSource());
+  context.subscriptions.push(pollingCoordinator);
+
   // --- Status bar (created early so it reflects state immediately) ---
   const sessionStatusBar = createSessionStatusBar(authService, promptNotifier) as StatusBarItemWithUpdate;
   const workSummaryStatusBar = createWorkSummaryStatusBar() as WorkSummaryBarItem;
-  const branchReviewStatusBar = createBranchReviewStatusBar();
+  const branchReviewStatusBar = createBranchReviewStatusBar(pollingCoordinator);
   // Project switcher (priority 99 = sits just right of sessionStatusBar at 100).
   // Hidden until connectToProject() fires; #1702.
   const projectStatusBar: ProjectStatusBarItem = createProjectStatusBar();
@@ -86,14 +92,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- TreeView data providers ---
-  // One timer drives every poller and pauses while the window is unfocused;
-  // views subscribe through this coordinator instead of each owning a
-  // setInterval. (First consumer: DocumentsTreeProvider; others migrate
-  // incrementally — Phase 5 todo C.)
-  const pollingCoordinator = new PollingCoordinator(intervalScheduler, vscodeFocusSource());
-  context.subscriptions.push(pollingCoordinator);
-  const sessionsProvider = new SessionsTreeProvider();
-  const workItemsProvider = new WorkItemsTreeProvider();
+  const sessionsProvider = new SessionsTreeProvider(pollingCoordinator);
+  const workItemsProvider = new WorkItemsTreeProvider(pollingCoordinator);
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
   const documentsProvider = new DocumentsTreeProvider(pollingCoordinator);
   // Pull Requests stays a tree (row opens the PR in the browser). Todos /
@@ -135,7 +135,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- File Decorations ---
-  const fileDecorationProvider = new AgentFileDecorationProvider();
+  const fileDecorationProvider = new AgentFileDecorationProvider(pollingCoordinator);
   context.subscriptions.push(
     vscode.window.registerFileDecorationProvider(fileDecorationProvider),
     fileDecorationProvider,
@@ -306,8 +306,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     client,
     vscode.Uri.joinPath(context.globalStorageUri, 'asset-cache'),
   );
-  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, streamRegistry, assetCache, contextProxy);
-  const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider);
+  const sessionPanelManager = new SessionPanelManager(context.extensionUri, client, pollingCoordinator, streamRegistry, assetCache, contextProxy);
+  const workItemPanelManager = new WorkItemPanelManager(context.extensionUri, client, workItemsProvider, pollingCoordinator);
 
   // --- Activity poller (started when connected) ---
   let activityPoller: ActivityPoller | undefined;
@@ -356,6 +356,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       activityFeedProvider,
       promptNotifier,
       project.projectId,
+      pollingCoordinator,
       fileDecorationProvider,
       feedStateController,
     );
@@ -1144,6 +1145,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           { ...project, gitBranch: branch || project.gitBranch },
           terminalRegistry,
           contextProxy,
+          pollingCoordinator,
         );
       });
     }),
@@ -1161,7 +1163,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         return;
       }
-      KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName);
+      KanbanPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.openTickets', (mode?: TicketsMode) => {
       const project = detector.getCachedProject();
@@ -1177,7 +1179,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         return;
       }
-      TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos');
+      TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos', pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
       const project = detector.getCachedProject();
@@ -1193,7 +1195,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         return;
       }
-      BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName);
+      BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.pickProject', () => {
       void runProjectPickerCommand({ client, detector, onSwitched: connectToProject });
@@ -1243,7 +1245,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         return;
       }
-      CompliancePanel.open(context.extensionUri, client, project.projectId, project.projectName);
+      CompliancePanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.manageWorktrees', () => {
       manageWorktrees();

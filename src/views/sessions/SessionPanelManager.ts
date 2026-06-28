@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import type { AssetCache } from '../../assets/AssetCache.js';
 import { categorize, isAllowedMime, verifyDeclaredMime, MAX_ATTACHMENT_BYTES } from '../../assets/mimeAllowlist.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
@@ -128,7 +129,7 @@ const DIFF_SCHEME = 'vibeflow-diff';
 
 export class SessionPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
-  private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private pollSubs = new Map<string, Disposer>();
   private chatState = new Map<string, ChatCursor>();
 
   /**
@@ -187,6 +188,7 @@ export class SessionPanelManager implements vscode.Disposable {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
+    private readonly coordinator: PollingCoordinator,
     private readonly streamRegistry?: SessionStreamRegistry,
     /**
      * Local binary cache for chat attachments (#1670). Optional so
@@ -416,16 +418,16 @@ export class SessionPanelManager implements vscode.Disposable {
     });
 
     // Poll for updates every 5s — both work-item logs AND chat backfill.
-    const timer = setInterval(() => this.refreshPanel(session, panel), 5000);
-    this.pollTimers.set(key, timer);
+    const sub = this.coordinator.subscribe(5000, () => this.refreshPanel(session, panel));
+    this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {
       this.panels.delete(key);
       this.chatState.delete(key);
-      const t = this.pollTimers.get(key);
-      if (t) {
-        clearInterval(t);
-        this.pollTimers.delete(key);
+      const s = this.pollSubs.get(key);
+      if (s) {
+        s.dispose();
+        this.pollSubs.delete(key);
       }
     });
 
@@ -1442,8 +1444,8 @@ export class SessionPanelManager implements vscode.Disposable {
   dispose(): void {
     for (const sub of this.streamSubscriptions) { sub.dispose(); }
     this.streamSubscriptions = [];
-    for (const timer of this.pollTimers.values()) {
-      clearInterval(timer);
+    for (const sub of this.pollSubs.values()) {
+      sub.dispose();
     }
     for (const panel of this.panels.values()) {
       panel.dispose();
@@ -1452,7 +1454,7 @@ export class SessionPanelManager implements vscode.Disposable {
     this.diffProviderDisposable = undefined;
     this.diffContents.clear();
     this.panels.clear();
-    this.pollTimers.clear();
+    this.pollSubs.clear();
     this.chatState.clear();
     this.streamLive.clear();
     this.pendingPromptUser.clear();

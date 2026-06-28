@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowFeature, VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { personaDisplayName } from '../../sessions/personas.js';
 
 type NodeType = 'statusGroup' | 'feature' | 'todo' | 'issue' | 'placeholder';
@@ -115,7 +116,9 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
    * the user sees "@Architect" instead of "@session".
    */
   private sessionPersonaMap = new Map<string, string>();
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
+
+  constructor(private readonly coordinator: PollingCoordinator) {}
 
   refresh(): void {
     this.fetchAndRefresh();
@@ -132,14 +135,12 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
     this.stopPolling();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    this.pollTimer = setInterval(() => this.fetchAndRefresh(), interval);
+    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh());
   }
 
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
   }
 
   private async fetchAndRefresh(): Promise<void> {

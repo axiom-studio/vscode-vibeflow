@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { assertNever, type KanbanClientMessage, type KanbanHostMessage } from '../../core/webviewMessages.js';
 import { ALLOWED_PRIMARY_STATUSES, flattenForProject } from './kanbanData.js';
 
@@ -19,7 +20,7 @@ export class KanbanPanel {
   private static instance: KanbanPanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   // Throttle the mount-time `kanbanLoad` against the "became visible"
   // event so we don't fan out two consecutive swimlane fetches on open.
   private lastFetchAt = 0;
@@ -33,6 +34,7 @@ export class KanbanPanel {
     private readonly client: VibeFlowClient,
     private readonly projectId: number,
     private readonly projectName: string,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
@@ -42,6 +44,7 @@ export class KanbanPanel {
     client: VibeFlowClient,
     projectId: number,
     projectName: string,
+    coordinator: PollingCoordinator,
   ): void {
     if (KanbanPanel.instance) {
       KanbanPanel.instance.panel.reveal();
@@ -62,7 +65,7 @@ export class KanbanPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new KanbanPanel(panel, client, projectId, projectName);
+    const instance = new KanbanPanel(panel, client, projectId, projectName, coordinator);
     KanbanPanel.instance = instance;
     instance.attach();
   }
@@ -184,30 +187,26 @@ export class KanbanPanel {
   }
 
   private startPolling(): void {
-    if (this.pollTimer) { return; }
+    if (this.pollSub) { return; }
     if (this.refreshIntervalMs <= 0) { return; } // paused
-    this.pollTimer = setInterval(() => {
+    this.pollSub = this.coordinator.subscribe(this.refreshIntervalMs, () => {
       // Only poll while the panel is visible; postMessage to a hidden panel
       // is fine but wakes the webview's React tree unnecessarily.
       if (this.panel.visible) { void this.sendData(); }
-    }, this.refreshIntervalMs);
+    });
   }
 
   /** Tear down and re-arm the poll timer at the current cadence (or leave it
    *  off when paused). Called when the user changes the refresh interval. */
   private restartPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     this.startPolling();
   }
 
   private dispose(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     if (KanbanPanel.instance === this) {
       KanbanPanel.instance = undefined;
     }

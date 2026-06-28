@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { assertNever, type BrainstormClientMessage, type BrainstormHostMessage } from '../../core/webviewMessages.js';
 import { composeBrainstormSnapshot, pickActiveBrainstorm } from './brainstormData.js';
 
@@ -19,7 +20,7 @@ export class BrainstormPanel {
   private static instance: BrainstormPanel | undefined;
 
   private readonly panel: vscode.WebviewPanel;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   private lastFetchAt = 0;
   // When the user picks a brainstorm (from the list / history dropdown), pin it.
   private selectedId: number | undefined;
@@ -32,6 +33,7 @@ export class BrainstormPanel {
     private readonly client: VibeFlowClient,
     private readonly projectId: number,
     private readonly projectName: string,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
@@ -41,6 +43,7 @@ export class BrainstormPanel {
     client: VibeFlowClient,
     projectId: number,
     projectName: string,
+    coordinator: PollingCoordinator,
   ): void {
     if (BrainstormPanel.instance) {
       BrainstormPanel.instance.panel.reveal();
@@ -61,7 +64,7 @@ export class BrainstormPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new BrainstormPanel(panel, client, projectId, projectName);
+    const instance = new BrainstormPanel(panel, client, projectId, projectName, coordinator);
     BrainstormPanel.instance = instance;
     instance.attach();
   }
@@ -230,25 +233,21 @@ export class BrainstormPanel {
   }
 
   private startPolling(): void {
-    if (this.pollTimer) { return; }
-    this.pollTimer = setInterval(() => {
+    if (this.pollSub) { return; }
+    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       // Only poll while visible — a hidden panel doesn't need to wake its tree.
       if (this.panel.visible) { void this.sendSnapshot(); }
-    }, POLL_INTERVAL_MS);
+    });
   }
 
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
   }
 
   private dispose(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     if (BrainstormPanel.instance === this) {
       BrainstormPanel.instance = undefined;
     }

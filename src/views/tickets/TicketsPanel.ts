@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import type { VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
 import { personaDisplayName } from '../../sessions/personas.js';
 import {
@@ -36,7 +37,7 @@ export class TicketsPanel {
   private static readonly instances = new Map<TicketsMode, TicketsPanel>();
 
   private readonly panel: vscode.WebviewPanel;
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   private lastFetchAt = 0;
 
   private constructor(
@@ -45,6 +46,7 @@ export class TicketsPanel {
     private readonly projectId: number,
     private readonly projectName: string,
     private readonly mode: TicketsMode,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
@@ -55,6 +57,7 @@ export class TicketsPanel {
     projectId: number,
     projectName: string,
     mode: TicketsMode,
+    coordinator: PollingCoordinator,
   ): void {
     const existing = TicketsPanel.instances.get(mode);
     if (existing) {
@@ -75,7 +78,7 @@ export class TicketsPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri, mode);
 
-    const instance = new TicketsPanel(panel, client, projectId, projectName, mode);
+    const instance = new TicketsPanel(panel, client, projectId, projectName, mode, coordinator);
     TicketsPanel.instances.set(mode, instance);
     instance.attach();
   }
@@ -260,17 +263,15 @@ export class TicketsPanel {
   }
 
   private startPolling(): void {
-    if (this.pollTimer) { return; }
-    this.pollTimer = setInterval(() => {
+    if (this.pollSub) { return; }
+    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       if (this.panel.visible) { void this.sendData(); }
-    }, POLL_INTERVAL_MS);
+    });
   }
 
   private dispose(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
     if (TicketsPanel.instances.get(this.mode) === this) {
       TicketsPanel.instances.delete(this.mode);
     }
