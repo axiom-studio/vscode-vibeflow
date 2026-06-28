@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.2 (2026-06-28)
+
+A settings and CLI-integration polish release.
+
+### Added
+
+- **Configure MCP for your coding agents.** A new control under **Settings → Connection** wires the VibeFlow MCP server into your installed coding agents (Claude, Codex, Cursor, Gemini, Claude Desktop) so they can read and update VibeFlow work items — reusing your saved API key and server URL, with no re-entry. Each agent shows whether it's configured, and **Install Latest** now sets this up automatically.
+- **Integration Status overview.** The Connection tab shows an at-a-glance summary — API key, the VibeFlow CLI (with its version), and per-agent MCP status.
+- **CLI version & updates.** Settings → CLI Interface now shows the installed CLI version with a **Check for Updates** action, plus a **Browse…** picker for the binary path.
+
+### Changed
+
+- MCP setup and integration status now live on the **Connection** tab, next to your API key, so first-time setup reads as one flow.
+
+### Fixed
+
+- When the configured CLI binary path no longer exists, Settings now says exactly that — naming the stale path and pointing you at Browse / Install Latest — instead of a misleading "not installed".
+
 ## 1.1.0 (2026-06-25)
 
 A big feature release. Two brand-new collaboration surfaces — a live Brainstorm workspace and a real-time Agent Topology — land alongside a top-to-bottom redesign of the work-management views (Kanban, Dashboard, the Work Item detail panel, and a new Browse sidebar) and a refreshed Session Chat. The extension now also runs in Cursor and other VS Code–compatible editors. (Covers everything since the last published notes, 1.0.3.)
