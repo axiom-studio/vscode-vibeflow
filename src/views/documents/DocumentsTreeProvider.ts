@@ -67,7 +67,7 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
     this.stopPolling();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh());
+    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh(), 'documents');
   }
 
   private stopPolling(): void {

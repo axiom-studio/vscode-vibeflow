@@ -193,7 +193,7 @@ export class KanbanPanel {
       // Only poll while the panel is visible; postMessage to a hidden panel
       // is fine but wakes the webview's React tree unnecessarily.
       if (this.panel.visible) { void this.sendData(); }
-    });
+    }, 'kanban');
   }
 
   /** Tear down and re-arm the poll timer at the current cadence (or leave it
