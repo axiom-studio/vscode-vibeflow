@@ -7,6 +7,7 @@ import { SessionsTreeProvider } from './views/sessions/SessionsTreeProvider.js';
 import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.js';
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
+import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
@@ -85,10 +86,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   // --- TreeView data providers ---
+  // One timer drives every poller and pauses while the window is unfocused;
+  // views subscribe through this coordinator instead of each owning a
+  // setInterval. (First consumer: DocumentsTreeProvider; others migrate
+  // incrementally — Phase 5 todo C.)
+  const pollingCoordinator = new PollingCoordinator(intervalScheduler, vscodeFocusSource());
+  context.subscriptions.push(pollingCoordinator);
   const sessionsProvider = new SessionsTreeProvider();
   const workItemsProvider = new WorkItemsTreeProvider();
   const activityFeedProvider = new ActivityFeedProvider(context.extensionUri, promptNotifier);
-  const documentsProvider = new DocumentsTreeProvider();
+  const documentsProvider = new DocumentsTreeProvider(pollingCoordinator);
   // Pull Requests stays a tree (row opens the PR in the browser). Todos /
   // Issues / Features / Backlog / Security Review / Pending QA moved to
   // cloud-style table panels (TicketsPanel), reached from the Browse nav.
