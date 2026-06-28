@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { listWorktrees, type Worktree } from '../../commands/worktreeCommands.js';
 import { getLiveTmuxSessions, buildTmuxName } from '../../sessions/tmuxState.js';
 
@@ -166,7 +167,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       return status === 'active' || status === 'stale' || status === 'stalled';
     }).length;
   }
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
+
+  constructor(private readonly coordinator: PollingCoordinator) {}
   /**
    * Pending chat-first launches awaiting `session_init`. Surfaced as
    * "Starting…" rows in the tree so the user has visual confirmation that
@@ -291,14 +294,12 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     this.stopPolling();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    this.pollTimer = setInterval(() => this.fetchAndRefresh(), interval);
+    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh());
   }
 
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
   }
 
   private async fetchAndRefresh(): Promise<void> {
