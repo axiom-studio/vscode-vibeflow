@@ -10,6 +10,7 @@ import type { AgentFileDecorationProvider, FileAction } from '../decorations/Age
 import { personaDisplayName } from '../../sessions/personas.js';
 import type { ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { liveIntervalMs } from '../../core/pollingConfig.js';
 
 const LOG_TYPE_MAP: Record<string, ActivityEntry['messageType']> = {
   thinking: 'thinking',
@@ -169,7 +170,7 @@ export class ActivityPoller {
 
   start(): void {
     this.stop();
-    this.pollSub = this.coordinator.subscribe(5000, () => this.poll(), 'activity');
+    this.pollSub = this.coordinator.subscribe(liveIntervalMs(), () => this.poll(), 'activity');
     this.poll();
   }
 
