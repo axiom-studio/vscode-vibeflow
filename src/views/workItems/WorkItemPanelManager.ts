@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { WorkItemsTreeProvider } from './WorkItemsTreeProvider.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import type {
   VibeFlowTodo,
   VibeFlowIssue,
@@ -65,13 +66,14 @@ const MIME_BY_EXT: Record<string, string> = {
  */
 export class WorkItemPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
-  private pollTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private pollSubs = new Map<string, Disposer>();
   private projectId: number | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: VibeFlowClient,
     private readonly workItemsProvider: WorkItemsTreeProvider,
+    private readonly coordinator: PollingCoordinator,
   ) {}
 
   /** Wire (or rewire) the active project. Compliance findings need it. */
@@ -149,13 +151,13 @@ export class WorkItemPanelManager implements vscode.Disposable {
     // Poll every 5s. Auto-refresh toggle in the webview only controls the
     // Execution Logs tail re-render — the snapshot itself always refreshes
     // so action visibility, attachment count, and finding list stay live.
-    const timer = setInterval(() => this.refreshSnapshot(item, panel), 5000);
-    this.pollTimers.set(key, timer);
+    const sub = this.coordinator.subscribe(5000, () => this.refreshSnapshot(item, panel));
+    this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {
       this.panels.delete(key);
-      const t = this.pollTimers.get(key);
-      if (t) { clearInterval(t); this.pollTimers.delete(key); }
+      const s = this.pollSubs.get(key);
+      if (s) { s.dispose(); this.pollSubs.delete(key); }
     });
 
     this.refreshSnapshot(item, panel);
@@ -481,9 +483,9 @@ export class WorkItemPanelManager implements vscode.Disposable {
   }
 
   dispose(): void {
-    for (const timer of this.pollTimers.values()) { clearInterval(timer); }
+    for (const sub of this.pollSubs.values()) { sub.dispose(); }
     for (const panel of this.panels.values()) { panel.dispose(); }
     this.panels.clear();
-    this.pollTimers.clear();
+    this.pollSubs.clear();
   }
 }
