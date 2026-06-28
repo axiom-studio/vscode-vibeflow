@@ -234,7 +234,7 @@ export class CompliancePanel {
     if (this.pollSub) { return; }
     this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
-    });
+    }, 'compliance');
   }
 
   private dispose(): void {

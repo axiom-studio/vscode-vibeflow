@@ -64,8 +64,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // One timer drives every poller and pauses while the window is unfocused;
   // views and status bars subscribe through this coordinator instead of each
-  // owning a setInterval (Phase 5 todo C — full consolidation).
-  const pollingCoordinator = new PollingCoordinator(intervalScheduler, vscodeFocusSource());
+  // owning a setInterval (Phase 5 todo C — full consolidation). The debug log
+  // (gated on `vibeflow.debug.polling`, live-read so toggling needs no reload)
+  // surfaces each fire + the pause/resume on blur in the "VibeFlow Polling"
+  // output channel — the host-side fetches never reach a webview Network tab.
+  const pollingChannel = vscode.window.createOutputChannel('VibeFlow Polling');
+  context.subscriptions.push(pollingChannel);
+  const pollingCoordinator = new PollingCoordinator(
+    intervalScheduler,
+    vscodeFocusSource(),
+    1000,
+    (msg) => {
+      if (vscode.workspace.getConfiguration('vibeflow').get<boolean>('debug.polling', false)) {
+        pollingChannel.appendLine(`${new Date().toLocaleTimeString()}  ${msg}`);
+      }
+    },
+  );
   context.subscriptions.push(pollingCoordinator);
 
   // --- Status bar (created early so it reflects state immediately) ---

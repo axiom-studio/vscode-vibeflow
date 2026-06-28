@@ -41,6 +41,7 @@ interface Subscription {
   intervalMs: number;
   onTick: () => void;
   elapsedMs: number;
+  label: string;
 }
 
 /**
@@ -66,6 +67,8 @@ export class PollingCoordinator implements Disposer {
     focus?: FocusSource,
     /** Base granularity; subscriber intervals are rounded up to a multiple. */
     private readonly baseMs: number = 1000,
+    /** Optional sink for debug observability — fire/pause/resume lines. */
+    private readonly log?: (msg: string) => void,
   ) {
     this.focused = focus ? focus.isFocused() : true;
     this.stopFocus = focus?.onChange((f) => this.onFocusChange(f));
@@ -76,11 +79,12 @@ export class PollingCoordinator implements Disposer {
    * interval). Returns a Disposer that unsubscribes; the timer stops when the
    * last subscriber leaves.
    */
-  subscribe(intervalMs: number, onTick: () => void): Disposer {
+  subscribe(intervalMs: number, onTick: () => void, label?: string): Disposer {
     const sub: Subscription = {
       intervalMs: Math.max(this.baseMs, intervalMs),
       onTick,
       elapsedMs: 0,
+      label: label ?? `${intervalMs}ms`,
     };
     this.subs.add(sub);
     this.ensureTimer();
@@ -117,8 +121,11 @@ export class PollingCoordinator implements Disposer {
 
   private onFocusChange(focused: boolean): void {
     const regainedFocus = focused && !this.focused;
+    const lostFocus = !focused && this.focused;
     this.focused = focused;
+    if (lostFocus) { this.log?.('paused (window blurred)'); return; }
     if (!regainedFocus) { return; }
+    this.log?.(`resumed — refreshing ${this.subs.size}`);
     // Refocus → refresh every view once; data may be stale after a pause.
     for (const sub of [...this.subs]) {
       if (!this.subs.has(sub)) { continue; }
@@ -128,6 +135,7 @@ export class PollingCoordinator implements Disposer {
   }
 
   private run(sub: Subscription): void {
+    this.log?.(`fire · ${sub.label}`);
     // A poller owns its own error handling (partial-failure resilience); a
     // throw here must not kill the shared timer or the other subscribers.
     try {

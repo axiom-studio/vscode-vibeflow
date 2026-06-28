@@ -169,7 +169,7 @@ export class ActivityPoller {
 
   start(): void {
     this.stop();
-    this.pollSub = this.coordinator.subscribe(5000, () => this.poll());
+    this.pollSub = this.coordinator.subscribe(5000, () => this.poll(), 'activity');
     this.poll();
   }
 
