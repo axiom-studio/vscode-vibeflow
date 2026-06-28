@@ -778,7 +778,14 @@
           "default": 30,
           "minimum": 5,
           "maximum": 300,
-          "description": "UI refresh interval in seconds"
+          "description": "Background refresh interval in seconds — trees, branch-review status, dashboard, compliance, and tickets. The live tier (Activity Feed, open chats & panels, brainstorms) uses 'vibeflow.polling.liveInterval'. Both pause while the window is unfocused."
+        },
+        "vibeflow.polling.liveInterval": {
+          "type": "number",
+          "default": 5,
+          "minimum": 2,
+          "maximum": 60,
+          "description": "Live refresh interval in seconds — the Activity Feed, open session chats, work-item panels, and brainstorms. Lower = snappier, more API calls. Background views use 'vibeflow.polling.interval'. Both pause while the window is unfocused."
         },
         "vibeflow.debug.polling": {
           "type": "boolean",

@@ -135,7 +135,7 @@ export class SettingsPanel {
           // here silently no-op, which is what bit us on worktree.* and
           // notifications.workItemComplete during the settings audit.
           const settingsKeys = [
-            'serverUrl', 'defaultProvider', 'polling.interval',
+            'serverUrl', 'defaultProvider', 'polling.interval', 'polling.liveInterval',
             'notifications.agentPrompts', 'notifications.workItemComplete',
             'session.terminalMode', 'session.headlessBacking',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
@@ -406,6 +406,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
     worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
     pollInterval: config.get('polling.interval', 30),
+    liveInterval: config.get('polling.liveInterval', 5),
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),

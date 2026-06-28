@@ -42,19 +42,34 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
       </Card>
 
       <Card
-        title="Polling Interval"
-        description="How often the extension refreshes data from the VibeFlow API. Lower values = more responsive Agent Fleet and Work Items, but more API calls. The Activity Feed runs on its own faster poll independent of this value."
+        title="Refresh rate"
+        description="How often the extension refreshes from the VibeFlow API. The live tier (Activity Feed, open session chats & work-item panels, brainstorms) polls faster; background views (trees, status bar, dashboard, compliance, tickets) poll slower. Both pause while the window is unfocused."
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="number"
-            min={5}
-            max={300}
-            value={data.pollInterval}
-            onChange={e => onUpdate('polling.interval', parseInt(e.target.value) || 30)}
-            style={inputStyle}
-          />
-          <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>seconds</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 92, fontSize: 12 }}>Live</span>
+            <input
+              type="number"
+              min={2}
+              max={60}
+              value={data.liveInterval}
+              onChange={e => onUpdate('polling.liveInterval', parseInt(e.target.value) || 5)}
+              style={inputStyle}
+            />
+            <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>seconds</span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 92, fontSize: 12 }}>Background</span>
+            <input
+              type="number"
+              min={5}
+              max={300}
+              value={data.pollInterval}
+              onChange={e => onUpdate('polling.interval', parseInt(e.target.value) || 30)}
+              style={inputStyle}
+            />
+            <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>seconds</span>
+          </label>
         </div>
       </Card>
 

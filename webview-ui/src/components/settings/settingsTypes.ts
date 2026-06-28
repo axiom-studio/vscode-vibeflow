@@ -31,6 +31,7 @@ export interface SettingsData {
 
   // Session
   pollInterval: number;
+  liveInterval: number;
   sessionTerminalMode?: string;
   sessionHeadlessBacking?: 'auto' | 'tmux' | 'vscode';
 

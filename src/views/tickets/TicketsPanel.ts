@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { backgroundIntervalMs } from '../../core/pollingConfig.js';
 import type { VibeFlowTodo, VibeFlowIssue } from '../../api/types.js';
 import { personaDisplayName } from '../../sessions/personas.js';
 import {
@@ -11,8 +12,6 @@ import {
   type TicketsMode,
   type TicketRow,
 } from '../../core/webviewMessages.js';
-
-const POLL_INTERVAL_MS = 30_000;
 
 const MODE_TITLE: Record<TicketsMode, string> = {
   todos: 'Todos',
@@ -264,7 +263,7 @@ export class TicketsPanel {
 
   private startPolling(): void {
     if (this.pollSub) { return; }
-    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
+    this.pollSub = this.coordinator.subscribe(backgroundIntervalMs(), () => {
       if (this.panel.visible) { void this.sendData(); }
     }, 'tickets');
   }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { liveIntervalMs } from '../../core/pollingConfig.js';
 import type { AssetCache } from '../../assets/AssetCache.js';
 import { categorize, isAllowedMime, verifyDeclaredMime, MAX_ATTACHMENT_BYTES } from '../../assets/mimeAllowlist.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
@@ -418,7 +419,7 @@ export class SessionPanelManager implements vscode.Disposable {
     });
 
     // Poll for updates every 5s — both work-item logs AND chat backfill.
-    const sub = this.coordinator.subscribe(5000, () => this.refreshPanel(session, panel), `session:${key}`);
+    const sub = this.coordinator.subscribe(liveIntervalMs(), () => this.refreshPanel(session, panel), `session:${key}`);
     this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {
