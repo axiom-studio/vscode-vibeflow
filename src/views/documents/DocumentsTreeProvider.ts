@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowDocument, VibeFlowContext, VibeFlowReference } from '../../api/types.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 
 interface DocumentNode {
   id: string;
@@ -47,7 +48,9 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
   private documents: VibeFlowDocument[] = [];
   private contexts: VibeFlowContext[] = [];
   private references: VibeFlowReference[] = [];
-  private pollTimer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
+
+  constructor(private readonly coordinator: PollingCoordinator) {}
 
   refresh(): void {
     this.fetchAndRefresh();
@@ -64,14 +67,12 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
     this.stopPolling();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    this.pollTimer = setInterval(() => this.fetchAndRefresh(), interval);
+    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh());
   }
 
   private stopPolling(): void {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
   }
 
   private async fetchAndRefresh(): Promise<void> {
