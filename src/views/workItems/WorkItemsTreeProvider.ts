@@ -148,12 +148,14 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       this._onDidChangeTreeData.fire();
       return;
     }
+    const client = this.client;
+    const projectId = this.projectId;
 
     try {
       const [features, issues, sessions] = await Promise.all([
-        this.client.listFeatures(this.projectId),
-        this.client.listIssues(this.projectId),
-        this.client.listSessions(this.projectId).catch(() => []),
+        this.coordinator.query(`listFeatures:${projectId}`, () => client.listFeatures(projectId)),
+        this.coordinator.query(`listIssues:${projectId}`, () => client.listIssues(projectId)),
+        this.coordinator.query(`listSessions:${projectId}`, () => client.listSessions(projectId)).catch(() => []),
       ]);
       this.features = features;
       this.issues = issues;

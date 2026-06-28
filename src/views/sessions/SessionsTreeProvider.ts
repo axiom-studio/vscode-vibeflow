@@ -304,8 +304,10 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
   private async fetchAndRefresh(): Promise<void> {
     if (!this.client || !this.projectId) { return; }
+    const client = this.client;
+    const projectId = this.projectId;
     try {
-      this.sessions = await this.client.listSessions(this.projectId);
+      this.sessions = await this.coordinator.query(`listSessions:${projectId}`, () => client.listSessions(projectId));
     } catch {
       // API error — keep stale data, don't clear the tree
     }

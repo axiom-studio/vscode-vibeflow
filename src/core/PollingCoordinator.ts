@@ -58,6 +58,7 @@ interface Subscription {
  */
 export class PollingCoordinator implements Disposer {
   private readonly subs = new Set<Subscription>();
+  private readonly inflight = new Map<string, Promise<unknown>>();
   private stopTimer: (() => void) | undefined;
   private stopFocus: (() => void) | undefined;
   private focused: boolean;
@@ -94,6 +95,23 @@ export class PollingCoordinator implements Disposer {
         if (this.subs.size === 0) { this.clearTimer(); }
       },
     };
+  }
+
+  /**
+   * Coalesce identical concurrent fetches. While a fetch for `key` is in
+   * flight, every caller shares the same promise — so the trees and the
+   * activity poller all asking for `listSessions` in the same tick hit the
+   * backend once. The entry evicts when the fetch settles (resolve or reject),
+   * so the next tick fetches fresh data.
+   */
+  query<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+    const inflight = this.inflight.get(key) as Promise<T> | undefined;
+    if (inflight) { return inflight; }
+    const p = fetcher();
+    this.inflight.set(key, p);
+    const evict = () => { if (this.inflight.get(key) === p) { this.inflight.delete(key); } };
+    p.then(evict, evict);
+    return p;
   }
 
   private ensureTimer(): void {
@@ -150,6 +168,7 @@ export class PollingCoordinator implements Disposer {
     this.stopFocus?.();
     this.stopFocus = undefined;
     this.subs.clear();
+    this.inflight.clear();
   }
 }
 
