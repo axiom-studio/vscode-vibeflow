@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { backgroundIntervalMs } from '../../core/pollingConfig.js';
 import type {
   BranchReviewStatus,
   VibeFlowSession,
@@ -173,8 +174,6 @@ interface DashboardSnapshot {
 }
 
 // Canonical message types live in src/core/webviewMessages.ts.
-
-const POLL_INTERVAL_MS = 30_000;
 
 /**
  * Mission-control style dashboard. Composes a snapshot from 7 parallel API
@@ -404,7 +403,7 @@ export class DashboardPanel {
 
   private startPolling(): void {
     if (this.pollSub) { return; }
-    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
+    this.pollSub = this.coordinator.subscribe(backgroundIntervalMs(), () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
     }, 'dashboard');
   }

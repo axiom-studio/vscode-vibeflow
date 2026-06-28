@@ -4,6 +4,7 @@ import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { WorkItemsTreeProvider } from './WorkItemsTreeProvider.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { liveIntervalMs } from '../../core/pollingConfig.js';
 import type {
   VibeFlowTodo,
   VibeFlowIssue,
@@ -151,7 +152,7 @@ export class WorkItemPanelManager implements vscode.Disposable {
     // Poll every 5s. Auto-refresh toggle in the webview only controls the
     // Execution Logs tail re-render — the snapshot itself always refreshes
     // so action visibility, attachment count, and finding list stay live.
-    const sub = this.coordinator.subscribe(5000, () => this.refreshSnapshot(item, panel), `work-item:${key}`);
+    const sub = this.coordinator.subscribe(liveIntervalMs(), () => this.refreshSnapshot(item, panel), `work-item:${key}`);
     this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {
