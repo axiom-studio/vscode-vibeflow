@@ -30,6 +30,7 @@ const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void }
  */
 const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'polling.interval': 'pollInterval',
+  'polling.liveInterval': 'liveInterval',
   'session.terminalMode': 'sessionTerminalMode',
   'session.headlessBacking': 'sessionHeadlessBacking',
   'session.reattachMode': 'sessionReattachMode',

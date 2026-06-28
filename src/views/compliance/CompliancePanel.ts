@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { backgroundIntervalMs } from '../../core/pollingConfig.js';
 import type { VibeFlowComplianceFinding } from '../../api/types.js';
 import {
   assertNever,
@@ -67,8 +68,6 @@ export interface FrameworkSummary {
   resolved: number;
   accepted_risk: number;
 }
-
-const POLL_INTERVAL_MS = 30_000;
 
 /**
  * Compliance findings dashboard. Mirrors `DashboardPanel.ts` shape
@@ -232,7 +231,7 @@ export class CompliancePanel {
 
   private startPolling(): void {
     if (this.pollSub) { return; }
-    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
+    this.pollSub = this.coordinator.subscribe(backgroundIntervalMs(), () => {
       if (this.panel.visible) { void this.sendSnapshot(); }
     }, 'compliance');
   }

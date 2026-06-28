@@ -2,13 +2,9 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { liveIntervalMs } from '../../core/pollingConfig.js';
 import { assertNever, type BrainstormClientMessage, type BrainstormHostMessage } from '../../core/webviewMessages.js';
 import { composeBrainstormSnapshot, pickActiveBrainstorm } from './brainstormData.js';
-
-// Brainstorm moves faster than the Kanban (rounds advance live), so poll at 5s
-// — matching the axiomcloud web UI (BrainstormView.jsx:66-70). SSE is cookie-only
-// (Bearer can't use it), so polling is the only realtime path (design doc #361).
-const POLL_INTERVAL_MS = 5_000;
 
 /**
  * Brainstorm webview panel — a multi-persona brainstorm's live view (rounds,
@@ -234,7 +230,11 @@ export class BrainstormPanel {
 
   private startPolling(): void {
     if (this.pollSub) { return; }
-    this.pollSub = this.coordinator.subscribe(POLL_INTERVAL_MS, () => {
+    // Brainstorm moves faster than the Kanban (rounds advance live), so it's on
+    // the live tier (vibeflow.polling.liveInterval, 5s default) — matching the
+    // axiomcloud web UI (BrainstormView.jsx:66-70). SSE is cookie-only (Bearer
+    // can't use it), so polling is the only realtime path (design doc #361).
+    this.pollSub = this.coordinator.subscribe(liveIntervalMs(), () => {
       // Only poll while visible — a hidden panel doesn't need to wake its tree.
       if (this.panel.visible) { void this.sendSnapshot(); }
     }, 'brainstorm');
