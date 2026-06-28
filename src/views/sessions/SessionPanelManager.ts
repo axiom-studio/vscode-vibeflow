@@ -418,7 +418,7 @@ export class SessionPanelManager implements vscode.Disposable {
     });
 
     // Poll for updates every 5s — both work-item logs AND chat backfill.
-    const sub = this.coordinator.subscribe(5000, () => this.refreshPanel(session, panel));
+    const sub = this.coordinator.subscribe(5000, () => this.refreshPanel(session, panel), `session:${key}`);
     this.pollSubs.set(key, sub);
 
     panel.onDidDispose(() => {

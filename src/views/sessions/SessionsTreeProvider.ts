@@ -294,7 +294,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     this.stopPolling();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh());
+    this.pollSub = this.coordinator.subscribe(interval, () => this.fetchAndRefresh(), 'sessions');
   }
 
   private stopPolling(): void {

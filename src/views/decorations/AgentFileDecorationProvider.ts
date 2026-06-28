@@ -77,7 +77,7 @@ export class AgentFileDecorationProvider implements vscode.FileDecorationProvide
   };
 
   constructor(private readonly coordinator: PollingCoordinator) {
-    this.sweepSub = this.coordinator.subscribe(SWEEP_INTERVAL_MS, () => this.sweep());
+    this.sweepSub = this.coordinator.subscribe(SWEEP_INTERVAL_MS, () => this.sweep(), 'decorations');
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {

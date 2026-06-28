@@ -780,6 +780,11 @@
           "maximum": 300,
           "description": "UI refresh interval in seconds"
         },
+        "vibeflow.debug.polling": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log poll activity — each refresh, plus pause/resume on window focus — to the \"VibeFlow Polling\" output channel. For debugging the polling coordinator."
+        },
         "vibeflow.notifications.agentPrompts": {
           "type": "boolean",
           "default": true,

@@ -108,7 +108,7 @@ export function createBranchReviewStatusBar(coordinator: PollingCoordinator): Br
     item.stop();
     const config = vscode.workspace.getConfiguration('vibeflow');
     const interval = config.get<number>('polling.interval', 30) * 1000;
-    pollSub = coordinator.subscribe(interval, () => void refreshOnce());
+    pollSub = coordinator.subscribe(interval, () => void refreshOnce(), 'branch-review');
     void refreshOnce();
   };
 
