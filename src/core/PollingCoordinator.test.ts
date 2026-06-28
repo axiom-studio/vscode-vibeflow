@@ -161,4 +161,34 @@ describe('PollingCoordinator', () => {
     for (let i = 0; i < 5; i++) { sched.tick(); } // 5000ms
     expect(lines).toContain('fire · 5000ms');
   });
+
+  it('coalesces concurrent identical queries into one fetch, then re-fetches after settle', async () => {
+    const coord = new PollingCoordinator(manualScheduler().scheduler);
+    const resolvers: Array<(v: string) => void> = [];
+    let calls = 0;
+    const fetcher = () => { calls++; return new Promise<string>((r) => resolvers.push(r)); };
+
+    const a = coord.query('listSessions:1', fetcher);
+    const b = coord.query('listSessions:1', fetcher);
+    expect(calls).toBe(1); // b shared a's in-flight promise — one backend hit
+
+    resolvers[0]('snapshot');
+    expect(await a).toBe('snapshot');
+    expect(await b).toBe('snapshot');
+    await Promise.resolve(); // let the evict microtask run
+
+    const c = coord.query('listSessions:1', fetcher);
+    expect(calls).toBe(2); // settled → the next request fetches fresh
+    resolvers[1]('again');
+    expect(await c).toBe('again');
+  });
+
+  it('keys queries independently — different keys are not coalesced', () => {
+    const coord = new PollingCoordinator(manualScheduler().scheduler);
+    let calls = 0;
+    const fetcher = () => { calls++; return new Promise<string>(() => {}); };
+    coord.query('listSessions:1', fetcher);
+    coord.query('listIssues:1', fetcher);
+    expect(calls).toBe(2);
+  });
 });

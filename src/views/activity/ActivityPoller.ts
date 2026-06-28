@@ -249,7 +249,7 @@ export class ActivityPoller {
   private async pollSessions(): Promise<boolean> {
     let sessions: VibeFlowSession[] = [];
     try {
-      sessions = await this.client.listSessions(this.projectId);
+      sessions = await this.coordinator.query(`listSessions:${this.projectId}`, () => this.client.listSessions(this.projectId));
     } catch {
       // Silent — leave map stale, Track B will fall back gracefully.
       return false;
@@ -322,7 +322,7 @@ export class ActivityPoller {
 
     try {
       // Implementing issues
-      const issues = await this.client.listIssues(this.projectId);
+      const issues = await this.coordinator.query(`listIssues:${this.projectId}`, () => this.client.listIssues(this.projectId));
       const activeIssues = issues.filter(i => i.status === 'implementing');
       for (const issue of activeIssues) {
         considerProgress('issue', issue);
@@ -330,7 +330,7 @@ export class ActivityPoller {
       }
 
       // Implementing todos under non-done features
-      const features = await this.client.listFeatures(this.projectId);
+      const features = await this.coordinator.query(`listFeatures:${this.projectId}`, () => this.client.listFeatures(this.projectId));
       const activeFeatures = features.filter(f =>
         f.status === 'implementing' || f.status === 'ready_to_implement',
       );
