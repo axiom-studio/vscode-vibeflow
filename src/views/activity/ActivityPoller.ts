@@ -9,6 +9,7 @@ import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import type { AgentFileDecorationProvider, FileAction } from '../decorations/AgentFileDecorationProvider.js';
 import { personaDisplayName } from '../../sessions/personas.js';
 import type { ProgressIndicatorPayload } from '../../core/webviewMessages.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 
 const LOG_TYPE_MAP: Record<string, ActivityEntry['messageType']> = {
   thinking: 'thinking',
@@ -131,7 +132,7 @@ function resolveWorkspacePath(workspaceRoot: string, candidate: string): string 
 const MAX_SEEN_EVENT_IDS = 5000;
 
 export class ActivityPoller {
-  private timer: ReturnType<typeof setInterval> | undefined;
+  private pollSub: Disposer | undefined;
   /**
    * Dedupe set for session-level events (one entry per session per
    * `last_message_at` value). Capped via `recordSeenEvent`. Per-log
@@ -155,6 +156,7 @@ export class ActivityPoller {
     private readonly feedProvider: ActivityFeedProvider,
     private readonly promptNotifier: PromptNotifier,
     private readonly projectId: number,
+    private readonly coordinator: PollingCoordinator,
     private readonly fileDecorations?: AgentFileDecorationProvider,
     /**
      * Optional health observer — receives pollSucceeded/pollFailed signals
@@ -167,15 +169,13 @@ export class ActivityPoller {
 
   start(): void {
     this.stop();
-    this.timer = setInterval(() => this.poll(), 5000);
+    this.pollSub = this.coordinator.subscribe(5000, () => this.poll());
     this.poll();
   }
 
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
+    this.pollSub?.dispose();
+    this.pollSub = undefined;
   }
 
   /**
