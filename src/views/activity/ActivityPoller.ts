@@ -8,6 +8,7 @@ import type { FeedStateController } from './feedStateController.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import type { AgentFileDecorationProvider, FileAction } from '../decorations/AgentFileDecorationProvider.js';
 import { personaDisplayName } from '../../sessions/personas.js';
+import { isActiveSession } from '../../sessions/sessionStatus.js';
 import type { ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { liveIntervalMs } from '../../core/pollingConfig.js';
@@ -266,7 +267,7 @@ export class ActivityPoller {
     }
 
     for (const session of sessions) {
-      if (!session.active || session.stale) { continue; }
+      if (!isActiveSession(session)) { continue; }
       if (!session.last_message || !session.last_message_at) { continue; }
 
       const eventId = `session-${session.session_id}-${session.last_message_at}`;
