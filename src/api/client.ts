@@ -677,6 +677,36 @@ export class VibeFlowClient {
     }
   }
 
+  /**
+   * Fetch only the log entries appended AFTER `sinceChars` characters, via the
+   * paginated logs endpoint (`?offset=&limit=`), so the activity feed stops
+   * refetching the full, ever-growing blob every poll. Returns the parsed delta
+   * entries plus the log's current total char length — the next cursor.
+   *
+   * `offset` is 0-indexed server-side (`offset >= total` returns empty), and
+   * `sinceChars` always equals the previous `total`, i.e. an entry boundary, so
+   * the returned chunk starts cleanly at a `*[...]*` marker.
+   */
+  async getWorkItemLogsSince(
+    type: 'todo' | 'issue',
+    id: number,
+    sinceChars: number,
+  ): Promise<{ entries: { id?: number; content: string; message_type?: string; created_at: string; source?: string }[]; totalChars: number }> {
+    // ponytail: 1MB safety ceiling. Steady-state deltas are a few entries; a
+    // single-poll delta >1MB drops the overflow from the live feed (the full
+    // log is still available in the work-item panel). Upgrade only if real.
+    const MAX_LOG_FETCH_CHARS = 1_000_000;
+    const since = Math.max(0, sinceChars);
+    try {
+      const data = await this.request<{ logs: string; total: number }>(
+        `/rest/v1/vibeflow/${type}s/${id}/logs?offset=${since}&limit=${MAX_LOG_FETCH_CHARS}`,
+      );
+      return { entries: parseLogString(data.logs ?? ''), totalChars: data.total ?? since };
+    } catch {
+      return { entries: [], totalChars: since };
+    }
+  }
+
   // --- Documents ---
 
   async listDocuments(projectId: number): Promise<VibeFlowDocument[]> {
@@ -946,7 +976,7 @@ export class VibeFlowClient {
  * code by persona because a work item's `claimed_by` may not match the
  * session that wrote a given log line (multi-persona workflows).
  */
-function parseLogString(raw: string): { id?: number; content: string; message_type?: string; created_at: string; source?: string }[] {
+export function parseLogString(raw: string): { id?: number; content: string; message_type?: string; created_at: string; source?: string }[] {
   if (!raw.trim()) { return []; }
 
   const entries: { content: string; created_at: string; message_type?: string; source?: string }[] = [];
