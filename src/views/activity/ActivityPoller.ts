@@ -138,13 +138,17 @@ export class ActivityPoller {
   /**
    * Dedupe set for session-level events (one entry per session per
    * `last_message_at` value). Capped via `recordSeenEvent`. Per-log
-   * dedup happens via `lastLogLengths` below — this set is NOT the
+   * dedup happens via `lastLogChars` below — this set is NOT the
    * source of truth there.
    */
   private seenEventIds = new Set<string>();
   private entryCounter = 0;
-  /** Per work item, the count of log entries we've already processed. */
-  private lastLogLengths = new Map<string, number>();
+  /**
+   * Per work item, the char length of the log we've already processed — the
+   * cursor passed to `getWorkItemLogsSince` so each poll fetches only the
+   * newly-appended tail, not the full (ever-growing) blob.
+   */
+  private lastLogChars = new Map<string, number>();
   /**
    * session_id → persona_key. Accumulated across poll cycles — once we know
    * a session's persona, that mapping is immutable, so we keep it even after
@@ -364,17 +368,12 @@ export class ActivityPoller {
     claimedBy: string | undefined,
     workspaceRoot: string | undefined,
   ): Promise<void> {
-    let logs: { id?: number; content: string; message_type?: string; created_at: string; source?: string }[];
-    try {
-      logs = await this.client.getWorkItemLogs(type, id);
-    } catch {
-      return;
-    }
-
     const key = `${type}-${id}`;
-    const lastLen = this.lastLogLengths.get(key) ?? 0;
-    const newLogs = logs.slice(lastLen);
-    this.lastLogLengths.set(key, logs.length);
+    const since = this.lastLogChars.get(key) ?? 0;
+    // Fetch only the entries appended since last poll (the delta), not the
+    // full blob — and advance the cursor to the log's current length.
+    const { entries: newLogs, totalChars } = await this.client.getWorkItemLogsSince(type, id, since);
+    this.lastLogChars.set(key, totalChars);
 
     if (newLogs.length === 0) { return; }
 
@@ -389,12 +388,11 @@ export class ActivityPoller {
     const activeFiles: Array<{ filePath: string; persona: string; action: FileAction }> = [];
 
     for (const log of newLogs) {
-      // Per-work-item dedup happens via `lastLogLengths` above (we
-      // only slice the suffix beyond the last processed length), so
-      // the `seenEventIds` check used to live here was strictly
-      // redundant — every id is fresh because `entryCounter++`. We
-      // keep entryCounter so each entry has a stable unique key for
-      // React's reconciler, but no Set membership probe.
+      // Per-work-item dedup happens via `lastLogChars` above (the server
+      // returns only entries appended past our cursor), so the `seenEventIds`
+      // check used to live here was strictly redundant — every id is fresh
+      // because `entryCounter++`. We keep entryCounter so each entry has a
+      // stable unique key for React's reconciler, but no Set membership probe.
       const eventId = `log-${type}-${id}-${log.created_at}-${this.entryCounter++}`;
 
       const logType = log.message_type ?? '';
