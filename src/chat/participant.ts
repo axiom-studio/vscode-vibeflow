@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector, DetectedProject } from '../project/ProjectDetector.js';
 import type { PromptNotifier } from '../notifications/PromptNotifier.js';
+import { isActiveSession } from '../sessions/sessionStatus.js';
 
 const PARTICIPANT_ID = 'vibeflow.chat';
 
@@ -274,7 +275,7 @@ class ChatHandler {
       ]);
 
       // Active sessions (those with a live heartbeat in Redis)
-      const activeSessions = sessions.filter(s => s.active && !s.stale);
+      const activeSessions = sessions.filter(isActiveSession);
       if (activeSessions.length > 0) {
         stream.markdown(`### Active Sessions (${activeSessions.length})\n\n`);
         stream.markdown('| Persona | Branch | Last Activity |\n|---------|--------|---------------|\n');
@@ -390,7 +391,7 @@ class ChatHandler {
       ]);
 
       const doneFeatures = features.filter(f => f.status === 'done').length;
-      const activeSessions = sessions.filter(s => s.active && !s.stale).length;
+      const activeSessions = sessions.filter(isActiveSession).length;
       const doneIssues = issues.filter(i => i.status === 'done').length;
       const openIssues = issues.filter(i => i.status !== 'done').length;
 

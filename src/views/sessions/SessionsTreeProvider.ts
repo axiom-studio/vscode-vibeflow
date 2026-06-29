@@ -3,7 +3,8 @@ import type { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowSession } from '../../api/types.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { listWorktrees, type Worktree } from '../../commands/worktreeCommands.js';
-import { getLiveTmuxSessions, buildTmuxName } from '../../sessions/tmuxState.js';
+import { getLiveTmuxSessions } from '../../sessions/tmuxState.js';
+import { type SessionStatus, deriveSessionStatus, isLiveStatus } from '../../sessions/sessionStatus.js';
 
 type NodeType = 'branch' | 'session' | 'pendingSession' | 'placeholder' | 'worktreeSection' | 'worktreeItem';
 
@@ -43,8 +44,6 @@ export interface PendingSession {
   startedAt: number;
 }
 
-type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
-
 /**
  * Cap on how long a pending row may remain in `starting` before the
  * sweep in `fetchAndRefresh` flips it to `failed`. 120s is generous
@@ -58,48 +57,6 @@ type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost';
  * threshold being crossed.
  */
 const PENDING_STALL_THRESHOLD_MS = 120_000;
-
-/**
- * Derive a display status from server-side `active`/`stale` flags PLUS
- * the optional local tmux probe.
- *
- * Backend-only states (used always):
- *   - `active: true, stale: false` → 'active'   (green, full heartbeat)
- *   - `active: true, stale: true`  → 'stale'    (yellow, heartbeat expired)
- *   - `active: false`              → 'inactive' (gray, no record on server)
- *
- * Cross-check states (used when CLI mode is on and we have a tmux probe):
- *   - tmux pane alive + backend inactive → 'stalled' — pane is up but the
- *     agent has stopped polling wait_for_work; this is the polling-contract
- *     violation case where the user sees "running per CLI but not in fleet"
- *   - tmux pane dead + backend active   → 'ghost'  — backend snapshot is
- *     stale; rare race after a kill
- */
-function deriveStatus(
-  s: VibeFlowSession,
-  liveTmuxSessions: Set<string> | undefined,
-): SessionStatus {
-  // Decide the backend's view first.
-  const backendActive = !!s.active;
-  const backendStale = !!s.stale;
-
-  // Without a tmux probe (CLI mode off, or tmux not available), fall
-  // back to the legacy 3-state derivation.
-  if (!liveTmuxSessions) {
-    if (!backendActive) { return 'inactive'; }
-    if (backendStale) { return 'stale'; }
-    return 'active';
-  }
-
-  // Cross-check tmux pane liveness against the backend view.
-  const tmuxAlive = liveTmuxSessions.has(buildTmuxName(s.agent_type ?? '', s.session_id));
-
-  if (tmuxAlive && backendActive && !backendStale) { return 'active'; }
-  if (tmuxAlive && backendActive && backendStale)  { return 'stale'; }
-  if (tmuxAlive && !backendActive)                  { return 'stalled'; }
-  if (!tmuxAlive && backendActive)                  { return 'ghost'; }
-  return 'inactive';
-}
 
 const STATUS_ICONS: Record<SessionStatus, { icon: string; color: string; label: string }> = {
   active:   { icon: 'circle-filled',  color: 'testing.iconPassed',         label: 'running' },
@@ -162,10 +119,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   getActiveSessionCount(): number {
     // Match the branch-row count: anything with a live presence
     // (backend OR local tmux pane in CLI mode).
-    return this.sessions.filter(s => {
-      const status = deriveStatus(s, this.liveTmuxSessions);
-      return status === 'active' || status === 'stale' || status === 'stalled';
-    }).length;
+    return this.sessions.filter(s =>
+      isLiveStatus(deriveSessionStatus(s, this.liveTmuxSessions)),
+    ).length;
   }
   private pollSub: Disposer | undefined;
 
@@ -430,7 +386,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     const nodes: SessionNode[] = [];
     for (const [branch, branchSessions] of byBranch) {
       const activeCount = branchSessions.filter(s => {
-        const status = deriveStatus(s, this.liveTmuxSessions);
+        const status = deriveSessionStatus(s, this.liveTmuxSessions);
         return status === 'active' || status === 'stale' || status === 'stalled';
       }).length;
       const pendingHere = pendingByBranch.get(branch) ?? [];
@@ -544,7 +500,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   }
 
   private buildSessionNode(session: VibeFlowSession): SessionNode {
-    const status = deriveStatus(session, this.liveTmuxSessions);
+    const status = deriveSessionStatus(session, this.liveTmuxSessions);
     const statusInfo = STATUS_ICONS[status];
     const personaLabel = PERSONA_LABELS[session.persona_key] ?? session.persona_name ?? session.persona_key;
 
