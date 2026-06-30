@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { SessionMeta, LogEntry } from './sessionChatTypes';
 import { PersonaAvatar } from './PersonaAvatar';
 
@@ -25,7 +25,7 @@ interface Props {
  */
 const MAX_LOG_ENTRIES = 30;
 
-export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Props) {
+function SideRailImpl({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Props) {
   const recentLogs = logs.slice(-MAX_LOG_ENTRIES).reverse();
   const statusColor =
     meta.status === 'active' ? 'var(--vscode-testing-iconPassed, #4caf50)' :
@@ -91,6 +91,16 @@ export function SideRail({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Pr
     </div>
   );
 }
+
+/**
+ * Memoized export (default shallow equality, mirrors MessageBubble). The
+ * rail re-renders only when its OWN props change — `meta` / `logs` /
+ * `personaAvatarUrl` are referentially stable while typing, and the
+ * `onStop` / `onRefresh` callbacks are `useCallback`-stable in
+ * SessionChatView — so it no longer re-renders the 30-row activity
+ * ledger on every chat keystroke. #591.
+ */
+export const SideRail = memo(SideRailImpl);
 
 function CurrentTaskCard({ taskTitle, taskStatus }: { taskTitle: string; taskStatus: string }) {
   const [expanded, setExpanded] = useState(false);
