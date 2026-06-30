@@ -367,6 +367,13 @@ export function SessionChatView() {
     vscode.postMessage({ type: 'chatRespond', payload: { promptId, text } });
   }, []);
 
+  // Stable callbacks for the memoized <SideRail> (#591). Inline arrows
+  // here would give the rail a fresh prop reference each render, busting
+  // its React.memo and re-rendering the activity ledger on every chat
+  // keystroke.
+  const handleStop = useCallback(() => vscode.postMessage({ type: 'stop' }), []);
+  const handleRefresh = useCallback(() => vscode.postMessage({ type: 'refresh' }), []);
+
   function loadOlder() {
     const oldest = messages[0];
     if (!oldest) { return; }
@@ -722,8 +729,8 @@ export function SessionChatView() {
           meta={meta}
           logs={logs}
           personaAvatarUrl={personaAvatar}
-          onStop={() => vscode.postMessage({ type: 'stop' })}
-          onRefresh={() => vscode.postMessage({ type: 'refresh' })}
+          onStop={handleStop}
+          onRefresh={handleRefresh}
         />
       )}
     </div>
