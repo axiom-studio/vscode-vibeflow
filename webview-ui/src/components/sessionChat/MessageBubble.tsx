@@ -72,11 +72,13 @@ interface Props {
  * reference whenever any field changes (no in-place mutation —
  * `mergeAppend` upserts by replacing the entry), `personaName` /
  * `personaAvatarUrl` / `diffView` are stable across keystrokes, and
- * `onRespond` is stable too (it's the `respond` callback from
- * SessionChatView which is created once per render-cycle with stable
- * deps — see SessionChatView). If a future change to `onRespond` makes
- * it non-stable, this memo will degrade silently to "always re-render";
- * worth a `useCallback` audit if profile data ever points back here.
+ * `onRespond` is stable too — it's the `respond` callback from
+ * SessionChatView, wrapped in `useCallback(..., [])` (empty deps because
+ * it only closes over the module-level `vscode`). If a future change to
+ * `onRespond` makes it non-stable (e.g. dropping the useCallback, or
+ * adding a closed-over value to its deps that changes per render), this
+ * memo degrades silently to "always re-render" and the per-keystroke
+ * transcript re-parse returns — keep `respond` referentially stable.
  */
 function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
