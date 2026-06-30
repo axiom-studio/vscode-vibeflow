@@ -884,6 +884,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:webview": "yarn --cwd webview-ui test",
     "test:integration:compile": "tsc -p tsconfig.test-integration.json",
     "test:integration": "yarn test:integration:compile && node out/test/test/integration/runTest.js",
     "check": "yarn typecheck && yarn lint && yarn test && yarn check:security-guards"
