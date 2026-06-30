@@ -356,9 +356,16 @@ export function SessionChatView() {
     setDraft('');
   }
 
-  function respond(promptId: string, text: string) {
+  // Stable across renders (`vscode` is a module-level const ⇒ empty deps).
+  // This stability is load-bearing: `respond` is passed as `onRespond` to
+  // every <MessageBubble>, which is React.memo'd with default shallow
+  // equality. A fresh reference each render would bust that memo and
+  // re-run react-markdown + rehype-highlight for the whole transcript on
+  // every keystroke into the chat textarea (the #2330 lag class). See the
+  // MessageBubbleImpl doc-comment.
+  const respond = useCallback((promptId: string, text: string) => {
     vscode.postMessage({ type: 'chatRespond', payload: { promptId, text } });
-  }
+  }, []);
 
   function loadOlder() {
     const oldest = messages[0];
