@@ -22,5 +22,10 @@
     "../src/core/webviewMessages.ts",
     "../src/api/types.ts",
     "../src/views/sessions/mentionParser.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test"
   ]
 }

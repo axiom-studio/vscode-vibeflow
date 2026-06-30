@@ -25,7 +25,9 @@ interface Props {
  */
 const MAX_LOG_ENTRIES = 30;
 
-function SideRailImpl({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Props) {
+// Exported (unmemoized) for the memo-stability regression test (#3258);
+// production always consumes the memoized `SideRail` export below.
+export function SideRailImpl({ meta, logs, personaAvatarUrl, onStop, onRefresh }: Props) {
   const recentLogs = logs.slice(-MAX_LOG_ENTRIES).reverse();
   const statusColor =
     meta.status === 'active' ? 'var(--vscode-testing-iconPassed, #4caf50)' :

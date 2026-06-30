@@ -80,7 +80,9 @@ interface Props {
  * memo degrades silently to "always re-render" and the per-keystroke
  * transcript re-parse returns — keep `respond` referentially stable.
  */
-function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
+// Exported (unmemoized) for the memo-stability regression test (#3258);
+// production always consumes the memoized `MessageBubble` export below.
+export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
