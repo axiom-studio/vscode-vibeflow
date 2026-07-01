@@ -92,3 +92,23 @@ describe('SessionChatView load-older fetching indicator (#2711)', () => {
     expect(screen.queryByRole('button', { name: /load older messages/i })).toBeNull();
   });
 });
+
+describe('SessionChatView opens at the bottom (#2712)', () => {
+  it('jumps the transcript to the bottom on the initial full-replace load', () => {
+    render(<SessionChatView />);
+    const scroller = document.querySelector('.chat-scroller') as HTMLElement;
+    // jsdom has no layout engine (scrollHeight is 0), so give the scroller a
+    // non-zero height to observe the pre-paint open-at-bottom assignment.
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 });
+    scroller.scrollTop = 0;
+
+    sendHost('chatTranscript', {
+      messages: [userMsg(1, 'a'), userMsg(2, 'b')],
+      hasMore: false,
+    });
+
+    // The layout effect pinned it to the bottom (scrollTop === scrollHeight)
+    // before paint — no visible top→bottom jump.
+    expect(scroller.scrollTop).toBe(1000);
+  });
+});

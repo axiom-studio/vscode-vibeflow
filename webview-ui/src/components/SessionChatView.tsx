@@ -115,19 +115,37 @@ export function SessionChatView() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const prependAnchorRef = useRef<number | null>(null);
   const prevFirstIdRef = useRef<number | undefined>(undefined);
+  // Set on a full-replace `chatTranscript` (#2712): the first transcript must
+  // open ALREADY pinned to the bottom. Doing it here in the layout effect
+  // (pre-paint) avoids the visible top→bottom jump the rAF scroll caused on
+  // panel open.
+  const initialScrollPendingRef = useRef(false);
 
   useLayoutEffect(() => {
     const first = deferredMessages[0]?.id;
-    const anchor = prependAnchorRef.current;
-    if (
-      anchor !== null &&
-      prevFirstIdRef.current !== undefined &&
-      first !== undefined &&
-      first !== prevFirstIdRef.current
-    ) {
-      const el = scrollerRef.current;
-      if (el) { el.scrollTop += el.scrollHeight - anchor; }
-      prependAnchorRef.current = null;
+    const el = scrollerRef.current;
+    if (initialScrollPendingRef.current && el && deferredMessages.length > 0) {
+      // Initial / full-replace transcript — jump to the bottom before paint so
+      // the panel opens at the bottom with no visible scroll. Guarded on a
+      // non-empty list so an intermediate empty deferredMessages (useDeferred-
+      // Value lag) doesn't clear the flag prematurely.
+      el.scrollTop = el.scrollHeight;
+      pinnedToBottomRef.current = true;
+      setShowScrollDown(false);
+      initialScrollPendingRef.current = false;
+    } else {
+      // Older messages prepended → keep the viewport stable.
+      const anchor = prependAnchorRef.current;
+      if (
+        anchor !== null &&
+        prevFirstIdRef.current !== undefined &&
+        first !== undefined &&
+        first !== prevFirstIdRef.current &&
+        el
+      ) {
+        el.scrollTop += el.scrollHeight - anchor;
+        prependAnchorRef.current = null;
+      }
     }
     prevFirstIdRef.current = first;
   }, [deferredMessages]);
@@ -313,8 +331,10 @@ export function SessionChatView() {
           setHasMore(m.payload.hasMore);
           setLoading(false);
           setError(null);
-          // Scroll to bottom on full replace.
-          queueScrollToBottom();
+          // Open at the bottom on full replace, but do the scroll PRE-paint in
+          // the layout effect (not the rAF queueScrollToBottom) so the panel
+          // doesn't visibly render from the top and then jump down (#2712).
+          initialScrollPendingRef.current = true;
           break;
         case 'chatAppend':
           setMessages(prev => mergeAppend(prev, m.payload.messages));
