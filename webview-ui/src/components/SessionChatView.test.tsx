@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SessionChatView } from './SessionChatView';
+import type { ChatPrompt } from './sessionChat/sessionChatTypes';
 
 /**
  * @mention caret-tracking guard for #2703. The chat textarea snapshots the
@@ -39,5 +40,55 @@ describe('SessionChatView @mention caret tracking', () => {
     expect(
       screen.queryByRole('listbox', { name: '@mention type' }),
     ).toBeNull();
+  });
+});
+
+/**
+ * Load-older UX guard for #2711. When there is more history, clicking (or the
+ * auto-scroll trigger firing) "load older" shows a fetching indicator while the
+ * chatLoadOlder → chatPrepend round-trip is in flight, then clears it on the
+ * prepend. (The scroll-position math is layout-dependent — jsdom has no layout
+ * engine — so we assert the state/indicator flow, not pixel positions.)
+ */
+function userMsg(id: number, text: string): ChatPrompt {
+  return {
+    id,
+    created_at: '2026-06-30T00:00:00Z',
+    updated_at: '2026-06-30T00:00:00Z',
+    prompt_id: `p${id}`,
+    prompt_text: text,
+    response_text: '',
+    status: 'responded',
+    responded_at: '2026-06-30T00:00:00Z',
+    source: 'user',
+  };
+}
+
+function sendHost(type: string, payload: unknown) {
+  act(() => {
+    window.dispatchEvent(new MessageEvent('message', { data: { type, payload } }));
+  });
+}
+
+describe('SessionChatView load-older fetching indicator (#2711)', () => {
+  it('shows the fetching indicator while loading older history and clears it on prepend', async () => {
+    const user = userEvent.setup();
+    render(<SessionChatView />);
+
+    // Seed a transcript that reports more history available.
+    sendHost('chatTranscript', { messages: [userMsg(10, 'newest')], hasMore: true });
+
+    const btn = await screen.findByRole('button', { name: /load older messages/i });
+    await user.click(btn);
+
+    // In flight: indicator visible, the button is replaced.
+    expect(screen.getByText(/loading older messages/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /load older messages/i })).toBeNull();
+
+    // Older page arrives → indicator clears; no more history → no button.
+    sendHost('chatPrepend', { messages: [userMsg(9, 'older')], hasMore: false });
+
+    expect(screen.queryByText(/loading older messages/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /load older messages/i })).toBeNull();
   });
 });
