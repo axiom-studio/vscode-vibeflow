@@ -55,8 +55,12 @@ install:
 build:
 	yarn build
 
+# `check` is a reserved yarn v1 subcommand (the built-in dependency-tree
+# verifier), so a bare `yarn check` would NOT run the package.json `check`
+# script — and it false-alarms on the vitest-4/esbuild-0.24 hoisting. Use
+# `yarn run check` to force the real gate: typecheck + lint + test + guards.
 check:
-	yarn check
+	yarn run check
 
 # `vsce package` runs the `vscode:prepublish` script (yarn build) automatically,
 # so this single command builds and packages.
