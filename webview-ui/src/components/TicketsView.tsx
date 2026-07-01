@@ -48,6 +48,8 @@ interface TicketsState {
   rows: TicketRow[];
   loading: boolean;
   error: string | undefined;
+  hasMore: boolean;
+  total: number;
 }
 
 export function TicketsView() {
@@ -59,7 +61,10 @@ export function TicketsView() {
     rows: [],
     loading: true,
     error: undefined,
+    hasMore: false,
+    total: 0,
   });
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
@@ -80,9 +85,16 @@ export function TicketsView() {
           rows: msg.payload.rows ?? [],
           loading: false,
           error: undefined,
+          hasMore: msg.payload.hasMore,
+          total: msg.payload.total,
         });
+        setLoadingMore(false);
+      } else if (msg?.type === 'ticketsAppend') {
+        setState(s => ({ ...s, rows: [...s.rows, ...msg.payload.rows], hasMore: msg.payload.hasMore }));
+        setLoadingMore(false);
       } else if (msg?.type === 'ticketsError') {
         setState(s => ({ ...s, loading: false, error: msg.payload.message }));
+        setLoadingMore(false);
       }
     }
     window.addEventListener('message', handleMessage);
@@ -105,6 +117,11 @@ export function TicketsView() {
     setEditingId(null);
     if (row.type === 'feature' || newStatus === row.status) { return; }
     vscode.postMessage({ type: 'ticketsChangeStatus', payload: { itemType: row.type, itemId: row.id, newStatus } });
+  }, []);
+
+  const loadMore = useCallback(() => {
+    setLoadingMore(true);
+    vscode.postMessage({ type: 'ticketsLoadMore' });
   }, []);
 
   // Distinct statuses present, for the quick-filter pills.
@@ -161,7 +178,7 @@ export function TicketsView() {
           <span style={{ fontSize: 14, fontWeight: 600 }}>{state.title || 'Tickets'}</span>
           {state.projectName && <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>· {state.projectName}</span>}
           <span style={{ fontSize: 11, color: 'var(--feed-muted)', marginLeft: 4 }}>
-            {filtered.length}{filtered.length !== state.rows.length ? ` / ${state.rows.length}` : ''} item{state.rows.length === 1 ? '' : 's'}
+            {filtered.length}{filtered.length !== state.rows.length ? ` / ${state.rows.length}` : ''} loaded{state.total > state.rows.length ? ` · ${state.total} total` : ''}
           </span>
         </div>
         <button onClick={refresh} disabled={state.loading} style={btnStyle(state.loading)}>
@@ -283,6 +300,13 @@ export function TicketsView() {
               ))}
             </tbody>
           </table>
+        )}
+        {state.hasMore && (
+          <div style={{ padding: 16, textAlign: 'center' }}>
+            <button onClick={loadMore} disabled={loadingMore} style={btnStyle(loadingMore)}>
+              {loadingMore ? 'Loading…' : `Load More (${state.rows.length} of ${state.total})`}
+            </button>
+          </div>
         )}
       </div>
     </div>

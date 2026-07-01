@@ -414,14 +414,21 @@ export interface TicketsDataPayload {
   /** Distinct features in this project, for the row's feature filter. */
   features: { id: number; name: string }[];
   generatedAt: string;
+  /** More pages remain on the server — the view shows a "Load More" affordance. */
+  hasMore: boolean;
+  /** Total rows across all pages (paginated modes) or the full count (others). */
+  total: number;
 }
 
 export type TicketsHostMessage =
   | { type: 'ticketsData'; payload: TicketsDataPayload }
+  // Append the next page of rows onto the existing table (load-more).
+  | { type: 'ticketsAppend'; payload: { rows: TicketRow[]; hasMore: boolean } }
   | { type: 'ticketsError'; payload: { message: string } };
 
 export type TicketsClientMessage =
   | { type: 'ticketsLoad' }
+  | { type: 'ticketsLoadMore' }
   | { type: 'ticketsRefresh' }
   | { type: 'ticketsOpenItem'; payload: { itemType: 'todo' | 'issue' | 'feature'; itemId: number; title: string } }
   | { type: 'ticketsChangeStatus'; payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string } };
