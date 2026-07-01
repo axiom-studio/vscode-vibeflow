@@ -51,6 +51,14 @@ interface Props {
    */
   groupStart: boolean;
   onRespond?: (promptId: string, text: string) => void;
+  /**
+   * When set (an ISO timestamp), render a compact inline "Working…"
+   * indicator inside this (user) message bubble — the #2704 addition that
+   * mirrors the standalone pending-agent row right at the just-sent prompt.
+   * Driven by the same pending state as that row, so both clear together
+   * when the agent's reply lands. `undefined` = no agent reply pending.
+   */
+  inlineWorkingSince?: string;
 }
 
 /**
@@ -82,7 +90,7 @@ interface Props {
  */
 // Exported (unmemoized) for the memo-stability regression test (#3258);
 // production always consumes the memoized `MessageBubble` export below.
-export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
+export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond, inlineWorkingSince }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -164,6 +172,12 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
             >
               {promptBody}
             </ReactMarkdown>
+          </div>
+        )}
+
+        {isUser && inlineWorkingSince && (
+          <div className="msg-inline-working">
+            <WorkingIndicator startTime={inlineWorkingSince} />
           </div>
         )}
 

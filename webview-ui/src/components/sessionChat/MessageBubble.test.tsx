@@ -101,3 +101,57 @@ describe('MessageBubble memoization', () => {
     expect(renders).toBeGreaterThan(1);
   });
 });
+
+describe('MessageBubble inline working indicator (#2704)', () => {
+  const AGENT_MSG: ChatPrompt = {
+    ...MSG,
+    id: 2,
+    source: 'agent',
+    status: 'responded',
+    response_text: 'ok',
+  };
+
+  it('renders the inline Working indicator on a user message when inlineWorkingSince is set', () => {
+    render(
+      <MessageBubble
+        msg={MSG}
+        personaName="Kai"
+        personaColor="#ffffff"
+        diffView="unified"
+        sessionMode="vanilla"
+        groupStart
+        inlineWorkingSince="2026-06-30T00:00:00Z"
+      />,
+    );
+    expect(screen.getByText('Working')).toBeInTheDocument();
+  });
+
+  it('does not render the inline indicator when inlineWorkingSince is unset (cleared together with the standalone row)', () => {
+    render(
+      <MessageBubble
+        msg={MSG}
+        personaName="Kai"
+        personaColor="#ffffff"
+        diffView="unified"
+        sessionMode="vanilla"
+        groupStart
+      />,
+    );
+    expect(screen.queryByText('Working')).toBeNull();
+  });
+
+  it('is gated on the user message — a non-pending agent row does not render it even if inlineWorkingSince is passed', () => {
+    render(
+      <MessageBubble
+        msg={AGENT_MSG}
+        personaName="Kai"
+        personaColor="#ffffff"
+        diffView="unified"
+        sessionMode="vanilla"
+        groupStart
+        inlineWorkingSince="2026-06-30T00:00:00Z"
+      />,
+    );
+    expect(screen.queryByText('Working')).toBeNull();
+  });
+});

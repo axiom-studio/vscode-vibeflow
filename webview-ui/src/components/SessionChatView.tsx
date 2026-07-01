@@ -59,6 +59,23 @@ export function SessionChatView() {
   // imperceptible for the user typing but eliminates the dropped-frame
   // path when the message list is long.
   const deferredMessages = useDeferredValue(messages);
+
+  // Inline "Working…" affordance (#2704): while an agent reply is pending,
+  // also show a compact working indicator on the most-recent user message —
+  // in addition to the existing standalone pending-agent row. Both read the
+  // same pending state, so they clear together the moment the reply lands.
+  // Recomputes only when the message list changes (never per keystroke), so
+  // the value passed to the memoized MessageBubble stays stable while typing.
+  const pendingSince = useMemo(() => {
+    const p = deferredMessages.find(m => m.source === 'agent' && m.status === 'pending');
+    return p ? p.created_at : undefined;
+  }, [deferredMessages]);
+  const lastUserIndex = useMemo(() => {
+    for (let i = deferredMessages.length - 1; i >= 0; i--) {
+      if (deferredMessages[i].source === 'user') { return i; }
+    }
+    return -1;
+  }, [deferredMessages]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -574,6 +591,7 @@ export function SessionChatView() {
                 diffView={diffView}
                 sessionMode={meta.sessionMode}
                 onRespond={respond}
+                inlineWorkingSince={pendingSince && i === lastUserIndex ? pendingSince : undefined}
               />
             ))
           )}
