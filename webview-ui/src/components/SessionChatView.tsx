@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import { MessageBubble } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
@@ -104,6 +104,33 @@ export function SessionChatView() {
   // auto-scroll-on-append + the visibility of the floating "scroll to
   // bottom" pill.
   const pinnedToBottomRef = useRef(true);
+
+  // Load-older infinite scroll (#2711). `loadingOlder` gates the fetch and
+  // drives the "Loading older messages…" indicator. `prependAnchorRef` holds
+  // the scroller height captured just before a prepend commits; the layout
+  // effect below adds the height that grew at the top so inserting older rows
+  // above the viewport doesn't make it jump. `prevFirstIdRef` distinguishes a
+  // prepend (first id changes) from a racing append (bottom grows, first id
+  // unchanged) so only a real prepend triggers the restore.
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const prependAnchorRef = useRef<number | null>(null);
+  const prevFirstIdRef = useRef<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const first = deferredMessages[0]?.id;
+    const anchor = prependAnchorRef.current;
+    if (
+      anchor !== null &&
+      prevFirstIdRef.current !== undefined &&
+      first !== undefined &&
+      first !== prevFirstIdRef.current
+    ) {
+      const el = scrollerRef.current;
+      if (el) { el.scrollTop += el.scrollHeight - anchor; }
+      prependAnchorRef.current = null;
+    }
+    prevFirstIdRef.current = first;
+  }, [deferredMessages]);
 
   // @mention picker state (todo #1614). `cursor` is the textarea
   // selectionStart snapshot taken on every change/keyup; combined with
@@ -294,8 +321,14 @@ export function SessionChatView() {
           if (pinnedToBottomRef.current) { queueScrollToBottom(); }
           break;
         case 'chatPrepend':
-          setMessages(prev => mergePrepend(prev, m.payload.messages));
+          if (m.payload.messages.length > 0) {
+            // Capture scroll height BEFORE the prepend commits so the layout
+            // effect can keep the viewport stable once older rows render.
+            prependAnchorRef.current = scrollerRef.current?.scrollHeight ?? null;
+            setMessages(prev => mergePrepend(prev, m.payload.messages));
+          }
           setHasMore(m.payload.hasMore);
+          setLoadingOlder(false);
           break;
         case 'chatError':
           setError(m.payload.message);
@@ -357,14 +390,22 @@ export function SessionChatView() {
     });
   }
 
-  const handleScroll = useCallback(() => {
+  // Not memoized: it reads `hasMore`/`loadingOlder`/`messages` for the
+  // auto-load trigger and is only wired to the scroller's onScroll (never
+  // passed to the memoized transcript rows), so recreating it per render is
+  // free and avoids stale-closure bugs.
+  function handleScroll() {
     const el = scrollerRef.current;
     if (!el) { return; }
     const slack = 32; // px tolerance before we consider the user "scrolled up"
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < slack;
     pinnedToBottomRef.current = atBottom;
     setShowScrollDown(!atBottom);
-  }, []);
+    // Auto-load older history when the user scrolls near the top (#2711).
+    if (el.scrollTop < 120 && hasMore && !loadingOlder) {
+      loadOlder();
+    }
+  }
 
   function send() {
     const text = draft.trim();
@@ -393,7 +434,8 @@ export function SessionChatView() {
 
   function loadOlder() {
     const oldest = messages[0];
-    if (!oldest) { return; }
+    if (!oldest || loadingOlder || !hasMore) { return; }
+    setLoadingOlder(true);
     vscode.postMessage({ type: 'chatLoadOlder', payload: { beforeId: oldest.id } });
   }
 
@@ -535,9 +577,16 @@ export function SessionChatView() {
           )}
         </div>
 
-        {hasMore && (
+        {(loadingOlder || hasMore) && (
           <div className="chat-load-older">
-            <button onClick={loadOlder}>Load older messages</button>
+            {loadingOlder ? (
+              <span className="chat-load-older-loading" role="status">
+                <SpinnerIcon size={12} />
+                Loading older messages…
+              </span>
+            ) : (
+              <button onClick={loadOlder}>Load older messages</button>
+            )}
           </div>
         )}
 

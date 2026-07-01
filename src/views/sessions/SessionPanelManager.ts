@@ -83,10 +83,14 @@ function nextPendingIds(prev: Set<number>, messages: VibeFlowPrompt[]): Set<numb
 }
 
 /**
- * Page size for paginated chat-history loads. Matches axiomcloud's
- * `CHAT_PAGE_SIZE` constant in `VibeFlowSessions.jsx` (50). Server caps at 200.
+ * Page size for paginated chat-history loads (initial fetch, load-older page,
+ * and the pending-refresh window). 20 per user request (#2711) — intentionally
+ * smaller than axiomcloud web's `CHAT_PAGE_SIZE` (50 in `VibeFlowSessions.jsx`)
+ * so the panel shows a tighter initial window and leans on the webview's
+ * auto-load-on-scroll for older history. Server caps at 200. The live-backfill
+ * `after_id` poll still uses `limit: 200` to absorb bursts between ticks.
  */
-const CHAT_PAGE_SIZE = 50;
+const CHAT_PAGE_SIZE = 20;
 
 /**
  * How recent a `done` work item's `updated_at` must be to still surface
