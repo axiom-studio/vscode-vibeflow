@@ -323,6 +323,37 @@ export class VibeFlowClient {
     return { items: data.items ?? [], totalCount: data.total_count ?? 0, totalPages: data.total_pages ?? 1 };
   }
 
+  /**
+   * One page of a review-queue view (Backlog / Security Review / Pending QA)
+   * from its dedicated endpoint. Each returns todos + issues independently
+   * paged, with the view's status/review filters applied server-side. `kind`
+   * is the path segment: 'backlog' | 'security_review' | 'pending_qa'.
+   */
+  async listReviewQueue(
+    kind: 'backlog' | 'security_review' | 'pending_qa',
+    projectId: number,
+    opts: { todosPage: number; issuesPage: number; pageSize: number; search?: string },
+  ): Promise<{
+    todos: { items: VibeFlowTodo[]; totalCount: number; totalPages: number };
+    issues: { items: VibeFlowIssue[]; totalCount: number; totalPages: number };
+  }> {
+    const params = new URLSearchParams({
+      todos_page: String(opts.todosPage),
+      todos_page_size: String(opts.pageSize),
+      issues_page: String(opts.issuesPage),
+      issues_page_size: String(opts.pageSize),
+    });
+    if (opts.search) { params.set('search', opts.search); }
+    const data = await this.request<{
+      todos?: { items?: VibeFlowTodo[]; total_count?: number; total_pages?: number };
+      issues?: { items?: VibeFlowIssue[]; total_count?: number; total_pages?: number };
+    }>(`/rest/v1/vibeflow/projects/${projectId}/${kind}?${params}`);
+    return {
+      todos: { items: data.todos?.items ?? [], totalCount: data.todos?.total_count ?? 0, totalPages: data.todos?.total_pages ?? 1 },
+      issues: { items: data.issues?.items ?? [], totalCount: data.issues?.total_count ?? 0, totalPages: data.issues?.total_pages ?? 1 },
+    };
+  }
+
   async getIssue(id: number): Promise<VibeFlowIssue> {
     return this.request<VibeFlowIssue>(`/rest/v1/vibeflow/issues/${id}`);
   }

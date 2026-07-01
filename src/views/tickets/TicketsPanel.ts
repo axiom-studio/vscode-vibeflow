@@ -22,9 +22,6 @@ const MODE_TITLE: Record<TicketsMode, string> = {
   qa: 'Pending QA',
 };
 
-const DONE = 'done';
-const TERMINAL = new Set(['done', 'archived', 'rejected']);
-
 /**
  * Cloud-style ticket TABLE panel — one parameterized webview per "mode"
  * (Todos / Issues / Features / Backlog / Security Review / Pending QA), each
@@ -244,45 +241,24 @@ export class TicketsPanel {
       case 'backlog':
       case 'security':
       case 'qa': {
-        if (!reset) { return { rows: [], hasMore: false, total: 0 }; }
-        const rows = await this.collectReviewRows();
-        return { rows, hasMore: false, total: rows.length };
+        const kind = this.mode === 'backlog' ? 'backlog' : this.mode === 'security' ? 'security_review' : 'pending_qa';
+        const todosPage = reset ? 1 : this.cursor.todosPage + 1;
+        const issuesPage = reset ? 1 : this.cursor.issuesPage + 1;
+        this.cursor.todosPage = todosPage;
+        this.cursor.issuesPage = issuesPage;
+        // One call returns both lists, each independently paged; an exhausted
+        // list just yields an empty page, so we always advance both cursors.
+        const { todos, issues } = await this.client.listReviewQueue(kind, this.projectId, {
+          todosPage, issuesPage, pageSize: TicketsPanel.PAGE_SIZE,
+        });
+        return {
+          rows: [...todos.items.map(t => this.toTodoRow(t)), ...issues.items.map(i => this.toIssueRow(i))],
+          hasMore: todosPage < todos.totalPages || issuesPage < issues.totalPages,
+          total: todos.totalCount + issues.totalCount,
+        };
       }
       default:
         return { rows: [], hasMore: false, total: 0 };
-    }
-  }
-
-  /**
-   * The combined-mode rows (backlog / security / qa) — fetch-all-and-filter
-   * across todos + issues. PRIMARY data: errors propagate to loadReset()'s
-   * try/catch so the panel shows a banner, not a misleading empty table.
-   * (Increment 2 replaces this with the paginated /backlog, /security_review,
-   * /pending_qa endpoints.)
-   */
-  private async collectReviewRows(): Promise<TicketRow[]> {
-    const [todos, issues] = await Promise.all([
-      this.client.listTodosByProject(this.projectId),
-      this.client.listIssues(this.projectId),
-    ]);
-    switch (this.mode) {
-      case 'security':
-        return [
-          ...todos.filter(t => t.status === DONE && !t.security_reviewed).map(t => this.toTodoRow(t)),
-          ...issues.filter(i => i.status === DONE && !i.security_reviewed).map(i => this.toIssueRow(i)),
-        ];
-      case 'qa':
-        return [
-          ...todos.filter(t => t.status === DONE && t.security_reviewed && !t.qa_verified).map(t => this.toTodoRow(t)),
-          ...issues.filter(i => i.status === DONE && i.security_reviewed && !i.qa_verified).map(i => this.toIssueRow(i)),
-        ];
-      case 'backlog':
-        return [
-          ...todos.filter(t => !TERMINAL.has(t.status)).map(t => this.toTodoRow(t)),
-          ...issues.filter(i => !TERMINAL.has(i.status)).map(i => this.toIssueRow(i)),
-        ];
-      default:
-        return [];
     }
   }
 
