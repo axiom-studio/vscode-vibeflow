@@ -296,7 +296,13 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--vf-sp-5) var(--vf-sp-5) var(--vf-sp-4);
-  scroll-behavior: smooth;
+  /* NO scroll-behavior: smooth. In Chromium (VS Code webview) it animates
+     direct `el.scrollTop = X` assignments, not just scrollTo() — which turns
+     the prepend/load-older anchor restore (SessionChatView.tsx: el.scrollTop +=
+     scrollHeight - anchor) and the instant first-paint/append scrolls into
+     visible jumps/glides while the user is scrolled up. The one intentional
+     smooth scroll (jump-to-bottom pill) opts in per-call via
+     el.scrollTo({ behavior: 'smooth' }), independent of this property. */
 }
 
 /* Chat-first mode (#2348): with no rail competing for the eye, the
