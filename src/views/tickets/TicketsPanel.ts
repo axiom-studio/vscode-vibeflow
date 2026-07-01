@@ -39,6 +39,14 @@ export class TicketsPanel {
   private pollSub: Disposer | undefined;
   private lastFetchAt = 0;
 
+  private static readonly PAGE_SIZE = 50;
+  /** Load-more cursor per source; reset to page 1 on (re)load, advanced by loadMore. */
+  private cursor = { todosPage: 1, issuesPage: 1, hasMore: false };
+  /** claimed_by (session id) → persona key, cached on reset so pages don't re-fetch it. */
+  private readonly personaMap = new Map<string, string>();
+  /** Distinct features for the row filter dropdown, cached on reset. */
+  private cachedFeatures: { id: number; name: string }[] = [];
+
   private constructor(
     panel: vscode.WebviewPanel,
     private readonly client: VibeFlowClient,
@@ -87,7 +95,7 @@ export class TicketsPanel {
     this.panel.onDidChangeViewState(e => {
       if (!e.webviewPanel.visible) { return; }
       if (Date.now() - this.lastFetchAt < 1000) { return; }
-      void this.sendData();
+      void this.maybeAutoRefresh();
     });
     this.panel.onDidDispose(() => this.dispose());
   }
@@ -95,11 +103,14 @@ export class TicketsPanel {
   private async handleMessage(msg: TicketsClientMessage): Promise<void> {
     switch (msg.type) {
       case 'ticketsLoad':
-        await this.sendData();
+        await this.loadReset();
         this.startPolling();
         return;
+      case 'ticketsLoadMore':
+        await this.loadMore();
+        return;
       case 'ticketsRefresh':
-        await this.sendData();
+        await this.loadReset();
         return;
       case 'ticketsOpenItem':
         // Reuse the work-item detail panel — opens in a new editor tab.
@@ -128,25 +139,35 @@ export class TicketsPanel {
       } else {
         await this.client.updateIssueStatus(itemId, newStatus);
       }
-      await this.sendData();
+      await this.loadReset();
     } catch (err) {
       vscode.window.showErrorMessage(
         `VibeFlow: Failed to update ${itemType} #${itemId} → ${newStatus} — ${err}`,
       );
-      await this.sendData();
+      await this.loadReset();
     }
   }
 
-  private async sendData(): Promise<void> {
+  /** Full (re)load — reset the cursor, refresh caches, post page 1. */
+  private async loadReset(): Promise<void> {
     this.lastFetchAt = Date.now();
+    this.cursor = { todosPage: 1, issuesPage: 1, hasMore: false };
     try {
-      const [rows, features] = await Promise.all([
-        this.collectRows(),
-        // The feature-filter dropdown only — degraded on purpose: an empty filter
-        // shouldn't blank the table (PR #1 review). The 'features' MODE fetches
-        // listFeatures un-caught inside collectRows so it DOES surface errors.
+      // Cache the persona map (claimed_by → display name) + feature list once
+      // per (re)load; each page reuses them. Both degraded on purpose — a
+      // cosmetic-resolution failure must not blank the whole table (PR #1).
+      const [sessions, features] = await Promise.all([
+        this.client.listSessions(this.projectId).catch(() => []),
         this.client.listFeatures(this.projectId).catch(() => []),
       ]);
+      this.personaMap.clear();
+      for (const s of sessions) {
+        if (s.session_id && s.persona_key) { this.personaMap.set(s.session_id, s.persona_key); }
+      }
+      this.cachedFeatures = features.map(f => ({ id: f.id, name: f.name }));
+
+      const { rows, hasMore, total } = await this.fetchRows(true);
+      this.cursor.hasMore = hasMore;
       this.post({
         type: 'ticketsData',
         payload: {
@@ -154,8 +175,10 @@ export class TicketsPanel {
           title: MODE_TITLE[this.mode],
           projectName: this.projectName,
           rows,
-          features: features.map(f => ({ id: f.id, name: f.name })),
+          features: this.cachedFeatures,
           generatedAt: new Date().toISOString(),
+          hasMore,
+          total,
         },
       });
     } catch (err) {
@@ -166,95 +189,128 @@ export class TicketsPanel {
     }
   }
 
-  private async collectRows(): Promise<TicketRow[]> {
-    // Resolve claimed_by (a session id) → persona display name, same map the
-    // WorkItemsTreeProvider builds. Degraded on purpose: if this fails, claimant()
-    // falls back to a truncated id — the table still renders, so a name-resolution
-    // failure must not blank it (PR #1 review).
-    const sessions = await this.client.listSessions(this.projectId).catch(() => []);
-    const personaMap = new Map<string, string>();
-    for (const s of sessions) {
-      if (s.session_id && s.persona_key) { personaMap.set(s.session_id, s.persona_key); }
+  /** Append the next page (load-more). A failure leaves the current rows intact. */
+  private async loadMore(): Promise<void> {
+    if (!this.cursor.hasMore) { return; }
+    try {
+      const { rows, hasMore } = await this.fetchRows(false);
+      this.cursor.hasMore = hasMore;
+      this.post({ type: 'ticketsAppend', payload: { rows, hasMore } });
+    } catch {
+      // Best-effort — the user can retry Load More; don't blank the table.
     }
-    const claimant = (id?: string): string | undefined => {
-      if (!id) { return undefined; }
-      const key = personaMap.get(id);
-      if (key) { return personaDisplayName(key); }
-      const parts = id.split('-');
-      return parts.length >= 3 ? parts[parts.length - 1].slice(0, 8) : id.slice(0, 8);
-    };
+  }
 
-    if (this.mode === 'features') {
-      const features = await this.client.listFeatures(this.projectId);
-      return features.map(f => ({
-        type: 'feature' as const,
-        id: f.id,
-        title: f.name,
-        status: f.status ?? '',
-      }));
+  /**
+   * Auto-refresh (30s poll / becoming visible) — but only when the user hasn't
+   * paged past page 1, so we never clobber their loaded-more rows.
+   */
+  private async maybeAutoRefresh(): Promise<void> {
+    if (this.cursor.todosPage > 1 || this.cursor.issuesPage > 1) { return; }
+    await this.loadReset();
+  }
+
+  /**
+   * Fetch one page for the current mode. `reset` starts at page 1; otherwise
+   * advances the cursor. Returns this page's rows, whether more remain, and the
+   * total across all pages. Single-source modes (todos/issues) paginate via the
+   * backend; features + the review-queue modes load their full set on reset
+   * (features is unpaginated; backlog/security/qa move to the dedicated
+   * paginated endpoints in increment 2).
+   */
+  private async fetchRows(reset: boolean): Promise<{ rows: TicketRow[]; hasMore: boolean; total: number }> {
+    switch (this.mode) {
+      case 'features': {
+        if (!reset) { return { rows: [], hasMore: false, total: 0 }; }
+        const features = await this.client.listFeatures(this.projectId);
+        return {
+          rows: features.map(f => ({ type: 'feature' as const, id: f.id, title: f.name, status: f.status ?? '' })),
+          hasMore: false,
+          total: features.length,
+        };
+      }
+      case 'todos': {
+        const page = reset ? 1 : this.cursor.todosPage + 1;
+        this.cursor.todosPage = page;
+        const { items, totalCount, totalPages } = await this.client.listTodosPage(this.projectId, { page, limit: TicketsPanel.PAGE_SIZE });
+        return { rows: items.map(t => this.toTodoRow(t)), hasMore: page < totalPages, total: totalCount };
+      }
+      case 'issues': {
+        const page = reset ? 1 : this.cursor.issuesPage + 1;
+        this.cursor.issuesPage = page;
+        const { items, totalCount, totalPages } = await this.client.listIssuesPage(this.projectId, { page, limit: TicketsPanel.PAGE_SIZE });
+        return { rows: items.map(i => this.toIssueRow(i)), hasMore: page < totalPages, total: totalCount };
+      }
+      case 'backlog':
+      case 'security':
+      case 'qa': {
+        if (!reset) { return { rows: [], hasMore: false, total: 0 }; }
+        const rows = await this.collectReviewRows();
+        return { rows, hasMore: false, total: rows.length };
+      }
+      default:
+        return { rows: [], hasMore: false, total: 0 };
     }
+  }
 
-    // PRIMARY table data — do NOT swallow. A real fetch failure here propagates
-    // to sendData()'s try/catch, which posts `ticketsError` so the panel shows a
-    // banner instead of a misleading empty table (PR #1 review). The supplementary
-    // fetches above/below (listSessions for claimant names, listFeatures for the
-    // filter) stay degraded on purpose — a cosmetic-resolution failure shouldn't
-    // blank the whole table.
+  /**
+   * The combined-mode rows (backlog / security / qa) — fetch-all-and-filter
+   * across todos + issues. PRIMARY data: errors propagate to loadReset()'s
+   * try/catch so the panel shows a banner, not a misleading empty table.
+   * (Increment 2 replaces this with the paginated /backlog, /security_review,
+   * /pending_qa endpoints.)
+   */
+  private async collectReviewRows(): Promise<TicketRow[]> {
     const [todos, issues] = await Promise.all([
       this.client.listTodosByProject(this.projectId),
       this.client.listIssues(this.projectId),
     ]);
-    const todoRow = (t: VibeFlowTodo): TicketRow => ({
-      type: 'todo',
-      id: t.id,
-      title: t.title,
-      status: t.status,
-      priority: t.priority,
-      featureName: t.feature_name,
-      userEmail: t.user_email,
-      claimedBy: claimant(t.claimed_by),
-      branch: t.target_branch,
-      securityReviewed: t.security_reviewed,
-      qaVerified: t.qa_verified,
-      updatedAt: t.updated_at,
-    });
-    const issueRow = (i: VibeFlowIssue): TicketRow => ({
-      type: 'issue',
-      id: i.id,
-      title: i.title,
-      status: i.status,
-      priority: i.priority,
-      userEmail: i.user_email,
-      claimedBy: claimant(i.claimed_by),
-      branch: i.target_branch,
-      securityReviewed: i.security_reviewed,
-      qaVerified: i.qa_verified,
-      updatedAt: i.updated_at,
-    });
-
     switch (this.mode) {
-      case 'todos':
-        return todos.map(todoRow);
-      case 'issues':
-        return issues.map(issueRow);
       case 'security':
         return [
-          ...todos.filter(t => t.status === DONE && !t.security_reviewed).map(todoRow),
-          ...issues.filter(i => i.status === DONE && !i.security_reviewed).map(issueRow),
+          ...todos.filter(t => t.status === DONE && !t.security_reviewed).map(t => this.toTodoRow(t)),
+          ...issues.filter(i => i.status === DONE && !i.security_reviewed).map(i => this.toIssueRow(i)),
         ];
       case 'qa':
         return [
-          ...todos.filter(t => t.status === DONE && t.security_reviewed && !t.qa_verified).map(todoRow),
-          ...issues.filter(i => i.status === DONE && i.security_reviewed && !i.qa_verified).map(issueRow),
+          ...todos.filter(t => t.status === DONE && t.security_reviewed && !t.qa_verified).map(t => this.toTodoRow(t)),
+          ...issues.filter(i => i.status === DONE && i.security_reviewed && !i.qa_verified).map(i => this.toIssueRow(i)),
         ];
       case 'backlog':
         return [
-          ...todos.filter(t => !TERMINAL.has(t.status)).map(todoRow),
-          ...issues.filter(i => !TERMINAL.has(i.status)).map(issueRow),
+          ...todos.filter(t => !TERMINAL.has(t.status)).map(t => this.toTodoRow(t)),
+          ...issues.filter(i => !TERMINAL.has(i.status)).map(i => this.toIssueRow(i)),
         ];
       default:
         return [];
     }
+  }
+
+  /** Resolve a claimed_by session id → "@Persona" (or a short id fallback). */
+  private claimant(id?: string): string | undefined {
+    if (!id) { return undefined; }
+    const key = this.personaMap.get(id);
+    if (key) { return personaDisplayName(key); }
+    const parts = id.split('-');
+    return parts.length >= 3 ? parts[parts.length - 1].slice(0, 8) : id.slice(0, 8);
+  }
+
+  private toTodoRow(t: VibeFlowTodo): TicketRow {
+    return {
+      type: 'todo', id: t.id, title: t.title, status: t.status, priority: t.priority,
+      featureName: t.feature_name, userEmail: t.user_email, claimedBy: this.claimant(t.claimed_by),
+      branch: t.target_branch, securityReviewed: t.security_reviewed, qaVerified: t.qa_verified,
+      updatedAt: t.updated_at,
+    };
+  }
+
+  private toIssueRow(i: VibeFlowIssue): TicketRow {
+    return {
+      type: 'issue', id: i.id, title: i.title, status: i.status, priority: i.priority,
+      userEmail: i.user_email, claimedBy: this.claimant(i.claimed_by),
+      branch: i.target_branch, securityReviewed: i.security_reviewed, qaVerified: i.qa_verified,
+      updatedAt: i.updated_at,
+    };
   }
 
   private post(msg: TicketsHostMessage): void {
@@ -264,7 +320,7 @@ export class TicketsPanel {
   private startPolling(): void {
     if (this.pollSub) { return; }
     this.pollSub = this.coordinator.subscribe(backgroundIntervalMs(), () => {
-      if (this.panel.visible) { void this.sendData(); }
+      if (this.panel.visible) { void this.maybeAutoRefresh(); }
     }, 'tickets');
   }
 
