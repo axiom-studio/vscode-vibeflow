@@ -410,22 +410,17 @@ export function SessionChatView() {
     });
   }
 
-  // Not memoized: it reads `hasMore`/`loadingOlder`/`messages` for the
-  // auto-load trigger and is only wired to the scroller's onScroll (never
-  // passed to the memoized transcript rows), so recreating it per render is
-  // free and avoids stale-closure bugs.
-  function handleScroll() {
+  const handleScroll = useCallback(() => {
     const el = scrollerRef.current;
     if (!el) { return; }
     const slack = 32; // px tolerance before we consider the user "scrolled up"
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < slack;
     pinnedToBottomRef.current = atBottom;
     setShowScrollDown(!atBottom);
-    // Auto-load older history when the user scrolls near the top (#2711).
-    if (el.scrollTop < 120 && hasMore && !loadingOlder) {
-      loadOlder();
-    }
-  }
+    // Older history loads ONLY via the "Load older messages" button (#2716) —
+    // no auto-load-on-scroll. The button still shows a fetching indicator and
+    // the prepend stays scroll-anchored so the viewport doesn't jump.
+  }, []);
 
   function send() {
     const text = draft.trim();
