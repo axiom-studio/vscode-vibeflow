@@ -88,7 +88,8 @@ function nextPendingIds(prev: Set<number>, messages: VibeFlowPrompt[]): Set<numb
  * smaller than axiomcloud web's `CHAT_PAGE_SIZE` (50 in `VibeFlowSessions.jsx`)
  * so the panel shows a tighter initial window and leans on the webview's
  * auto-load-on-scroll for older history. Server caps at 200. The live-backfill
- * `after_id` poll still uses `limit: 200` to absorb bursts between ticks.
+ * `after_id` poll uses this same size (#2714) — a burst of >20 between ticks
+ * converges over the next tick, so nothing is lost.
  */
 const CHAT_PAGE_SIZE = 20;
 
@@ -630,7 +631,11 @@ export class SessionPanelManager implements vscode.Disposable {
       } else if (state.newestId !== null) {
         const resp = await this.client.listSessionPrompts(projectId, sessionId, {
           after_id: state.newestId,
-          limit: 200,
+          // Only new messages since `newestId`; 20 per user request (#2714). A
+          // burst of >20 between ticks just converges over the next tick
+          // (after_id advances `newestId` to the highest fetched), so nothing
+          // is lost — it only takes an extra tick to catch up.
+          limit: CHAT_PAGE_SIZE,
         });
         let cursor: ChatCursor = state;
         if (resp.prompts.length > 0) {
