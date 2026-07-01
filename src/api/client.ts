@@ -327,10 +327,10 @@ export class VibeFlowClient {
    * One page of a review-queue view (Backlog / Security Review / Pending QA)
    * from its dedicated endpoint. Each returns todos + issues independently
    * paged, with the view's status/review filters applied server-side. `kind`
-   * is the path segment: 'backlog' | 'security_review' | 'pending_qa'.
+   * is the path segment: 'backlog' | 'security-pending' | 'qa-pending'.
    */
   async listReviewQueue(
-    kind: 'backlog' | 'security_review' | 'pending_qa',
+    kind: 'backlog' | 'security-pending' | 'qa-pending',
     projectId: number,
     opts: { todosPage: number; issuesPage: number; pageSize: number; search?: string },
   ): Promise<{
