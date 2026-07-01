@@ -241,7 +241,7 @@ export class TicketsPanel {
       case 'backlog':
       case 'security':
       case 'qa': {
-        const kind = this.mode === 'backlog' ? 'backlog' : this.mode === 'security' ? 'security_review' : 'pending_qa';
+        const kind = this.mode === 'backlog' ? 'backlog' : this.mode === 'security' ? 'security-pending' : 'qa-pending';
         const todosPage = reset ? 1 : this.cursor.todosPage + 1;
         const issuesPage = reset ? 1 : this.cursor.issuesPage + 1;
         this.cursor.todosPage = todosPage;
