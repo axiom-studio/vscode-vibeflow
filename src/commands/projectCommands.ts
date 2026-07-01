@@ -83,6 +83,11 @@ export async function pickProject(deps: {
     return;
   }
 
+  // Offer to close the previous project's open tabs before switching (#2717).
+  if (current) {
+    await confirmAndCloseOldProjectTabs(current.projectName);
+  }
+
   // Match the Settings → Connection tab's switch path exactly: keep
   // the workspace's live git branch (the cache schema doesn't persist
   // it, so we must read it fresh) and preserve the previous
@@ -103,4 +108,44 @@ export async function pickProject(deps: {
     const message = err instanceof Error ? err.message : String(err);
     vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${message}`);
   }
+}
+
+/**
+ * On a project switch, offer to close the previous project's open tabs (#2717).
+ * The extension is single-active-project, so every open VibeFlow webview panel
+ * belongs to the project being left. Call this BEFORE applying the switch so
+ * the `onSwitched` refresh doesn't repurpose the panels to the new project
+ * first. No prompt when there are no open VibeFlow tabs.
+ */
+export async function confirmAndCloseOldProjectTabs(oldProjectName: string): Promise<void> {
+  const oldTabs = collectVibeflowWebviewTabs();
+  if (oldTabs.length === 0) { return; }
+  const choice = await vscode.window.showWarningMessage(
+    `Close ${oldTabs.length} open tab${oldTabs.length === 1 ? '' : 's'} from "${oldProjectName}"?`,
+    { modal: true, detail: 'These VibeFlow panels are scoped to the project you are leaving.' },
+    'Close Tabs',
+  );
+  if (choice === 'Close Tabs') {
+    await vscode.window.tabGroups.close(oldTabs, true);
+  }
+}
+
+/**
+ * All open editor tabs backed by a VibeFlow webview panel (dashboard, kanban,
+ * tickets, compliance, brainstorm, work-item, session chat, settings). VS Code
+ * prefixes extension webview view types (e.g. `mainThreadWebview-vibeflow.…`),
+ * so match on the `vibeflow.` segment. Excludes sidebar tree views and the
+ * Activity Feed webview-view — those aren't editor tabs and never appear here.
+ */
+function collectVibeflowWebviewTabs(): vscode.Tab[] {
+  const tabs: vscode.Tab[] = [];
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input = tab.input;
+      if (input instanceof vscode.TabInputWebview && input.viewType.includes('vibeflow.')) {
+        tabs.push(tab);
+      }
+    }
+  }
+  return tabs;
 }
