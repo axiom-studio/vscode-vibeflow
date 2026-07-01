@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.3 (2026-07-01)
+
+A performance and responsiveness release — lighter background polling, a faster session chat, and snappier typing.
+
+### Performance
+
+- **Lighter, smarter background polling.** Every view now shares one refresh timer instead of each running its own, polling **pauses while the editor window is unfocused**, and redundant requests are de-duplicated — so the extension does far less background work.
+- **Configurable refresh rate.** Settings → Session Defaults now has a **Refresh rate** card with independent **Live** and **Background** intervals, so you can trade freshness for fewer API calls.
+- **Faster session chat.** Chat history loads 20 messages at a time (both the initial view and older history), each refresh fetches only what's new, and the activity log no longer refetches its full contents every tick.
+- **Snappier typing.** Fixed chat typing lag that grew with conversation length.
+
+### Added
+
+- **Close old tabs on project switch.** Switching the active project now offers to close the previous project's open VibeFlow tabs.
+- **Polling debug log.** Enable `vibeflow.debug.polling` to watch poll activity — including pause/resume on window focus — in a new **"VibeFlow Polling"** output channel.
+
 ## 1.1.2 (2026-06-28)
 
 A settings and CLI-integration polish release.
