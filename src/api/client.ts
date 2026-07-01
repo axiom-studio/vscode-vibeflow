@@ -290,6 +290,39 @@ export class VibeFlowClient {
     return all;
   }
 
+  /**
+   * Fetch ONE page of project todos (unlike listTodosByProject, which walks
+   * every page). Returns the page items + pagination metadata so the Browse
+   * table can load-more instead of pulling the whole set. Errors propagate to
+   * the caller (the tickets panel surfaces them as an error banner).
+   */
+  async listTodosPage(
+    projectId: number,
+    opts: { page: number; limit: number; status?: string; search?: string },
+  ): Promise<{ items: VibeFlowTodo[]; totalCount: number; totalPages: number }> {
+    const params = new URLSearchParams({ page: String(opts.page), limit: String(opts.limit) });
+    if (opts.status) { params.set('status', opts.status); }
+    if (opts.search) { params.set('search', opts.search); }
+    const data = await this.request<{ items?: VibeFlowTodo[]; total_count?: number; total_pages?: number }>(
+      `/rest/v1/vibeflow/projects/${projectId}/todos?${params}`,
+    );
+    return { items: data.items ?? [], totalCount: data.total_count ?? 0, totalPages: data.total_pages ?? 1 };
+  }
+
+  /** One page of project issues — same envelope + contract as listTodosPage. */
+  async listIssuesPage(
+    projectId: number,
+    opts: { page: number; limit: number; status?: string; search?: string },
+  ): Promise<{ items: VibeFlowIssue[]; totalCount: number; totalPages: number }> {
+    const params = new URLSearchParams({ page: String(opts.page), limit: String(opts.limit) });
+    if (opts.status) { params.set('status', opts.status); }
+    if (opts.search) { params.set('search', opts.search); }
+    const data = await this.request<{ items?: VibeFlowIssue[]; total_count?: number; total_pages?: number }>(
+      `/rest/v1/vibeflow/projects/${projectId}/issues?${params}`,
+    );
+    return { items: data.items ?? [], totalCount: data.total_count ?? 0, totalPages: data.total_pages ?? 1 };
+  }
+
   async getIssue(id: number): Promise<VibeFlowIssue> {
     return this.request<VibeFlowIssue>(`/rest/v1/vibeflow/issues/${id}`);
   }
