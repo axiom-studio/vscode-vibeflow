@@ -162,7 +162,7 @@ export function buildCliLaunchCommand(
  * exits the TUI; the PID lock at ~/.vibeflow-cli/<lock> releases on
  * exit so the next run starts fresh.
  */
-export async function openCli(workspaceRoot: string | undefined): Promise<void> {
+export async function openCli(workspaceRoot: string | undefined, launchOptions?: CliLaunchOptions): Promise<void> {
   const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
   if (existing) {
     existing.show(false); // take focus
@@ -187,7 +187,7 @@ export async function openCli(workspaceRoot: string | undefined): Promise<void> 
       'Retry',
     );
     if (choice === 'Retry') {
-      return openCli(workspaceRoot); // re-checks the lock
+      return openCli(workspaceRoot, launchOptions); // re-checks the lock
     }
     return;
   }
@@ -226,7 +226,7 @@ export async function openCli(workspaceRoot: string | undefined): Promise<void> 
     iconPath: new vscode.ThemeIcon('terminal'),
   });
   terminal.show(false);
-  terminal.sendText(buildCliLaunchCommand(binary, readCliLaunchOptions()), true);
+  terminal.sendText(buildCliLaunchCommand(binary, launchOptions ?? readCliLaunchOptions()), true);
 }
 
 function shellQuote(arg: string, platform: NodeJS.Platform): string {
