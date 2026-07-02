@@ -53,6 +53,10 @@ export class ThemeColor { constructor(public id: string) {} }
 // TerminalLocation enum — sessionCommands references the Editor value.
 export const TerminalLocation = { Editor: 1, Panel: 2 } as const;
 
+// ConfigurationTarget enum — settingsPersistence routes updates by target;
+// values mirror the real API (Global=1, Workspace=2, WorkspaceFolder=3).
+export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const;
+
 // TreeItem / TreeItemCollapsibleState — view providers reference them.
 export class TreeItem { constructor(public label: string, public collapsibleState?: unknown) {} }
 export const TreeItemCollapsibleState = { None: 0, Collapsed: 1, Expanded: 2 } as const;
