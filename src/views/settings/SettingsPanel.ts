@@ -331,6 +331,14 @@ export class SettingsPanel {
           await deps.stickyModels.resetToDefault(msg.payload.persona);
           await pushSettings();
           break;
+        case 'openCli': {
+          const config = vscode.workspace.getConfiguration('vibeflow');
+          await config.update('cli.mcpName', msg.payload.mcpName, vscode.ConfigurationTarget.Global);
+          await config.update('cli.rootPath', msg.payload.rootPath, vscode.ConfigurationTarget.Global);
+          await vscode.commands.executeCommand('vibeflow.openCli');
+          await pushSettings();
+          break;
+        }
         case 'runCommand':
           // Generic command passthrough — used by buttons in tabs that
           // shouldn't need their own wire shape (e.g. CLI tab "Open
