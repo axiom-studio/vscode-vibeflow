@@ -23,6 +23,17 @@ const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installat
  */
 export function CliTab({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
+  const mcpNameRef = React.useRef(data.cliMcpName);
+  const rootPathRef = React.useRef(data.cliRootPath);
+
+  React.useEffect(() => {
+    mcpNameRef.current = data.cliMcpName;
+  }, [data.cliMcpName]);
+
+  React.useEffect(() => {
+    rootPathRef.current = data.cliRootPath;
+  }, [data.cliRootPath]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <Card
@@ -100,6 +111,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           <BufferedTextInput
             initial={data.cliMcpName}
             placeholder="default"
+            onValueChange={(v) => { mcpNameRef.current = v; }}
             onCommit={(v) => onUpdate('cli.mcpName', v)}
           />
         </Field>
@@ -107,6 +119,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           <BufferedTextInput
             initial={data.cliRootPath}
             placeholder="/path/to/root"
+            onValueChange={(v) => { rootPathRef.current = v; }}
             onCommit={(v) => onUpdate('cli.rootPath', v)}
           />
         </Field>
@@ -116,7 +129,13 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         <ButtonRow>
           <Btn
             label="Open CLI"
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.openCli' })}
+            onClick={() => onCommand({
+              type: 'openCli',
+              payload: {
+                mcpName: mcpNameRef.current,
+                rootPath: rootPathRef.current,
+              },
+            })}
             disabled={!installed}
           />
         </ButtonRow>
@@ -164,10 +183,11 @@ function BinaryPathInput({ initial, onCommit }: {
   );
 }
 
-function BufferedTextInput({ initial, placeholder, onCommit }: {
+function BufferedTextInput({ initial, placeholder, onCommit, onValueChange }: {
   initial: string;
   placeholder: string;
   onCommit: (value: string) => void;
+  onValueChange?: (value: string) => void;
 }) {
   const [value, setValue] = useState(initial);
   const [focused, setFocused] = useState(false);
@@ -186,7 +206,10 @@ function BufferedTextInput({ initial, placeholder, onCommit }: {
       type="text"
       placeholder={placeholder}
       value={value}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => {
+        setValue(e.target.value);
+        onValueChange?.(e.target.value);
+      }}
       onFocus={() => setFocused(true)}
       onBlur={() => { setFocused(false); commit(); }}
       onKeyDown={(e) => {
