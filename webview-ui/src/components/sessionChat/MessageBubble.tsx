@@ -157,7 +157,10 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
               {author}
             </span>
             <span className="msg-time">{time}</span>
-            {msg.status === 'pending' && <WorkingIndicator startTime={msg.created_at} />}
+            {/* Agent-side pending rows only (#2770): on the user's own pending
+                message this duplicated the #2769 standalone Working bubble —
+                removed at the user's request; the bubble is the one affordance. */}
+            {msg.status === 'pending' && !isUser && <WorkingIndicator startTime={msg.created_at} />}
             {msg.status === 'expired' && (
               <span className="msg-status msg-status-expired">expired</span>
             )}
