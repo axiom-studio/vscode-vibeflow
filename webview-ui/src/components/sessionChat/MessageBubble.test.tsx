@@ -155,3 +155,44 @@ describe('MessageBubble inline working indicator (#2704)', () => {
     expect(screen.queryByText('Working')).toBeNull();
   });
 });
+
+/**
+ * Side avatar rail guard for #2772 (web-chat parity, assets #1439/#1440):
+ * the group's first row carries a persona portrait beside agent bubbles and
+ * a "U" badge beside user bubbles; grouped follow-ups keep an invisible
+ * spacer so bubbles stay aligned. The old 20px in-header avatar is gone.
+ */
+describe('MessageBubble side avatars (#2772)', () => {
+  const base = {
+    personaName: 'Kai',
+    personaColor: '#ffffff',
+    diffView: 'unified' as const,
+    sessionMode: 'vanilla',
+    onRespond: (_p: string, _t: string) => {},
+  };
+
+  it('renders the U badge beside a user group-start row', () => {
+    const { container } = render(<MessageBubble msg={MSG} groupStart {...base} />);
+    const badge = container.querySelector('.msg-side-avatar-user');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('U');
+    expect(container.querySelector('.msg-row')!.className).toContain('msg-user');
+  });
+
+  it('renders the persona avatar (fallback glyph when no portrait) beside an agent group-start row', () => {
+    const agentMsg: ChatPrompt = { ...MSG, id: 3, source: 'agent', response_text: 'ok' };
+    const { container } = render(<MessageBubble msg={agentMsg} groupStart {...base} />);
+    const avatar = container.querySelector('.msg-side-avatar');
+    expect(avatar).not.toBeNull();
+    expect(avatar!.classList.contains('msg-side-avatar-user')).toBe(false);
+    expect(avatar!.textContent).toBe('K'); // personaName fallback glyph
+    // The replaced in-header avatar must not come back.
+    expect(container.querySelector('.msg-header-avatar')).toBeNull();
+  });
+
+  it('renders only the alignment spacer on grouped follow-up rows', () => {
+    const { container } = render(<MessageBubble msg={MSG} groupStart={false} {...base} />);
+    expect(container.querySelector('.msg-side-avatar')).toBeNull();
+    expect(container.querySelector('.msg-side-avatar-spacer')).not.toBeNull();
+  });
+});
