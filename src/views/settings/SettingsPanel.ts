@@ -9,7 +9,7 @@ import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath } from '../../commands/cliCommands.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
-import { confirmAndCloseOldProjectTabs } from '../../commands/projectCommands.js';
+import { confirmAndCloseTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -297,10 +297,7 @@ export class SettingsPanel {
             // path passed '' to connectToProject, which silently kept the
             // empty-state placeholder showing "main" forever.
             const previous = deps.detector.getCachedProject();
-            // Offer to close the previous project's open tabs on a real switch (#2717).
-            if (previous && previous.projectId !== matched.id) {
-              await confirmAndCloseOldProjectTabs(previous.projectName);
-            }
+            await confirmAndCloseTabsForProjectSwitch(previous, matched.id);
             const liveBranch = await deps.detector.getGitBranch();
             const detected: DetectedProject = {
               projectId: matched.id,

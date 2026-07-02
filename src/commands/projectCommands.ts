@@ -83,10 +83,7 @@ export async function pickProject(deps: {
     return;
   }
 
-  // Offer to close the previous project's open tabs before switching (#2717).
-  if (current) {
-    await confirmAndCloseOldProjectTabs(current.projectName);
-  }
+  await confirmAndCloseTabsForProjectSwitch(current, picked.projectId);
 
   // Match the Settings → Connection tab's switch path exactly: keep
   // the workspace's live git branch (the cache schema doesn't persist
@@ -126,8 +123,31 @@ export async function confirmAndCloseOldProjectTabs(oldProjectName: string): Pro
     'Close Tabs',
   );
   if (choice === 'Close Tabs') {
-    await vscode.window.tabGroups.close(oldTabs, true);
+    try {
+      const closed = await vscode.window.tabGroups.close(oldTabs, true);
+      if (!closed) {
+        vscode.window.showWarningMessage('VibeFlow: VS Code did not close all old project tabs.');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      vscode.window.showWarningMessage(`VibeFlow: could not close old project tabs — ${message}`);
+    }
   }
+}
+
+export async function confirmAndCloseTabsForProjectSwitch(
+  current: DetectedProject | undefined,
+  nextProjectId: number,
+): Promise<void> {
+  if (!shouldOfferCloseForProjectSwitch(current, nextProjectId)) { return; }
+  await confirmAndCloseOldProjectTabs(current.projectName);
+}
+
+export function shouldOfferCloseForProjectSwitch(
+  current: DetectedProject | undefined,
+  nextProjectId: number,
+): current is DetectedProject {
+  return !!current && current.projectId !== nextProjectId;
 }
 
 /**
@@ -139,13 +159,22 @@ export async function confirmAndCloseOldProjectTabs(oldProjectName: string): Pro
  */
 function collectVibeflowWebviewTabs(): vscode.Tab[] {
   const tabs: vscode.Tab[] = [];
-  for (const group of vscode.window.tabGroups.all) {
+  for (const group of vscode.window.tabGroups?.all ?? []) {
     for (const tab of group.tabs) {
-      const input = tab.input;
-      if (input instanceof vscode.TabInputWebview && input.viewType.includes('vibeflow.')) {
+      if (isVibeflowWebviewTabInput(tab.input)) {
         tabs.push(tab);
       }
     }
   }
   return tabs;
+}
+
+export function isVibeflowWebviewTabInput(input: unknown): boolean {
+  if (!input || typeof input !== 'object') { return false; }
+  const viewType = (input as { viewType?: unknown }).viewType;
+  return typeof viewType === 'string' && isVibeflowWebviewViewType(viewType);
+}
+
+export function isVibeflowWebviewViewType(viewType: string): boolean {
+  return viewType.includes('vibeflow.');
 }

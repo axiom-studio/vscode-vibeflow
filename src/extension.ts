@@ -25,7 +25,10 @@ import { killSession, killAndForgetSession, restartSession, focusTerminal, delet
 import { openCli, getCliVersion } from './commands/cliCommands.js';
 import { installCli, fetchLatestCliTag } from './commands/cliInstaller.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
-import { pickProject as runProjectPickerCommand } from './commands/projectCommands.js';
+import {
+  confirmAndCloseTabsForProjectSwitch,
+  pickProject as runProjectPickerCommand,
+} from './commands/projectCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
 import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
 import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
@@ -537,6 +540,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       gitRemoteUrl: remoteUrl,
       gitBranch: branch,
     };
+    await confirmAndCloseTabsForProjectSwitch(cached, matched.id);
     await detector.cacheProject(detected);
     connectToProject(detected);
     vscode.window.showInformationMessage(`VibeFlow: Switched to "${matched.name}"`);
@@ -649,12 +653,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Cache and connect
     const gitBranch = await detector.getGitBranch();
+    const previous = detector.getCachedProject();
     const detected: DetectedProject = {
       projectId: selectedProject.id,
       projectName: selectedProject.name,
       gitRemoteUrl: remoteUrl ?? '',
       gitBranch,
     };
+    await confirmAndCloseTabsForProjectSwitch(previous, selectedProject.id);
     await detector.cacheProject(detected);
     connectToProject(detected);
 
@@ -1455,6 +1461,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const matched = projects.find(p => p.name === cliConfig.defaultProject);
         if (matched) {
           console.log('[VibeFlow] Caching CLI default project:', matched.name, 'id:', matched.id);
+          await confirmAndCloseTabsForProjectSwitch(cached, matched.id);
           await detector.cacheProject({
             projectId: matched.id,
             projectName: matched.name,
