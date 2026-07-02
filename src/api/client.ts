@@ -298,11 +298,14 @@ export class VibeFlowClient {
    */
   async listTodosPage(
     projectId: number,
-    opts: { page: number; limit: number; status?: string; search?: string },
+    opts: { page: number; limit: number; status?: string; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; featureId?: number },
   ): Promise<{ items: VibeFlowTodo[]; totalCount: number; totalPages: number }> {
     const params = new URLSearchParams({ page: String(opts.page), limit: String(opts.limit) });
     if (opts.status) { params.set('status', opts.status); }
     if (opts.search) { params.set('search', opts.search); }
+    if (opts.sortBy) { params.set('sort_by', opts.sortBy); }
+    if (opts.sortOrder) { params.set('sort_order', opts.sortOrder); }
+    if (opts.featureId !== undefined) { params.set('feature_id', String(opts.featureId)); }
     const data = await this.request<{ items?: VibeFlowTodo[]; total_count?: number; total_pages?: number }>(
       `/rest/v1/vibeflow/projects/${projectId}/todos?${params}`,
     );
@@ -312,11 +315,14 @@ export class VibeFlowClient {
   /** One page of project issues — same envelope + contract as listTodosPage. */
   async listIssuesPage(
     projectId: number,
-    opts: { page: number; limit: number; status?: string; search?: string },
+    opts: { page: number; limit: number; status?: string; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; featureId?: number },
   ): Promise<{ items: VibeFlowIssue[]; totalCount: number; totalPages: number }> {
     const params = new URLSearchParams({ page: String(opts.page), limit: String(opts.limit) });
     if (opts.status) { params.set('status', opts.status); }
     if (opts.search) { params.set('search', opts.search); }
+    if (opts.sortBy) { params.set('sort_by', opts.sortBy); }
+    if (opts.sortOrder) { params.set('sort_order', opts.sortOrder); }
+    if (opts.featureId !== undefined) { params.set('feature_id', String(opts.featureId)); }
     const data = await this.request<{ items?: VibeFlowIssue[]; total_count?: number; total_pages?: number }>(
       `/rest/v1/vibeflow/projects/${projectId}/issues?${params}`,
     );
@@ -332,7 +338,7 @@ export class VibeFlowClient {
   async listReviewQueue(
     kind: 'backlog' | 'security-pending' | 'qa-pending',
     projectId: number,
-    opts: { todosPage: number; issuesPage: number; pageSize: number; search?: string },
+    opts: { todosPage: number; issuesPage: number; pageSize: number; search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc' },
   ): Promise<{
     todos: { items: VibeFlowTodo[]; totalCount: number; totalPages: number };
     issues: { items: VibeFlowIssue[]; totalCount: number; totalPages: number };
@@ -344,6 +350,8 @@ export class VibeFlowClient {
       issues_page_size: String(opts.pageSize),
     });
     if (opts.search) { params.set('search', opts.search); }
+    if (opts.sortBy) { params.set('sort_by', opts.sortBy); }
+    if (opts.sortOrder) { params.set('sort_order', opts.sortOrder); }
     const data = await this.request<{
       todos?: { items?: VibeFlowTodo[]; total_count?: number; total_pages?: number };
       issues?: { items?: VibeFlowIssue[]; total_count?: number; total_pages?: number };
