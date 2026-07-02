@@ -33,7 +33,12 @@
     "jsdom": "^29.1.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.0",
-    "vite": "^6.0.0",
+    "vite": "^6.4.3",
     "vitest": "^4.1.9"
+  },
+  "resolutions": {
+    "@babel/core": "7.29.6",
+    "postcss": "8.5.10",
+    "vite": "6.4.3"
   }
 }
