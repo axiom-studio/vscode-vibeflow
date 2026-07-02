@@ -13,7 +13,7 @@ const TERMINAL_NAME = 'VibeFlow CLI';
 // and the resolved binary path; no secrets travel through this surface.
 let cliChannel: vscode.OutputChannel | undefined;
 
-function logCliLaunch(line: string): void {
+export function logCli(line: string): void {
   if (!cliChannel) {
     cliChannel = vscode.window.createOutputChannel(TERMINAL_NAME);
   }
@@ -192,7 +192,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     // appeared to do nothing. Say so instead.
     const requested = launchOptions ?? readCliLaunchOptions();
     if (hasCliLaunchOptions(requested)) {
-      logCliLaunch(
+      logCli(
         `reused existing "${TERMINAL_NAME}" terminal — requested launch options were NOT applied ` +
         `(mcp=${requested.mcpName?.trim() || '<blank>'}, root=${requested.rootPath?.trim() || '<blank>'}). ` +
         'Close that terminal and reopen to apply them.',
@@ -201,7 +201,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
         'VibeFlow CLI is already open — close that terminal and click Open CLI again to apply MCP name / Root path.',
       );
     } else {
-      logCliLaunch(`reused existing "${TERMINAL_NAME}" terminal (no launch options requested).`);
+      logCli(`reused existing "${TERMINAL_NAME}" terminal (no launch options requested).`);
     }
     return;
   }
@@ -214,7 +214,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   // Front-run that failure with a modal explaining how to recover.
   const externalPid = getRunningCliPid();
   if (externalPid !== null) {
-    logCliLaunch(`blocked: an external vibeflow-cli holds the PID lock (pid ${externalPid}) — no command sent.`);
+    logCli(`blocked: an external vibeflow-cli holds the PID lock (pid ${externalPid}) — no command sent.`);
     const choice = await vscode.window.showWarningMessage(
       `VibeFlow CLI is already running externally (PID ${externalPid}).`,
       {
@@ -232,7 +232,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
 
   const binary = resolveBinary();
   if (!binary) {
-    logCliLaunch('vibeflow binary not found (cli.binaryPath override + PATH lookup both failed) — no command sent.');
+    logCli('vibeflow binary not found (cli.binaryPath override + PATH lookup both failed) — no command sent.');
     const choice = await vscode.window.showWarningMessage(
       'VibeFlow CLI is not installed or not on PATH.',
       'Install Latest',
@@ -259,7 +259,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     : undefined;
 
   const command = buildCliLaunchCommand(binary, launchOptions ?? readCliLaunchOptions());
-  logCliLaunch(`launching in editor terminal (cwd: ${cwd ?? '<none>'}): ${command}`);
+  logCli(`launching in editor terminal (cwd: ${cwd ?? '<none>'}): ${command}`);
 
   const terminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
