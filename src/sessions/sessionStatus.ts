@@ -22,8 +22,10 @@ export type SessionStatus = 'active' | 'stale' | 'inactive' | 'stalled' | 'ghost
  *   - tmux pane alive + backend inactive → 'stalled' — pane is up but the
  *     agent has stopped polling wait_for_work; the polling-contract violation
  *     where the user sees "running per CLI but not in fleet"
- *   - tmux pane dead + backend active   → 'ghost'  — backend snapshot is
- *     stale; rare race after a kill
+ *
+ * Absence from the local tmux probe is advisory, not authoritative: Agent Fleet
+ * shows all project sessions, including sessions launched outside this VS Code
+ * window. A missing local pane must not downgrade a fresh backend heartbeat.
  */
 export function deriveSessionStatus(
   s: VibeFlowSession,
@@ -41,13 +43,17 @@ export function deriveSessionStatus(
     return 'active';
   }
 
-  // Cross-check tmux pane liveness against the backend view.
+  // Cross-check local tmux presence against the backend view. Only the positive
+  // local signal is authoritative: a pane that exists while the backend is
+  // inactive is definitely stalled. A missing pane is ambiguous because the
+  // session may have been launched from another window, machine, or runtime.
   const tmuxAlive = liveTmuxSessions.has(buildTmuxName(s.agent_type ?? '', s.session_id));
 
   if (tmuxAlive && backendActive && !backendStale) { return 'active'; }
   if (tmuxAlive && backendActive && backendStale)  { return 'stale'; }
   if (tmuxAlive && !backendActive)                  { return 'stalled'; }
-  if (!tmuxAlive && backendActive)                  { return 'ghost'; }
+  if (backendActive && backendStale)                { return 'stale'; }
+  if (backendActive)                                { return 'active'; }
   return 'inactive';
 }
 
