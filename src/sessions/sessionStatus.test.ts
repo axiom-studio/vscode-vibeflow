@@ -31,7 +31,7 @@ describe('deriveSessionStatus', () => {
     expect(deriveSessionStatus(session({ active: false }))).toBe('inactive');
   });
 
-  it('with a tmux probe: cross-checks pane liveness against the backend', () => {
+  it('with a tmux probe: preserves backend-active liveness and detects local stalls', () => {
     const s = session({ agent_type: 'claude', session_id: 'abc' });
     const alive = new Set([buildTmuxName('claude', 'abc')]);
     const dead = new Set<string>();
@@ -39,7 +39,8 @@ describe('deriveSessionStatus', () => {
     expect(deriveSessionStatus({ ...s, active: true, stale: false }, alive)).toBe('active');
     expect(deriveSessionStatus({ ...s, active: true, stale: true }, alive)).toBe('stale');
     expect(deriveSessionStatus({ ...s, active: false }, alive)).toBe('stalled'); // pane up, backend gone
-    expect(deriveSessionStatus({ ...s, active: true }, dead)).toBe('ghost');      // pane dead, backend up
+    expect(deriveSessionStatus({ ...s, active: true, stale: false }, dead)).toBe('active');
+    expect(deriveSessionStatus({ ...s, active: true, stale: true }, dead)).toBe('stale');
     expect(deriveSessionStatus({ ...s, active: false }, dead)).toBe('inactive');  // both dead
   });
 });
