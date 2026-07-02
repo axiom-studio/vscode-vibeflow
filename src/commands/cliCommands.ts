@@ -6,6 +6,21 @@ import * as path from 'path';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
 
+// Lazily-created output channel mirroring every openCli outcome — most
+// importantly the exact command line sent to the terminal — so "why didn't
+// my --mcp/--root apply?" is answerable from Output → VibeFlow CLI without
+// attaching a debugger (#3342). Values logged are user-entered names/paths
+// and the resolved binary path; no secrets travel through this surface.
+let cliChannel: vscode.OutputChannel | undefined;
+
+function logCliLaunch(line: string): void {
+  if (!cliChannel) {
+    cliChannel = vscode.window.createOutputChannel(TERMINAL_NAME);
+  }
+  cliChannel.appendLine(`[${new Date().toISOString()}] ${line}`);
+  console.log(`[${TERMINAL_NAME}] ${line}`);
+}
+
 /**
  * Read the CLI's PID lock file and return the live PID, or null if no
  * vibeflow-cli instance is running. Mirrors the Go-side helpers in
@@ -130,6 +145,11 @@ function readCliLaunchOptions(): CliLaunchOptions {
   };
 }
 
+/** True when either optional launch flag would actually be emitted. */
+export function hasCliLaunchOptions(options?: CliLaunchOptions): boolean {
+  return Boolean(options?.mcpName?.trim() || options?.rootPath?.trim());
+}
+
 export function buildCliLaunchCommand(
   binary: string,
   options: CliLaunchOptions = {},
@@ -166,6 +186,23 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
   if (existing) {
     existing.show(false); // take focus
+    // The TUI enforces one instance via its own PID lock, so we cannot
+    // re-launch with fresh flags while the old terminal lives. Reusing it
+    // SILENTLY was the #3342 symptom: freshly entered MCP name / Root path
+    // appeared to do nothing. Say so instead.
+    const requested = launchOptions ?? readCliLaunchOptions();
+    if (hasCliLaunchOptions(requested)) {
+      logCliLaunch(
+        `reused existing "${TERMINAL_NAME}" terminal — requested launch options were NOT applied ` +
+        `(mcp=${requested.mcpName?.trim() || '<blank>'}, root=${requested.rootPath?.trim() || '<blank>'}). ` +
+        'Close that terminal and reopen to apply them.',
+      );
+      vscode.window.showWarningMessage(
+        'VibeFlow CLI is already open — close that terminal and click Open CLI again to apply MCP name / Root path.',
+      );
+    } else {
+      logCliLaunch(`reused existing "${TERMINAL_NAME}" terminal (no launch options requested).`);
+    }
     return;
   }
 
@@ -177,6 +214,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   // Front-run that failure with a modal explaining how to recover.
   const externalPid = getRunningCliPid();
   if (externalPid !== null) {
+    logCliLaunch(`blocked: an external vibeflow-cli holds the PID lock (pid ${externalPid}) — no command sent.`);
     const choice = await vscode.window.showWarningMessage(
       `VibeFlow CLI is already running externally (PID ${externalPid}).`,
       {
@@ -194,6 +232,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
 
   const binary = resolveBinary();
   if (!binary) {
+    logCliLaunch('vibeflow binary not found (cli.binaryPath override + PATH lookup both failed) — no command sent.');
     const choice = await vscode.window.showWarningMessage(
       'VibeFlow CLI is not installed or not on PATH.',
       'Install Latest',
@@ -219,6 +258,9 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     ? workspaceRoot
     : undefined;
 
+  const command = buildCliLaunchCommand(binary, launchOptions ?? readCliLaunchOptions());
+  logCliLaunch(`launching in editor terminal (cwd: ${cwd ?? '<none>'}): ${command}`);
+
   const terminal = vscode.window.createTerminal({
     name: TERMINAL_NAME,
     location: vscode.TerminalLocation.Editor,
@@ -226,7 +268,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     iconPath: new vscode.ThemeIcon('terminal'),
   });
   terminal.show(false);
-  terminal.sendText(buildCliLaunchCommand(binary, launchOptions ?? readCliLaunchOptions()), true);
+  terminal.sendText(command, true);
 }
 
 function shellQuote(arg: string, platform: NodeJS.Platform): string {

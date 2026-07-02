@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCliLaunchCommand, parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchCommand, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
 
 describe('parseCliVersion', () => {
   it('extracts the version from the first line of `vibeflow version`', () => {
@@ -41,5 +41,27 @@ describe('buildCliLaunchCommand', () => {
       mcpName: 'team;rm',
       rootPath: "/Users/rp/O'Hara Project",
     }, 'darwin')).toBe("'/Users/Foo Bar/bin/vibeflow' --mcp 'team;rm' --root '/Users/rp/O'\\''Hara Project'");
+  });
+});
+
+describe('hasCliLaunchOptions', () => {
+  it('is false for undefined, empty, and whitespace-only options', () => {
+    expect(hasCliLaunchOptions(undefined)).toBe(false);
+    expect(hasCliLaunchOptions({})).toBe(false);
+    expect(hasCliLaunchOptions({ mcpName: '', rootPath: '' })).toBe(false);
+    expect(hasCliLaunchOptions({ mcpName: '  ', rootPath: '\t' })).toBe(false);
+  });
+
+  it('is true when either flag would be emitted', () => {
+    expect(hasCliLaunchOptions({ mcpName: 'team-mcp' })).toBe(true);
+    expect(hasCliLaunchOptions({ rootPath: '/Users/rp/project' })).toBe(true);
+    expect(hasCliLaunchOptions({ mcpName: ' ', rootPath: '/x' })).toBe(true);
+  });
+
+  it('agrees with buildCliLaunchCommand about when flags appear', () => {
+    const none = { mcpName: ' ', rootPath: '' };
+    const some = { mcpName: 'team-mcp', rootPath: '' };
+    expect(hasCliLaunchOptions(none)).toBe(buildCliLaunchCommand('vibeflow', none, 'darwin') !== 'vibeflow');
+    expect(hasCliLaunchOptions(some)).toBe(buildCliLaunchCommand('vibeflow', some, 'darwin') !== 'vibeflow');
   });
 });
