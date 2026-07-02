@@ -887,7 +887,7 @@
     "test:webview": "yarn --cwd webview-ui test",
     "test:integration:compile": "tsc -p tsconfig.test-integration.json",
     "test:integration": "yarn test:integration:compile && node out/test/test/integration/runTest.js",
-    "check": "yarn typecheck && yarn lint && yarn test && yarn check:security-guards"
+    "check": "yarn typecheck && yarn lint && yarn test && yarn test:webview && yarn check:security-guards"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
