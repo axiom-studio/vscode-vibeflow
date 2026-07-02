@@ -51,6 +51,8 @@ export interface SettingsData {
   // CLI Interface
   cliEnabled: boolean;
   cliBinaryPath: string;
+  cliMcpName: string;
+  cliRootPath: string;
   /** Whether the `vibeflow` binary was found on PATH (or at cliBinaryPath
    *  if set). Computed host-side so the tab can render install guidance
    *  inline without round-tripping a child_process call. */

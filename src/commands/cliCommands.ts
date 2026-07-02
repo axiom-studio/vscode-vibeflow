@@ -117,6 +117,36 @@ export function parseCliVersion(versionOutput: string): string | undefined {
   return m ? m[1] : undefined;
 }
 
+export interface CliLaunchOptions {
+  mcpName?: string;
+  rootPath?: string;
+}
+
+function readCliLaunchOptions(): CliLaunchOptions {
+  const config = vscode.workspace.getConfiguration('vibeflow');
+  return {
+    mcpName: config.get<string>('cli.mcpName', '').trim(),
+    rootPath: config.get<string>('cli.rootPath', '').trim(),
+  };
+}
+
+export function buildCliLaunchCommand(
+  binary: string,
+  options: CliLaunchOptions = {},
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const args = [binary];
+  const mcpName = options.mcpName?.trim();
+  const rootPath = options.rootPath?.trim();
+  if (mcpName) {
+    args.push('--mcp', mcpName);
+  }
+  if (rootPath) {
+    args.push('--root', rootPath);
+  }
+  return args.map(arg => shellQuote(arg, platform)).join(' ');
+}
+
 /**
  * Open the VibeFlow CLI (TUI) in a fullscreen editor-area terminal.
  *
@@ -196,17 +226,18 @@ export async function openCli(workspaceRoot: string | undefined): Promise<void> 
     iconPath: new vscode.ThemeIcon('terminal'),
   });
   terminal.show(false);
-  // Quote the path in case the user installed under a directory with
-  // spaces (e.g. `/Users/Foo Bar/bin/vibeflow`).
-  terminal.sendText(quoteIfNeeded(binary), true);
+  terminal.sendText(buildCliLaunchCommand(binary, readCliLaunchOptions()), true);
 }
 
-function quoteIfNeeded(p: string): string {
-  if (!p) { return p; }
-  if (/\s/.test(p) && !p.startsWith('"') && !p.startsWith("'")) {
-    return process.platform === 'win32' ? `"${p}"` : `'${p.replace(/'/g, "'\\''")}'`;
+function shellQuote(arg: string, platform: NodeJS.Platform): string {
+  if (!arg) { return "''"; }
+  if (/^[A-Za-z0-9_@%+=:,./~-]+$/.test(arg)) {
+    return arg;
   }
-  return p;
+  if (platform === 'win32') {
+    return `"${arg.replace(/(["^&|<>%])/g, '^$1')}"`;
+  }
+  return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
 // Helper for callers that want to detect-and-warn early (e.g. when the

@@ -140,7 +140,7 @@ export class SettingsPanel {
             'notifications.agentPrompts', 'notifications.workItemComplete',
             'session.terminalMode', 'session.headlessBacking',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
-            'cli.enabled', 'cli.binaryPath',
+            'cli.enabled', 'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
             'chat.diffView',
           ];
 
@@ -424,6 +424,8 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // can render install guidance without an extra round-trip.
     cliEnabled: config.get('cli.enabled', false),
     cliBinaryPath: config.get('cli.binaryPath', ''),
+    cliMcpName: config.get('cli.mcpName', ''),
+    cliRootPath: config.get('cli.rootPath', ''),
     cliInstalled: isVibeflowInstalled(),
     cliVersion: getCliVersion() ?? null,
     cliBinaryPathStale: staleCliBinaryPath() ?? null,
