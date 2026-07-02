@@ -22,7 +22,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { openCli, getCliVersion } from './commands/cliCommands.js';
+import { openCli, getCliVersion, type CliLaunchOptions } from './commands/cliCommands.js';
 import { installCli, fetchLatestCliTag } from './commands/cliInstaller.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import {
@@ -839,9 +839,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       disconnect();
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
-    vscode.commands.registerCommand('vibeflow.openCli', async () => {
+    vscode.commands.registerCommand('vibeflow.openCli', async (launchOptions?: CliLaunchOptions) => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      await runLaunchGuarded('Open CLI', () => openCli(root), msg => vscode.window.showErrorMessage(msg));
+      await runLaunchGuarded('Open CLI', () => openCli(root, launchOptions), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
       try {

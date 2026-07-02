@@ -333,9 +333,18 @@ export class SettingsPanel {
           break;
         case 'openCli': {
           const config = vscode.workspace.getConfiguration('vibeflow');
-          await config.update('cli.mcpName', msg.payload.mcpName, vscode.ConfigurationTarget.Global);
-          await config.update('cli.rootPath', msg.payload.rootPath, vscode.ConfigurationTarget.Global);
-          await vscode.commands.executeCommand('vibeflow.openCli');
+          const launchOptions = {
+            mcpName: msg.payload.mcpName,
+            rootPath: msg.payload.rootPath,
+          };
+          try {
+            await config.update('cli.mcpName', launchOptions.mcpName, vscode.ConfigurationTarget.Global);
+            await config.update('cli.rootPath', launchOptions.rootPath, vscode.ConfigurationTarget.Global);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            vscode.window.showWarningMessage(`VibeFlow: Open CLI settings were not saved — ${errMsg}`);
+          }
+          await vscode.commands.executeCommand('vibeflow.openCli', launchOptions);
           await pushSettings();
           break;
         }
