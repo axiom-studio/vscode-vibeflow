@@ -29,17 +29,32 @@ export type UIWebSocketConnector = (
   handlers: UIWebSocketHandlers,
 ) => UIWebSocketConnection;
 
+export interface WorkingObserverLogger {
+  debug(message: string): void;
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+}
+
 interface SessionWorkingObserverOptions {
   connector?: UIWebSocketConnector;
+  logger?: WorkingObserverLogger;
   now?: () => number;
   reconnectBackoffMs?: number[];
 }
 
 const DEFAULT_RECONNECT_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000];
+const NOOP_LOGGER: WorkingObserverLogger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
 
 export class SessionWorkingObserver implements Disposer {
   private readonly state = new SessionWorkingState();
   private readonly connector: UIWebSocketConnector;
+  private readonly logger: WorkingObserverLogger;
   private readonly now: () => number;
   private readonly reconnectBackoffMs: number[];
   private ws: UIWebSocketConnection | undefined;
@@ -60,6 +75,7 @@ export class SessionWorkingObserver implements Disposer {
     options: SessionWorkingObserverOptions = {},
   ) {
     this.connector = options.connector ?? connectBearerUIWebSocket;
+    this.logger = options.logger ?? NOOP_LOGGER;
     this.now = options.now ?? Date.now;
     this.reconnectBackoffMs = options.reconnectBackoffMs ?? DEFAULT_RECONNECT_BACKOFF_MS;
   }
@@ -98,6 +114,7 @@ export class SessionWorkingObserver implements Disposer {
 
     const token = this.client.getToken();
     if (!token) {
+      this.logger.warn('Working indicator: WebSocket unavailable: missing API key; using REST fallback');
       this.switchToPolling('WebSocket unavailable: missing API key');
       return;
     }
@@ -106,11 +123,14 @@ export class SessionWorkingObserver implements Disposer {
     try {
       wsUrl = buildUIWebSocketUrl(this.client.getValidatedBaseUrl());
     } catch (err) {
-      this.switchToPolling(`WebSocket unavailable: ${errorMessage(err)}`);
+      const reason = `WebSocket unavailable: ${errorMessage(err)}`;
+      this.logger.warn(`Working indicator: ${safeReason(reason)}; using REST fallback`);
+      this.switchToPolling(reason);
       return;
     }
 
     try {
+      this.logger.info(`Working indicator: connecting to ${formatWebSocketUrlForLog(wsUrl)}`);
       this.ws?.dispose();
       this.ws = this.connector(wsUrl, token, {
         onOpen: () => this.onWebSocketOpen(),
@@ -132,6 +152,7 @@ export class SessionWorkingObserver implements Disposer {
     this.source = 'websocket';
     this.connection = 'connected';
     this.detail = 'Live /ws/ui events';
+    this.logger.info('Working indicator: connected to /ws/ui; using WebSocket events');
     this.emitCurrent();
   }
 
@@ -141,9 +162,12 @@ export class SessionWorkingObserver implements Disposer {
     try {
       envelope = JSON.parse(message);
     } catch {
+      this.logger.warn('Working indicator: received non-JSON /ws/ui message');
       return;
     }
-    if (this.state.applyEnvelope(envelope, this.projectId, this.now())) {
+    const applied = this.state.applyEnvelope(envelope, this.projectId, this.now());
+    this.logger.debug(`Working indicator: /ws/ui event received ${summarizeWebSocketEnvelope(envelope)} ${applied ? 'applied' : 'ignored'}`);
+    if (applied) {
       this.source = 'websocket';
       this.connection = 'connected';
       this.detail = 'Live /ws/ui events';
@@ -155,6 +179,7 @@ export class SessionWorkingObserver implements Disposer {
     if (this.stopped) { return; }
     this.ws?.dispose();
     this.ws = undefined;
+    this.logger.warn(`Working indicator: ${safeReason(reason)}; using REST fallback`);
     this.switchToPolling(`WebSocket fallback: ${safeReason(reason)}`);
     this.scheduleReconnect();
   }
@@ -165,6 +190,7 @@ export class SessionWorkingObserver implements Disposer {
     this.connection = 'fallback';
     this.detail = detail;
     if (!this.pollSub) {
+      this.logger.info(`Working indicator: using REST fallback (${safeReason(detail)})`);
       this.pollSub = this.coordinator.subscribe(liveIntervalMs(), () => {
         void this.pollFallback();
       }, 'working-indicator');
@@ -178,6 +204,7 @@ export class SessionWorkingObserver implements Disposer {
     const index = Math.min(this.reconnectAttempt, this.reconnectBackoffMs.length - 1);
     const delay = this.reconnectBackoffMs[index] ?? DEFAULT_RECONNECT_BACKOFF_MS[0];
     this.reconnectAttempt++;
+    this.logger.debug(`Working indicator: reconnecting to /ws/ui in ${delay}ms`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
       this.openWebSocket();
@@ -220,7 +247,8 @@ export class SessionWorkingObserver implements Disposer {
 
       this.state.markProjectIdleExcept(this.projectId, activeSessionIds, nowMs);
       this.emitCurrent();
-    } catch {
+    } catch (err) {
+      this.logger.warn(`Working indicator: REST fallback poll failed: ${safeReason(errorMessage(err))}`);
       // Keep the last known indicator state during transient fallback failures.
     }
   }
@@ -513,4 +541,57 @@ function errorMessage(err: unknown): string {
 
 function safeReason(reason: string): string {
   return reason.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]').slice(0, 180);
+}
+
+function formatWebSocketUrlForLog(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.username = '';
+    parsed.password = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '[invalid websocket url]';
+  }
+}
+
+function summarizeWebSocketEnvelope(envelope: unknown): string {
+  if (!isRecord(envelope)) {
+    return 'type=non_object';
+  }
+  const type = typeof envelope.type === 'string' && envelope.type.trim()
+    ? envelope.type.trim()
+    : 'unknown';
+  const data = isRecord(envelope.data) ? envelope.data : {};
+  const parts = [`type=${type}`];
+  const projectId = logScalar(data.project_id);
+  const sessionId = logScalar(data.session_id);
+  const summary = firstString(data.summary, data.current_action, data.message, data.content, data.message_type);
+  if (projectId) { parts.push(`project=${projectId}`); }
+  if (sessionId) { parts.push(`session=${sessionId}`); }
+  if (summary) { parts.push(`summary="${truncateForLog(safeReason(summary), 180)}"`); }
+  return parts.join(' ');
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((v): v is string => typeof v === 'string' && v.trim().length > 0)?.trim();
+}
+
+function logScalar(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) {
+    return truncateForLog(safeReason(value.trim()), 80);
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return undefined;
+}
+
+function truncateForLog(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 3)}...`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
