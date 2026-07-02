@@ -27,6 +27,7 @@ import {
 } from './launchWizard/providers.js';
 import { formatProjectStatusTag } from './launchWizard/projectStatus.js';
 import { ensureMcpConfig } from './launchWizard/mcpConfig.js';
+import { confirmAndCloseTabsForProjectSwitch } from './projectCommands.js';
 
 // Re-export the helpers covered by the P5-A test cohort so existing
 // callers (and `sessionCommands.test.ts`) keep working unchanged.
@@ -194,6 +195,7 @@ export async function launchSession(
     gitBranch: currentBranch,
   };
   if (cached?.projectId !== project.projectId) {
+    await confirmAndCloseTabsForProjectSwitch(cached, project.projectId);
     await detector.cacheProject(project);
     // Fire the host's connect callback so Work Items / Documents /
     // Sessions providers, status bars, and the activity poller all
