@@ -86,6 +86,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   context.subscriptions.push(pollingCoordinator);
 
+  const workingIndicatorChannel = vscode.window.createOutputChannel('VibeFlow Working Indicator', { log: true });
+  context.subscriptions.push(workingIndicatorChannel);
+
   // --- Status bar (created early so it reflects state immediately) ---
   const sessionStatusBar = createSessionStatusBar(authService, promptNotifier) as StatusBarItemWithUpdate;
   const workSummaryStatusBar = createWorkSummaryStatusBar() as WorkSummaryBarItem;
@@ -391,6 +394,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       project.projectId,
       pollingCoordinator,
       update => workingStatusBar.updateWorking(update),
+      {
+        logger: {
+          debug: msg => workingIndicatorChannel.debug(msg),
+          info: msg => workingIndicatorChannel.info(msg),
+          warn: msg => workingIndicatorChannel.warn(msg),
+          error: msg => workingIndicatorChannel.error(msg),
+        },
+      },
     );
     workingObserver.start();
 
