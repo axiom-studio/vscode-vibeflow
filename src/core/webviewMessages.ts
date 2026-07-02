@@ -420,6 +420,16 @@ export interface TicketsDataPayload {
   total: number;
 }
 
+export type TicketsSortBy = 'updated_at' | 'title' | 'status' | 'priority' | 'feature_name' | 'user_email' | 'target_branch';
+
+export interface TicketsQuery {
+  search?: string;
+  status?: string;
+  sortBy?: TicketsSortBy;
+  sortOrder?: 'asc' | 'desc';
+  featureId?: number;
+}
+
 export type TicketsHostMessage =
   | { type: 'ticketsData'; payload: TicketsDataPayload }
   // Append the next page of rows onto the existing table (load-more).
@@ -427,7 +437,7 @@ export type TicketsHostMessage =
   | { type: 'ticketsError'; payload: { message: string } };
 
 export type TicketsClientMessage =
-  | { type: 'ticketsLoad' }
+  | { type: 'ticketsLoad'; payload?: TicketsQuery }
   | { type: 'ticketsLoadMore' }
   | { type: 'ticketsRefresh' }
   | { type: 'ticketsOpenItem'; payload: { itemType: 'todo' | 'issue' | 'feature'; itemId: number; title: string } }

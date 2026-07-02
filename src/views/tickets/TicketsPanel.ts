@@ -10,6 +10,7 @@ import {
   type TicketsClientMessage,
   type TicketsHostMessage,
   type TicketsMode,
+  type TicketsQuery,
   type TicketRow,
 } from '../../core/webviewMessages.js';
 
@@ -43,6 +44,7 @@ export class TicketsPanel {
   private readonly personaMap = new Map<string, string>();
   /** Distinct features for the row filter dropdown, cached on reset. */
   private cachedFeatures: { id: number; name: string }[] = [];
+  private query: TicketsQuery = { sortBy: 'updated_at', sortOrder: 'desc' };
 
   private constructor(
     panel: vscode.WebviewPanel,
@@ -100,6 +102,7 @@ export class TicketsPanel {
   private async handleMessage(msg: TicketsClientMessage): Promise<void> {
     switch (msg.type) {
       case 'ticketsLoad':
+        this.query = normalizeQuery(msg.payload);
         await this.loadReset();
         this.startPolling();
         return;
@@ -220,22 +223,29 @@ export class TicketsPanel {
       case 'features': {
         if (!reset) { return { rows: [], hasMore: false, total: 0 }; }
         const features = await this.client.listFeatures(this.projectId);
+        const rows = features
+          .map(f => ({ type: 'feature' as const, id: f.id, title: f.name, status: f.status ?? '' }))
+          .filter(row => matchesFeatureQuery(row, this.query));
         return {
-          rows: features.map(f => ({ type: 'feature' as const, id: f.id, title: f.name, status: f.status ?? '' })),
+          rows,
           hasMore: false,
-          total: features.length,
+          total: rows.length,
         };
       }
       case 'todos': {
         const page = reset ? 1 : this.cursor.todosPage + 1;
         this.cursor.todosPage = page;
-        const { items, totalCount, totalPages } = await this.client.listTodosPage(this.projectId, { page, limit: TicketsPanel.PAGE_SIZE });
+        const { items, totalCount, totalPages } = await this.client.listTodosPage(this.projectId, {
+          page, limit: TicketsPanel.PAGE_SIZE, ...this.query,
+        });
         return { rows: items.map(t => this.toTodoRow(t)), hasMore: page < totalPages, total: totalCount };
       }
       case 'issues': {
         const page = reset ? 1 : this.cursor.issuesPage + 1;
         this.cursor.issuesPage = page;
-        const { items, totalCount, totalPages } = await this.client.listIssuesPage(this.projectId, { page, limit: TicketsPanel.PAGE_SIZE });
+        const { items, totalCount, totalPages } = await this.client.listIssuesPage(this.projectId, {
+          page, limit: TicketsPanel.PAGE_SIZE, ...this.query,
+        });
         return { rows: items.map(i => this.toIssueRow(i)), hasMore: page < totalPages, total: totalCount };
       }
       case 'backlog':
@@ -250,6 +260,9 @@ export class TicketsPanel {
         // list just yields an empty page, so we always advance both cursors.
         const { todos, issues } = await this.client.listReviewQueue(kind, this.projectId, {
           todosPage, issuesPage, pageSize: TicketsPanel.PAGE_SIZE,
+          search: this.query.search,
+          sortBy: this.query.sortBy,
+          sortOrder: this.query.sortOrder,
         });
         return {
           rows: [...todos.items.map(t => this.toTodoRow(t)), ...issues.items.map(i => this.toIssueRow(i))],
@@ -307,6 +320,24 @@ export class TicketsPanel {
       TicketsPanel.instances.delete(this.mode);
     }
   }
+}
+
+function normalizeQuery(query?: TicketsQuery): TicketsQuery {
+  const search = query?.search?.trim();
+  return {
+    search: search || undefined,
+    status: query?.status || undefined,
+    sortBy: query?.sortBy ?? 'updated_at',
+    sortOrder: query?.sortOrder ?? 'desc',
+    featureId: query?.featureId,
+  };
+}
+
+function matchesFeatureQuery(row: TicketRow, query: TicketsQuery): boolean {
+  if (query.status && row.status !== query.status) { return false; }
+  const q = query.search?.toLowerCase();
+  if (!q) { return true; }
+  return row.title.toLowerCase().includes(q) || String(row.id).includes(q);
 }
 
 function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri, mode: TicketsMode): string {
