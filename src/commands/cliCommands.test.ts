@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchCommand, parseCliVersion } from './cliCommands.js';
 
 describe('parseCliVersion', () => {
   it('extracts the version from the first line of `vibeflow version`', () => {
@@ -18,5 +18,28 @@ describe('parseCliVersion', () => {
   it('returns undefined for unrecognized or empty output', () => {
     expect(parseCliVersion('command not found')).toBeUndefined();
     expect(parseCliVersion('')).toBeUndefined();
+  });
+});
+
+describe('buildCliLaunchCommand', () => {
+  it('omits optional flags when settings are blank', () => {
+    expect(buildCliLaunchCommand('/usr/local/bin/vibeflow', {
+      mcpName: ' ',
+      rootPath: '',
+    }, 'darwin')).toBe('/usr/local/bin/vibeflow');
+  });
+
+  it('passes provided MCP name and root path as separate flags', () => {
+    expect(buildCliLaunchCommand('/usr/local/bin/vibeflow', {
+      mcpName: 'team-mcp',
+      rootPath: '/Users/rp/project',
+    }, 'darwin')).toBe('/usr/local/bin/vibeflow --mcp team-mcp --root /Users/rp/project');
+  });
+
+  it('quotes values that would be unsafe in a shell command', () => {
+    expect(buildCliLaunchCommand('/Users/Foo Bar/bin/vibeflow', {
+      mcpName: 'team;rm',
+      rootPath: "/Users/rp/O'Hara Project",
+    }, 'darwin')).toBe("'/Users/Foo Bar/bin/vibeflow' --mcp 'team;rm' --root '/Users/rp/O'\\''Hara Project'");
   });
 });

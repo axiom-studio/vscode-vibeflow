@@ -38,6 +38,8 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'notifications.workItemComplete': 'notifyWorkComplete',
   'cli.enabled': 'cliEnabled',
   'cli.binaryPath': 'cliBinaryPath',
+  'cli.mcpName': 'cliMcpName',
+  'cli.rootPath': 'cliRootPath',
   'worktree.baseDir': 'worktreeBaseDir',
   'worktree.autoCreate': 'worktreeAutoCreate',
   'worktree.cleanupOnKill': 'worktreeCleanupOnKill',

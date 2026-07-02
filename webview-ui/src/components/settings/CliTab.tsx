@@ -96,6 +96,23 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         title="Open VibeFlow CLI"
         description="Launches the TUI in a fullscreen editor-area terminal. Re-running focuses the existing terminal (one TUI process at a time — the CLI's own PID lock enforces this)."
       >
+        <Field label="MCP name">
+          <BufferedTextInput
+            initial={data.cliMcpName}
+            placeholder="default"
+            onCommit={(v) => onUpdate('cli.mcpName', v)}
+          />
+        </Field>
+        <Field label="Root path">
+          <BufferedTextInput
+            initial={data.cliRootPath}
+            placeholder="/path/to/root"
+            onCommit={(v) => onUpdate('cli.rootPath', v)}
+          />
+        </Field>
+        <div style={{ marginTop: 6, marginBottom: 12, fontSize: 10.5, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
+          Blank fields are omitted. Provided values are passed as <code>--mcp</code> and <code>--root</code>.
+        </div>
         <ButtonRow>
           <Btn
             label="Open CLI"
@@ -138,6 +155,20 @@ function BinaryPathInput({ initial, onCommit }: {
   initial: string;
   onCommit: (value: string) => void;
 }) {
+  return (
+    <BufferedTextInput
+      initial={initial}
+      placeholder="/usr/local/bin/vibeflow"
+      onCommit={onCommit}
+    />
+  );
+}
+
+function BufferedTextInput({ initial, placeholder, onCommit }: {
+  initial: string;
+  placeholder: string;
+  onCommit: (value: string) => void;
+}) {
   const [value, setValue] = useState(initial);
   const [focused, setFocused] = useState(false);
 
@@ -153,7 +184,7 @@ function BinaryPathInput({ initial, onCommit }: {
   return (
     <input
       type="text"
-      placeholder="/usr/local/bin/vibeflow"
+      placeholder={placeholder}
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onFocus={() => setFocused(true)}
@@ -168,6 +199,15 @@ function BinaryPathInput({ initial, onCommit }: {
 }
 
 // ===== Local primitives, kept private to this tab to match other tabs' style =====
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--feed-muted)' }}>{label}</span>
+      {children}
+    </label>
+  );
+}
 
 function Card({ title, description, children }: {
   title: string;

@@ -764,6 +764,16 @@
           "default": "",
           "description": "Optional absolute path to the vibeflow CLI binary. Leave empty to use PATH lookup."
         },
+        "vibeflow.cli.mcpName": {
+          "type": "string",
+          "default": "",
+          "description": "Optional MCP name passed to the VibeFlow CLI as --mcp when opening the CLI."
+        },
+        "vibeflow.cli.rootPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional root path passed to the VibeFlow CLI as --root when opening the CLI."
+        },
         "vibeflow.session.reattachMode": {
           "type": "string",
           "enum": [
