@@ -139,17 +139,28 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
       className={`msg-row ${isUser ? 'msg-user' : 'msg-agent'}${groupStart ? ' msg-group-start' : ''}`}
       style={rowStyle}
     >
+      {/* Side avatar rail (#2772, web-chat parity): the persona portrait sits
+          beside agent bubbles (left) and a "U" badge beside user bubbles
+          (right — .msg-user reverses the row). Avatar only on the group's
+          first row; grouped follow-ups keep an invisible spacer so bubbles
+          stay aligned. Replaces the old 20px header avatar. */}
+      {groupStart ? (
+        isUser ? (
+          <div className="msg-side-avatar msg-side-avatar-user" aria-hidden="true">U</div>
+        ) : (
+          <PersonaAvatar
+            className="msg-side-avatar"
+            src={personaAvatarUrl}
+            fallbackGlyph={personaName.trim().charAt(0).toUpperCase() || 'A'}
+            fallbackColor={personaColor}
+          />
+        )
+      ) : (
+        <div className="msg-side-avatar-spacer" aria-hidden="true" />
+      )}
       <div className="msg-body">
         {(groupStart || msg.status === 'pending' || msg.status === 'expired') && (
           <div className="msg-header">
-            {!isUser && (
-              <PersonaAvatar
-                className="msg-header-avatar"
-                src={personaAvatarUrl}
-                fallbackGlyph={personaName.trim().charAt(0).toUpperCase() || 'A'}
-                fallbackColor={personaColor}
-              />
-            )}
             <span
               className="msg-author"
               style={!isUser ? { color: personaColor } : undefined}

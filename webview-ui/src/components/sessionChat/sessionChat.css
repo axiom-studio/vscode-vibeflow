@@ -364,7 +364,42 @@
 .msg-row {
   position: relative;
   padding: 2px 0 2px var(--vf-sp-4);
+  /* Side avatar rail (#2772): avatar | body for agent rows; .msg-user
+   * reverses the row so the "U" badge sits to the right of the bubble,
+   * matching the web chat. */
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vf-sp-3);
 }
+.msg-user { flex-direction: row-reverse; }
+
+/* Persona portrait beside agent bubbles (rounded square, like the web);
+ * the fallback branch renders a letter glyph in the persona color. */
+.msg-side-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  object-fit: cover;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-weight-semibold);
+  font-size: 13px;
+}
+
+/* The "you" badge — circular, themed off the button colors (same precedent
+ * as the #2346 user stripe) rather than the web's fixed purple. */
+.msg-side-avatar-user {
+  border-radius: 50%;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+/* Grouped follow-up rows keep the rail width so bubbles align. */
+.msg-side-avatar-spacer { flex: 0 0 32px; width: 32px; }
 
 /* Tight within a group; air + a hairline between groups. */
 .msg-row + .msg-row { margin-top: 3px; }
@@ -387,6 +422,7 @@
 
 .msg-body {
   min-width: 0;
+  flex: 1; /* fill the row beside the avatar rail (#2772) */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -403,12 +439,8 @@
 /* The "You" header sits on the right, mirroring the right-aligned bubble. */
 .msg-user .msg-header { justify-content: flex-end; }
 
-.msg-header-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--vf-r-pill);
-  flex: 0 0 auto;
-}
+/* The 20px in-header avatar was replaced by the .msg-side-avatar rail
+ * (#2772); .msg-header-avatar removed with its last consumer. */
 
 .msg-author {
   font-family: var(--vf-font-display);

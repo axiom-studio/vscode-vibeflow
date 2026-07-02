@@ -694,14 +694,14 @@ export function SessionChatView() {
                the memoized MessageBubble rows, so it adds no props to them and
                the #2702/#2703 memo guarantees hold. */
             <div className="msg-row msg-agent msg-group-start" style={{ '--msg-stripe-color': personaColor } as React.CSSProperties} aria-live="polite">
+              <PersonaAvatar
+                className="msg-side-avatar"
+                src={personaAvatar}
+                fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+                fallbackColor={personaColor}
+              />
               <div className="msg-body">
                 <div className="msg-header">
-                  <PersonaAvatar
-                    className="msg-header-avatar"
-                    src={personaAvatar}
-                    fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
-                    fallbackColor={personaColor}
-                  />
                   <span className="msg-author" style={{ color: personaColor }}>{meta.personaName}</span>
                   <WorkingIndicator startTime={sendWorkingSince} />
                 </div>
