@@ -13,8 +13,8 @@ import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import type { TicketsMode } from './core/webviewMessages.js';
 import {
-  createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar,
-  type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem,
+  createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar, createWorkingStatusBar,
+  type StatusBarItemWithUpdate, type WorkSummaryBarItem, type ProjectStatusBarItem, type WorkingStatusBarItem,
 } from './statusBar/sessionStatus.js';
 import { createBranchReviewStatusBar } from './statusBar/branchReview.js';
 import { ProjectDetector, type DetectedProject } from './project/ProjectDetector.js';
@@ -53,6 +53,7 @@ import { WorkItemPanelManager } from './views/workItems/WorkItemPanelManager.js'
 import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { FeedStateController } from './views/activity/feedStateController.js';
 import { ContextProxy } from './core/ContextProxy.js';
+import { SessionWorkingObserver } from './sessions/SessionWorkingObserver.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // --- Core services ---
@@ -88,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Status bar (created early so it reflects state immediately) ---
   const sessionStatusBar = createSessionStatusBar(authService, promptNotifier) as StatusBarItemWithUpdate;
   const workSummaryStatusBar = createWorkSummaryStatusBar() as WorkSummaryBarItem;
+  const workingStatusBar = createWorkingStatusBar() as WorkingStatusBarItem;
   const branchReviewStatusBar = createBranchReviewStatusBar(pollingCoordinator);
   // Project switcher (priority 99 = sits just right of sessionStatusBar at 100).
   // Hidden until connectToProject() fires; #1702.
@@ -328,6 +330,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Activity poller (started when connected) ---
   let activityPoller: ActivityPoller | undefined;
+  let workingObserver: SessionWorkingObserver | undefined;
 
   // =============================================
   // CONNECTION LIFECYCLE
@@ -379,6 +382,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
     activityPoller.start();
 
+    // Start the aggregate Working indicator. WebSocket is primary; the
+    // observer falls back to REST polling if the Upgrade path rejects bearer
+    // auth or the socket drops.
+    workingObserver?.stop();
+    workingObserver = new SessionWorkingObserver(
+      client,
+      project.projectId,
+      pollingCoordinator,
+      update => workingStatusBar.updateWorking(update),
+    );
+    workingObserver.start();
+
     // Update status bars
     sessionStatusBar.updateProject(project);
     projectStatusBar.updateProject(project);
@@ -419,9 +434,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   function disconnect() {
     activityPoller?.stop();
     activityPoller = undefined;
+    workingObserver?.stop();
+    workingObserver = undefined;
     sessionStatusBar.updateProject(undefined);
     projectStatusBar.updateProject(undefined);
     workSummaryStatusBar.setDisconnected();
+    workingStatusBar.setDisconnected();
     branchReviewStatusBar.stop();
     // Flip the activity feed to its unauthenticated empty state. Auth
     // state alone may still be 'authenticated' here (logout path fires
@@ -1347,9 +1365,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     documentsView,
     sessionStatusBar,
     workSummaryStatusBar,
+    workingStatusBar,
     projectStatusBar,
     branchReviewStatusBar,
     { dispose: () => activityPoller?.stop() },
+    { dispose: () => workingObserver?.stop() },
   );
 
   // --- @vibeflow Chat Participant ---
