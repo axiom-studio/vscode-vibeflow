@@ -126,10 +126,10 @@ describe('SessionChatView optimistic Working bubble on send (#2769)', () => {
     expect(screen.getAllByLabelText(/^Working for/)).toHaveLength(1);
 
     // The host echoes the created row (still pending) — the bubble persists
-    // (the pending row's own small header indicator joins it; they clear
-    // together when the reply lands).
+    // and stays the ONLY Working affordance: the user row's old header
+    // indicator was removed in #2770 as redundant duplication.
     sendHost('chatAppend', { messages: [pendingUserMsg(11, 'hello agent')] });
-    expect(screen.getAllByLabelText(/^Working for/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByLabelText(/^Working for/)).toHaveLength(1);
 
     // The agent's reply lands (row flips to responded with response_text) —
     // every Working affordance clears.
