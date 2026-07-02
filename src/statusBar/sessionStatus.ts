@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { AuthService, AuthState } from '../auth/AuthService.js';
 import type { PromptNotifier } from '../notifications/PromptNotifier.js';
 import type { DetectedProject } from '../project/ProjectDetector.js';
+import type { WorkingIndicatorUpdate } from '../sessions/workingIndicator.js';
 
 export interface ConnectionState {
   auth: AuthState;
@@ -149,6 +150,68 @@ export interface WorkSummaryBarItem extends vscode.StatusBarItem {
 }
 
 /**
+ * Right status bar item - shows aggregate agent Working state from /ws/ui.
+ */
+export function createWorkingStatusBar(): WorkingStatusBarItem {
+  const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 101) as WorkingStatusBarItem;
+  const originalDispose = item.dispose.bind(item);
+  let latest: WorkingIndicatorUpdate | undefined;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const stopTimer = () => {
+    if (timer) {
+      clearInterval(timer);
+      timer = undefined;
+    }
+  };
+
+  const render = () => {
+    const snapshot = latest?.snapshot;
+    if (!latest || !snapshot || snapshot.activeCount === 0 || snapshot.startedAtMs === undefined) {
+      item.hide();
+      stopTimer();
+      return;
+    }
+
+    const elapsed = formatElapsed(Date.now() - snapshot.startedAtMs);
+    item.text = snapshot.activeCount === 1
+      ? `$(sync~spin) Working ${elapsed}`
+      : `$(sync~spin) ${snapshot.activeCount} working · ${elapsed}`;
+    item.tooltip = buildWorkingTooltip(latest);
+    item.command = 'vibeflow.viewSessions';
+    item.show();
+
+    if (!timer) {
+      timer = setInterval(render, 1_000);
+    }
+  };
+
+  item.updateWorking = (update: WorkingIndicatorUpdate): void => {
+    latest = update;
+    render();
+  };
+
+  item.setDisconnected = (): void => {
+    latest = undefined;
+    item.hide();
+    stopTimer();
+  };
+
+  item.dispose = (): void => {
+    stopTimer();
+    originalDispose();
+  };
+
+  item.hide();
+  return item;
+}
+
+export interface WorkingStatusBarItem extends vscode.StatusBarItem {
+  updateWorking(update: WorkingIndicatorUpdate): void;
+  setDisconnected(): void;
+}
+
+/**
  * Left status bar item — shows the active project name. Click opens
  * the project picker Quick Pick (`vibeflow.pickProject`).
  *
@@ -184,4 +247,38 @@ export function createProjectStatusBar(): ProjectStatusBarItem {
 
 export interface ProjectStatusBarItem extends vscode.StatusBarItem {
   updateProject(project: DetectedProject | undefined): void;
+}
+
+function buildWorkingTooltip(update: WorkingIndicatorUpdate): string {
+  const source = update.source === 'websocket'
+    ? 'WebSocket /ws/ui'
+    : 'REST fallback polling';
+  const lines = [`VibeFlow - Working indicator (${source})`];
+  if (update.detail) {
+    lines.push(update.detail);
+  }
+  for (const session of update.snapshot.sessions.slice(0, 5)) {
+    const id = session.sessionId.length > 12 ? session.sessionId.slice(-12) : session.sessionId;
+    const label = session.workItemType && session.workItemId
+      ? `${session.workItemType} #${session.workItemId}`
+      : 'session';
+    lines.push(`${id}: ${label}${session.summary ? ` - ${session.summary}` : ''}`);
+  }
+  return lines.join('\n');
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1_000));
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours > 0) {
+    return `${hours}:${pad2(minutes)}:${pad2(seconds)}`;
+  }
+  return `${pad2(minutes)}:${pad2(seconds)}`;
+}
+
+function pad2(n: number): string {
+  return n.toString().padStart(2, '0');
 }
