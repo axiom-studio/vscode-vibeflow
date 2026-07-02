@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
-import { MessageBubble } from './sessionChat/MessageBubble';
+import { MessageBubble, WorkingIndicator } from './sessionChat/MessageBubble';
 import { SideRail } from './sessionChat/SideRail';
 import { PersonaAvatar } from './sessionChat/PersonaAvatar';
 import { MentionPicker } from './sessionChat/MentionPicker';
@@ -76,6 +76,15 @@ export function SessionChatView() {
     }
     return -1;
   }, [deferredMessages]);
+
+  // Optimistic standalone Working bubble (#2769, web-chat parity per asset
+  // #1437): set SYNCHRONOUSLY in send() — before any host/server round-trip —
+  // so the user gets instant "the agent is on it" feedback the moment they hit
+  // Enter. `sendAnchorIdRef` snapshots the newest message id at send time;
+  // the effect below clears the bubble once any NEWER row shows the agent
+  // replied. Id-anchoring (not timestamps) avoids webview↔server clock skew.
+  const [sendWorkingSince, setSendWorkingSince] = useState<string | undefined>(undefined);
+  const sendAnchorIdRef = useRef(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -427,7 +436,28 @@ export function SessionChatView() {
     if (!text) { return; }
     vscode.postMessage({ type: 'chatSend', payload: { text } });
     setDraft('');
+    // Instant feedback (#2769): the Working bubble must not wait for the
+    // createPrompt round-trip, let alone the next poll tick.
+    sendAnchorIdRef.current = messages.length > 0 ? messages[messages.length - 1].id : 0;
+    setSendWorkingSince(new Date().toISOString());
+    queueScrollToBottom(true);
   }
+
+  // Clear the optimistic Working bubble once the agent's reply lands (#2769).
+  // Every reply transport — 5s poll, pending-row re-fetch, chat-first stream —
+  // materializes in `messages`, so one messages-driven rule covers them all:
+  // any row newer than the send anchor that is agent-authored, carries a
+  // response, or has left `pending` means the agent came back. A send failure
+  // surfaces via `error` and clears it too (nothing is working then).
+  useEffect(() => {
+    if (!sendWorkingSince) { return; }
+    if (error) { setSendWorkingSince(undefined); return; }
+    const anchor = sendAnchorIdRef.current;
+    const replied = messages.some(m =>
+      m.id > anchor && (m.source === 'agent' || m.status !== 'pending' || Boolean(m.response_text)),
+    );
+    if (replied) { setSendWorkingSince(undefined); }
+  }, [messages, error, sendWorkingSince]);
 
   // Stable across renders (`vscode` is a module-level const ⇒ empty deps).
   // This stability is load-bearing: `respond` is passed as `onRespond` to
@@ -658,6 +688,25 @@ export function SessionChatView() {
                 inlineWorkingSince={pendingSince && i === lastUserIndex ? pendingSince : undefined}
               />
             ))
+          )}
+          {sendWorkingSince && (
+            /* Optimistic agent-side Working bubble (#2769) — renders OUTSIDE
+               the memoized MessageBubble rows, so it adds no props to them and
+               the #2702/#2703 memo guarantees hold. */
+            <div className="msg-row msg-agent msg-group-start" style={{ '--msg-stripe-color': personaColor } as React.CSSProperties} aria-live="polite">
+              <div className="msg-body">
+                <div className="msg-header">
+                  <PersonaAvatar
+                    className="msg-header-avatar"
+                    src={personaAvatar}
+                    fallbackGlyph={meta.personaName.trim().charAt(0).toUpperCase() || 'A'}
+                    fallbackColor={personaColor}
+                  />
+                  <span className="msg-author" style={{ color: personaColor }}>{meta.personaName}</span>
+                  <WorkingIndicator startTime={sendWorkingSince} />
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
