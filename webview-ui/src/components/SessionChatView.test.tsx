@@ -93,6 +93,61 @@ describe('SessionChatView load-older fetching indicator (#2711)', () => {
   });
 });
 
+/**
+ * Optimistic Working bubble guard for #2769 (web-chat parity, asset #1437).
+ * Sending a chat message must show the agent-side Working bubble
+ * SYNCHRONOUSLY — before the host echoes anything back — and the bubble
+ * must survive the own-row `chatAppend` (still pending) and clear the
+ * moment the agent's reply lands in the transcript. A send failure
+ * (chatError) clears it too.
+ */
+describe('SessionChatView optimistic Working bubble on send (#2769)', () => {
+  function pendingUserMsg(id: number, text: string): ChatPrompt {
+    return { ...userMsg(id, text), status: 'pending', responded_at: '', response_text: '' };
+  }
+
+  async function renderAndSend() {
+    const user = userEvent.setup();
+    render(<SessionChatView />);
+    sendHost('chatTranscript', { messages: [userMsg(10, 'earlier')], hasMore: false });
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await user.click(textarea);
+    await user.type(textarea, 'hello agent');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+    return user;
+  }
+
+  it('shows the bubble the instant a message is sent and clears when the reply lands', async () => {
+    await renderAndSend();
+
+    // Immediately after clicking Send — no host message has arrived yet —
+    // the standalone Working bubble (WorkingIndicator aria-label) is visible.
+    expect(screen.getAllByLabelText(/^Working for/)).toHaveLength(1);
+
+    // The host echoes the created row (still pending) — the bubble persists
+    // (the pending row's own small header indicator joins it; they clear
+    // together when the reply lands).
+    sendHost('chatAppend', { messages: [pendingUserMsg(11, 'hello agent')] });
+    expect(screen.getAllByLabelText(/^Working for/).length).toBeGreaterThanOrEqual(1);
+
+    // The agent's reply lands (row flips to responded with response_text) —
+    // every Working affordance clears.
+    sendHost('chatAppend', {
+      messages: [{ ...userMsg(11, 'hello agent'), response_text: 'done!' }],
+    });
+    expect(screen.queryAllByLabelText(/^Working for/)).toHaveLength(0);
+  });
+
+  it('clears the bubble when the send fails (chatError)', async () => {
+    await renderAndSend();
+    expect(screen.getByLabelText(/^Working for/)).toBeInTheDocument();
+
+    sendHost('chatError', { message: 'Failed to send: boom' });
+    expect(screen.queryByLabelText(/^Working for/)).toBeNull();
+  });
+});
+
 describe('SessionChatView opens at the bottom (#2712)', () => {
   it('jumps the transcript to the bottom on the initial full-replace load', () => {
     render(<SessionChatView />);

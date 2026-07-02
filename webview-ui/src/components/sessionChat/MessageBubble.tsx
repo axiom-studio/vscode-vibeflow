@@ -439,7 +439,7 @@ function isStale(iso: string, thresholdMs: number): boolean {
  * timers. The dots animation is purely CSS — the JS tick only updates
  * the elapsed display.
  */
-function WorkingIndicator({ startTime }: { startTime: string }) {
+export function WorkingIndicator({ startTime }: { startTime: string }) {
   const start = Date.parse(startTime);
   const validStart = Number.isFinite(start);
   const [elapsedMs, setElapsedMs] = useState(() =>
