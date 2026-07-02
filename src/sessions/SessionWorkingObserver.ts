@@ -30,6 +30,10 @@ export type UIWebSocketConnector = (
 ) => UIWebSocketConnection;
 
 export interface WorkingObserverLogger {
+  /** Full-frame payload dumps (#2771) — emitted for every incoming /ws/ui
+   *  frame; only visible when the user raises the output channel's log
+   *  level to Trace. */
+  trace(message: string): void;
   debug(message: string): void;
   info(message: string): void;
   warn(message: string): void;
@@ -45,6 +49,7 @@ interface SessionWorkingObserverOptions {
 
 const DEFAULT_RECONNECT_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000];
 const NOOP_LOGGER: WorkingObserverLogger = {
+  trace: () => {},
   debug: () => {},
   info: () => {},
   warn: () => {},
@@ -158,6 +163,10 @@ export class SessionWorkingObserver implements Disposer {
 
   private onWebSocketMessage(message: string): void {
     if (this.stopped) { return; }
+    // Full payload at Trace (#2771) — BEFORE parsing so even non-JSON frames
+    // are inspectable. Bearer-redacted + size-capped; the Debug summary line
+    // below stays the redacted quick view.
+    this.logger.trace(`Working indicator: /ws/ui payload ${sanitizeForTrace(message)}`);
     let envelope: unknown;
     try {
       envelope = JSON.parse(message);
@@ -539,8 +548,17 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+const BEARER_RE = /Bearer\s+[A-Za-z0-9._~+/=-]+/g;
+const TRACE_PAYLOAD_MAX_CHARS = 2_000;
+
 function safeReason(reason: string): string {
-  return reason.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]').slice(0, 180);
+  return reason.replace(BEARER_RE, 'Bearer [redacted]').slice(0, 180);
+}
+
+/** Full-frame trace dump (#2771): same bearer redaction as safeReason but
+ *  sized for whole payloads instead of one-line reasons. */
+function sanitizeForTrace(payload: string): string {
+  return truncateForLog(payload.replace(BEARER_RE, 'Bearer [redacted]'), TRACE_PAYLOAD_MAX_CHARS);
 }
 
 function formatWebSocketUrlForLog(url: string): string {

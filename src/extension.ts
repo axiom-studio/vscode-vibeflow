@@ -396,6 +396,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       update => workingStatusBar.updateWorking(update),
       {
         logger: {
+          trace: msg => workingIndicatorChannel.trace(msg),
           debug: msg => workingIndicatorChannel.debug(msg),
           info: msg => workingIndicatorChannel.info(msg),
           warn: msg => workingIndicatorChannel.warn(msg),
