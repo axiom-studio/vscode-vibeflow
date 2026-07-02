@@ -25,6 +25,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
   const mcpNameRef = React.useRef(data.cliMcpName);
   const rootPathRef = React.useRef(data.cliRootPath);
+  const [clearToken, setClearToken] = useState(0);
 
   React.useEffect(() => {
     mcpNameRef.current = data.cliMcpName;
@@ -33,6 +34,14 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
   React.useEffect(() => {
     rootPathRef.current = data.cliRootPath;
   }, [data.cliRootPath]);
+
+  const clearLaunchOptions = () => {
+    mcpNameRef.current = '';
+    rootPathRef.current = '';
+    setClearToken(token => token + 1);
+    onUpdate('cli.mcpName', '');
+    onUpdate('cli.rootPath', '');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -111,6 +120,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           <BufferedTextInput
             initial={data.cliMcpName}
             placeholder="default"
+            resetToken={clearToken}
             onValueChange={(v) => { mcpNameRef.current = v; }}
             onCommit={(v) => onUpdate('cli.mcpName', v)}
           />
@@ -119,6 +129,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           <BufferedTextInput
             initial={data.cliRootPath}
             placeholder="/path/to/root"
+            resetToken={clearToken}
             onValueChange={(v) => { rootPathRef.current = v; }}
             onCommit={(v) => onUpdate('cli.rootPath', v)}
           />
@@ -127,6 +138,11 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
           Blank fields are omitted. Provided values are passed as <code>--mcp</code> and <code>--root</code>.
         </div>
         <ButtonRow>
+          <Btn
+            label="Clear"
+            secondary
+            onClick={clearLaunchOptions}
+          />
           <Btn
             label="Open CLI"
             onClick={() => onCommand({
@@ -183,19 +199,29 @@ function BinaryPathInput({ initial, onCommit }: {
   );
 }
 
-function BufferedTextInput({ initial, placeholder, onCommit, onValueChange }: {
+function BufferedTextInput({ initial, placeholder, onCommit, onValueChange, resetToken }: {
   initial: string;
   placeholder: string;
   onCommit: (value: string) => void;
   onValueChange?: (value: string) => void;
+  resetToken?: number;
 }) {
   const [value, setValue] = useState(initial);
   const [focused, setFocused] = useState(false);
+  const lastResetToken = React.useRef(resetToken);
 
   useEffect(() => {
     if (!focused && initial !== value) { setValue(initial); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial]);
+
+  useEffect(() => {
+    if (resetToken === undefined || lastResetToken.current === resetToken) { return; }
+    lastResetToken.current = resetToken;
+    setValue('');
+    onValueChange?.('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetToken]);
 
   const commit = () => {
     if (value !== initial) { onCommit(value); }

@@ -91,4 +91,40 @@ describe('CliTab', () => {
     expect(onUpdate).toHaveBeenCalledWith('cli.mcpName', 'team-mcp');
     expect(onUpdate).toHaveBeenCalledWith('cli.rootPath', '/tmp/vibeflow-root');
   });
+
+  it('clears optional CLI launch values and opens with blank options afterward', () => {
+    const onUpdate = vi.fn();
+    const commands: SettingsCommand[] = [];
+    render(
+      <CliTab
+        data={settingsData({
+          cliMcpName: 'team-mcp',
+          cliRootPath: '/tmp/vibeflow-root',
+        })}
+        onUpdate={onUpdate}
+        onCommand={(cmd) => { commands.push(cmd); }}
+      />,
+    );
+
+    const mcpName = screen.getByLabelText('MCP name') as HTMLInputElement;
+    const rootPath = screen.getByLabelText('Root path') as HTMLInputElement;
+    expect(mcpName.value).toBe('team-mcp');
+    expect(rootPath.value).toBe('/tmp/vibeflow-root');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    expect(mcpName.value).toBe('');
+    expect(rootPath.value).toBe('');
+    expect(onUpdate).toHaveBeenCalledWith('cli.mcpName', '');
+    expect(onUpdate).toHaveBeenCalledWith('cli.rootPath', '');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open CLI' }));
+    expect(commands).toEqual([{
+      type: 'openCli',
+      payload: {
+        mcpName: '',
+        rootPath: '',
+      },
+    }]);
+  });
 });
