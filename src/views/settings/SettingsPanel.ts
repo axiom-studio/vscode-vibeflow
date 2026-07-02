@@ -6,7 +6,8 @@ import type { ProjectDetector, DetectedProject } from '../../project/ProjectDete
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
-import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath } from '../../commands/cliCommands.js';
+import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '../../commands/cliCommands.js';
+import { persistEffectiveSetting } from './settingsPersistence.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
 import { confirmAndCloseTabsForProjectSwitch } from '../../commands/projectCommands.js';
@@ -145,7 +146,27 @@ export class SettingsPanel {
           ];
 
           if (settingsKeys.includes(key)) {
-            await config.update(key, value, vscode.ConfigurationTarget.Global);
+            // Persist so the write is EFFECTIVE: also clears any workspace-level
+            // override that would otherwise mask the Global write (#3343), and
+            // surfaces failures instead of dying as an unhandled rejection while
+            // the webview's optimistic update papers over them.
+            try {
+              const cleared = await persistEffectiveSetting(config, key, value);
+              if (key.startsWith('cli.')) {
+                logCli(`persisted vibeflow.${key} = ${JSON.stringify(value)} (user settings${cleared.length ? `; removed masking ${cleared.join(' + ')} override` : ''})`);
+              }
+              if (cleared.length > 0) {
+                vscode.window.showInformationMessage(
+                  `VibeFlow: removed a ${cleared.join(' and ')} settings override for vibeflow.${key} so your change takes effect.`,
+                );
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (key.startsWith('cli.')) {
+                logCli(`FAILED to persist vibeflow.${key}: ${errMsg}`);
+              }
+              vscode.window.showWarningMessage(`VibeFlow: failed to save vibeflow.${key} — ${errMsg}`);
+            }
             // Only re-push the snapshot for keys whose webview rendering
             // depends on DERIVED state — recomputing the snapshot on
             // every keystroke for a plain text input races the user's
@@ -338,10 +359,14 @@ export class SettingsPanel {
             rootPath: msg.payload.rootPath,
           };
           try {
-            await config.update('cli.mcpName', launchOptions.mcpName, vscode.ConfigurationTarget.Global);
-            await config.update('cli.rootPath', launchOptions.rootPath, vscode.ConfigurationTarget.Global);
+            const cleared = [
+              ...await persistEffectiveSetting(config, 'cli.mcpName', launchOptions.mcpName),
+              ...await persistEffectiveSetting(config, 'cli.rootPath', launchOptions.rootPath),
+            ];
+            logCli(`persisted launch options before open (mcp=${JSON.stringify(launchOptions.mcpName)}, root=${JSON.stringify(launchOptions.rootPath)})${cleared.length ? ` — removed masking ${cleared.join(' + ')} override(s)` : ''}`);
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
+            logCli(`FAILED to persist launch options before open: ${errMsg}`);
             vscode.window.showWarningMessage(`VibeFlow: Open CLI settings were not saved — ${errMsg}`);
           }
           await vscode.commands.executeCommand('vibeflow.openCli', launchOptions);
