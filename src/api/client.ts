@@ -71,7 +71,23 @@ export class VibeFlowClient {
    * load asset URLs (avatars, icons) hosted alongside the API.
    */
   getBaseUrl(): string {
-    return this.baseUrl;
+    const liveUrl = vscode.workspace.getConfiguration('vibeflow')
+      .get<string>('serverUrl', this.baseUrl);
+    return liveUrl.replace(/\/+$/, '');
+  }
+
+  /**
+   * Live server origin after applying the same bearer-transport guard used by
+   * REST requests. Socket clients use this before attaching Authorization to
+   * an Upgrade handshake.
+   */
+  getValidatedBaseUrl(): string {
+    const liveUrl = this.getBaseUrl();
+    const check = validateServerUrl(liveUrl);
+    if (!check.ok) {
+      throw new Error(`Refusing to send bearer over insecure transport: ${check.message ?? 'invalid serverUrl'}`);
+    }
+    return liveUrl;
   }
 
   private async request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -87,8 +103,7 @@ export class VibeFlowClient {
     // to attach the bearer if the scheme is insecure, and fetch against the
     // live URL too. Original fix commit: 00c6041; restored after regression in
     // commit e0ef3ad. scripts/check-security-guards.mjs prevents silent removal.
-    const liveUrl = vscode.workspace.getConfiguration('vibeflow')
-      .get<string>('serverUrl', this.baseUrl);
+    const liveUrl = this.getBaseUrl();
     const check = validateServerUrl(liveUrl);
     if (!check.ok) {
       throw new Error(`Refusing to send bearer over insecure transport — ${check.message ?? 'invalid serverUrl'}`);
