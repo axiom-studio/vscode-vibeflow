@@ -5,6 +5,7 @@ import type {
   TicketsClientMessage,
   TicketsHostMessage,
   TicketsMode,
+  TicketsSortBy,
   TicketRow,
 } from '../../../src/core/webviewMessages';
 
@@ -40,6 +41,7 @@ function statusMeta(status: string) {
 }
 
 type GroupBy = 'none' | 'status' | 'feature';
+type SortOrder = 'asc' | 'desc';
 
 interface TicketsState {
   mode: TicketsMode;
@@ -68,11 +70,28 @@ export function TicketsView() {
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<TicketsSortBy>('updated_at');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const firstLoad = useRef(true);
 
   useEffect(() => {
-    vscode.postMessage({ type: 'ticketsLoad' });
-  }, []);
+    const delay = firstLoad.current ? 0 : 250;
+    firstLoad.current = false;
+    const timer = setTimeout(() => {
+      setState(s => ({ ...s, loading: true }));
+      vscode.postMessage({
+        type: 'ticketsLoad',
+        payload: {
+          search,
+          status: statusFilter ?? undefined,
+          sortBy,
+          sortOrder,
+        },
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<TicketsHostMessage>) {
@@ -105,9 +124,9 @@ export function TicketsView() {
   const refresh = useCallback(() => {
     if (refreshTimer.current) { clearTimeout(refreshTimer.current); }
     setState(s => ({ ...s, loading: true }));
-    vscode.postMessage({ type: 'ticketsRefresh' });
+    vscode.postMessage({ type: 'ticketsLoad', payload: { search, status: statusFilter ?? undefined, sortBy, sortOrder } });
     refreshTimer.current = setTimeout(() => setState(s => (s.loading ? { ...s, loading: false } : s)), 5000);
-  }, []);
+  }, [search, statusFilter, sortBy, sortOrder]);
 
   const openItem = useCallback((row: TicketRow) => {
     vscode.postMessage({ type: 'ticketsOpenItem', payload: { itemType: row.type, itemId: row.id, title: row.title } });
@@ -124,33 +143,12 @@ export function TicketsView() {
     vscode.postMessage({ type: 'ticketsLoadMore' });
   }, []);
 
-  // Distinct statuses present, for the quick-filter pills.
-  const presentStatuses = useMemo(() => {
-    const set = new Set(state.rows.map(r => r.status));
-    return ALL_STATUSES.filter(s => set.has(s));
-  }, [state.rows]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return state.rows.filter(r => {
-      if (statusFilter && r.status !== statusFilter) { return false; }
-      if (!q) { return true; }
-      return (
-        r.title.toLowerCase().includes(q) ||
-        String(r.id).includes(q) ||
-        (r.featureName ?? '').toLowerCase().includes(q) ||
-        (r.userEmail ?? '').toLowerCase().includes(q) ||
-        (r.claimedBy ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [state.rows, search, statusFilter]);
-
   const groups = useMemo(() => {
     if (groupBy === 'none') {
-      return [{ key: 'all', label: '', rows: filtered }];
+      return [{ key: 'all', label: '', rows: state.rows }];
     }
     const map = new Map<string, TicketRow[]>();
-    for (const r of filtered) {
+    for (const r of state.rows) {
       const key = groupBy === 'status' ? r.status : (r.featureName ?? 'No feature');
       (map.get(key) ?? map.set(key, []).get(key)!).push(r);
     }
@@ -165,7 +163,7 @@ export function TicketsView() {
       label: groupBy === 'status' ? statusMeta(key).label : key,
       rows,
     }));
-  }, [filtered, groupBy]);
+  }, [state.rows, groupBy]);
 
   const isFeatures = state.mode === 'features';
   const showReview = state.mode === 'security' || state.mode === 'qa' || state.mode === 'todos' || state.mode === 'issues' || state.mode === 'backlog';
@@ -178,7 +176,7 @@ export function TicketsView() {
           <span style={{ fontSize: 14, fontWeight: 600 }}>{state.title || 'Tickets'}</span>
           {state.projectName && <span style={{ fontSize: 12, color: 'var(--feed-muted)' }}>· {state.projectName}</span>}
           <span style={{ fontSize: 11, color: 'var(--feed-muted)', marginLeft: 4 }}>
-            {filtered.length}{filtered.length !== state.rows.length ? ` / ${state.rows.length}` : ''} loaded{state.total > state.rows.length ? ` · ${state.total} total` : ''}
+            {state.rows.length} loaded{state.total > state.rows.length ? ` · ${state.total} total` : ''}
           </span>
         </div>
         <button onClick={refresh} disabled={state.loading} style={btnStyle(state.loading)}>
@@ -202,10 +200,26 @@ export function TicketsView() {
             {!isFeatures && <option value="feature">Feature</option>}
           </select>
         </label>
+        <label style={{ fontSize: 11, color: 'var(--feed-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
+          Sort
+          <select value={sortBy} onChange={e => setSortBy(e.target.value as TicketsSortBy)} style={selectStyle}>
+            <option value="updated_at">Updated</option>
+            <option value="title">Title</option>
+            <option value="status">Status</option>
+            <option value="priority">Priority</option>
+            {!isFeatures && <option value="feature_name">Feature</option>}
+            {!isFeatures && <option value="user_email">Owner</option>}
+            {!isFeatures && <option value="target_branch">Branch</option>}
+          </select>
+          <select value={sortOrder} onChange={e => setSortOrder(e.target.value as SortOrder)} style={selectStyle}>
+            <option value="desc">Desc</option>
+            <option value="asc">Asc</option>
+          </select>
+        </label>
         {/* Quick status filter pills */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
           <FilterChip active={statusFilter === null} onClick={() => setStatusFilter(null)} color="var(--feed-muted)">All</FilterChip>
-          {presentStatuses.map(s => (
+          {ALL_STATUSES.map(s => (
             <FilterChip key={s} active={statusFilter === s} onClick={() => setStatusFilter(statusFilter === s ? null : s)} color={statusMeta(s).color}>
               {statusMeta(s).label}
             </FilterChip>
@@ -221,9 +235,9 @@ export function TicketsView() {
 
       {/* Table */}
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {filtered.length === 0 && !state.loading ? (
+        {state.rows.length === 0 && !state.loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--feed-muted)', fontSize: 13 }}>
-            {state.rows.length === 0 ? `Nothing in ${state.title || 'this view'}.` : 'No items match your filter.'}
+            {search || statusFilter ? 'No items match your filter.' : `Nothing in ${state.title || 'this view'}.`}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
