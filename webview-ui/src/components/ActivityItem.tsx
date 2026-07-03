@@ -18,6 +18,9 @@ const activityTokenDispatch: ChatTokenDispatch = {
   openPath(path, line, column) {
     getVsCodeApi().postMessage({ type: 'chatOpenPath', payload: { path, line, column } });
   },
+  openWorkItem(kind, id) {
+    getVsCodeApi().postMessage({ type: 'chatOpenWorkItem', payload: { kind, id } });
+  },
 };
 
 interface ActivityItemProps {

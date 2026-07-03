@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { isValidCommitHash, parsePathReference } from './chatRenderer.js';
+import { commitWebUrl } from './commitWebUrl.js';
 
 /**
  * Shared host-side handlers for the two chat click-to-open affordances
@@ -35,6 +36,11 @@ export async function openCommitDiff(hash: string): Promise<void> {
     return;
   }
   const gitExt = vscode.extensions.getExtension('vscode.git');
+  type RepoLike = {
+    rootUri: { fsPath: string };
+    state?: { remotes?: Array<{ name?: string; fetchUrl?: string; pushUrl?: string }> };
+  };
+  let repo: RepoLike | undefined;
   if (gitExt) {
     try {
       const api = (gitExt.isActive ? gitExt.exports : await gitExt.activate())?.getAPI?.(1);
@@ -52,19 +58,19 @@ export async function openCommitDiff(hash: string): Promise<void> {
       //      subfolder). Most common monorepo case.
       //   3. The repo is a subdir of the workspace (multi-root workspaces).
       //   4. If there's exactly ONE repo registered, use it regardless.
-      const repos = api?.repositories ?? [];
+      const repos: RepoLike[] = api?.repositories ?? [];
       const workspaceFs = folder.uri.fsPath;
-      let repo = repos.find((r: { rootUri: { fsPath: string } }) => r.rootUri.fsPath === workspaceFs);
+      repo = repos.find(r => r.rootUri.fsPath === workspaceFs);
       if (!repo) {
         // Case 2: workspace is under the repo (workspaceFs starts with rootUri/).
-        repo = repos.find((r: { rootUri: { fsPath: string } }) => {
+        repo = repos.find(r => {
           const rootFs = r.rootUri.fsPath;
           return workspaceFs === rootFs || workspaceFs.startsWith(rootFs + '/') || workspaceFs.startsWith(rootFs + '\\');
         });
       }
       if (!repo) {
         // Case 3: repo is under the workspace.
-        repo = repos.find((r: { rootUri: { fsPath: string } }) => {
+        repo = repos.find(r => {
           const rootFs = r.rootUri.fsPath;
           return rootFs.startsWith(workspaceFs + '/') || rootFs.startsWith(workspaceFs + '\\');
         });
@@ -78,14 +84,34 @@ export async function openCommitDiff(hash: string): Promise<void> {
         return;
       }
     } catch {
-      // Fall through to the terminal fallback.
+      // `git.viewCommit` rejects when the commit object isn't in the
+      // local repository (unfetched, checkout behind, or committed
+      // from another machine). Fall through to the fallbacks — the
+      // remote web page can still serve the source (#3350).
     }
   }
-  const pick = await vscode.window.showInformationMessage(
-    `Show diff for commit ${hash.slice(0, 8)}?`,
+
+  // Remote-web fallback (#3350): agents push after every commit, so the
+  // origin's commit page shows the source even when the local clone
+  // doesn't have the object yet.
+  const remotes = repo?.state?.remotes ?? [];
+  const remote = remotes.find(r => r.name === 'origin') ?? remotes[0];
+  const remoteUrl = remote?.fetchUrl ?? remote?.pushUrl;
+  const webUrl = remoteUrl ? commitWebUrl(remoteUrl, hash) : undefined;
+
+  const actions = [
+    ...(webUrl ? ['Open on remote'] : []),
     'Open in terminal',
     'Cancel',
+  ];
+  const pick = await vscode.window.showInformationMessage(
+    `Commit ${hash.slice(0, 8)} could not be opened from the local repository.`,
+    ...actions,
   );
+  if (pick === 'Open on remote' && webUrl) {
+    await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    return;
+  }
   if (pick === 'Open in terminal') {
     const term = vscode.window.createTerminal({
       name: `git show ${hash.slice(0, 8)}`,
@@ -94,6 +120,22 @@ export async function openCommitDiff(hash: string): Promise<void> {
     term.sendText(`git show --stat ${hash}`, true);
     term.show();
   }
+}
+
+/**
+ * Open an `issue #N` / `todo #N` chat reference in a new editor tab
+ * (#3350). Inputs come from the webview, so both are re-validated
+ * before reaching the command — same untrusted-webview posture as the
+ * commit/path handlers above.
+ */
+export function openWorkItemFromChat(kind: unknown, id: unknown): void {
+  if (kind !== 'issue' && kind !== 'todo') { return; }
+  if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0 || id > 9_999_999_999) { return; }
+  void vscode.commands.executeCommand(
+    'vibeflow.openWorkItemPanel',
+    `${kind}-${id}`,
+    `${kind} #${id}`,
+  );
 }
 
 /**

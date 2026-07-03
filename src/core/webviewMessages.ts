@@ -87,7 +87,8 @@ export type ActivityFeedClientMessage =
   // shapes the Session Chat uses; routed through the shared
   // chatActions handlers host-side. #2084 / #1613.
   | { type: 'chatOpenPath'; payload: { path: string; line?: number; column?: number } }
-  | { type: 'chatOpenCommit'; payload: { hash: string } };
+  | { type: 'chatOpenCommit'; payload: { hash: string } }
+  | { type: 'chatOpenWorkItem'; payload: { kind: string; id: number } };
 
 // ============================================================
 // Settings Panel (editor-area webview)
@@ -297,6 +298,9 @@ export type SessionPanelClientMessage =
   // User clicked a `[a-f0-9]{7,40}` hash in a chat message. Host
   // invokes `git.diff` for that commit (todo #1613, sub-feature 5).
   | { type: 'chatOpenCommit'; payload: { hash: string } }
+  // User clicked an `issue #N` / `todo #N` reference in a chat message.
+  // Host opens the work item in a new editor tab (issue #3350).
+  | { type: 'chatOpenWorkItem'; payload: { kind: string; id: number } }
   // The @mention picker is asking the host to fetch suggestions
   // (todo #1614). `kind` is one of MENTION_KINDS from
   // mentionParser.ts; `query` is the post-colon filter string.
