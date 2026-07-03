@@ -408,6 +408,9 @@ const chatTokenDispatch: ChatTokenDispatch = {
   renderAsset(assetId, name) {
     return <AssetCard id={assetId} name={name} />;
   },
+  openWorkItem(kind, id) {
+    getVsCodeApi().postMessage({ type: 'chatOpenWorkItem', payload: { kind, id } });
+  },
 };
 
 function childrenToString(children: ReactNode): string {

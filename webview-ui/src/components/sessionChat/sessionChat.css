@@ -702,45 +702,70 @@
 }
 
 /*
- * Click-to-open affordances inside chat text (#2084 / #1613).
- * Commit hash → opens VS Code's native Commit Details view.
+ * Click-to-open affordances inside chat text (#2084 / #1613 / #3350).
+ * Commit hash → opens the commit's source (local Commit Details, or
+ *   the remote's commit page as fallback).
  * Path → opens the file at the referenced line/column.
- * Styled to read as "interactive reference", not a full button —
- * monospace + tinted bg so they sit in prose without shouting.
+ * Work item → opens the issue/todo panel in a new editor tab.
+ *
+ * Hash + work-item chips are deliberately LINK-COLORED bubbles (user
+ * request, issue #3350 — supersedes the earlier all-neutral LILA call
+ * for these two kinds): each kind gets a distinct accent so "what will
+ * this open" is readable at a glance. Paths stay neutral — they're the
+ * high-frequency reference and would flood the prose with color.
  */
 .chat-commit-hash,
-.chat-path-ref {
+.chat-path-ref,
+.chat-workitem-ref {
   display: inline;
   font-family: var(--vscode-editor-font-family);
   font-size: 0.92em;
   padding: 1px 6px;
-  border-radius: var(--vf-r-sm);
-  /* Neutral, not link-blue. A commit/file is a reference, not a state —
-   * color is reserved for things that actually carry status, so references
-   * stop competing for attention. (THE LILA fix: kill the uniform AI-blue.) */
-  border: 1px solid color-mix(in oklab, var(--vscode-foreground) 18%, transparent);
-  background: color-mix(in oklab, var(--vscode-foreground) 7%, transparent);
-  color: var(--vscode-foreground);
+  border-radius: var(--vf-r-pill);
+  border: 1px solid color-mix(in oklab, var(--chat-ref-accent, var(--vscode-foreground)) 32%, transparent);
+  background: color-mix(in oklab, var(--chat-ref-accent, var(--vscode-foreground)) 10%, transparent);
+  color: var(--chat-ref-accent, var(--vscode-foreground));
   cursor: pointer;
   text-decoration: none;
   line-height: inherit;
   vertical-align: baseline;
   transition: background var(--vf-t-micro) ease-out, border-color var(--vf-t-micro) ease-out, transform var(--vf-t-micro) ease-out;
 }
-/* A commit hash is short (7 chars) and atomic — never let `overflow-wrap`
- * break it across a line. Paths can still wrap; they get long. */
-.chat-commit-hash { white-space: nowrap; }
+/* Per-kind accents. Hash = the theme's link color ("source code link");
+ * todo = violet (per reference screenshot asset #1449); issue = teal.
+ * color-mix against the theme foreground keeps the fixed hues legible
+ * on both light and dark themes (same approach as persona colors). */
+.chat-commit-hash { --chat-ref-accent: var(--vscode-textLink-foreground); }
+.chat-workitem-todo { --chat-ref-accent: color-mix(in oklab, #8b5cf6 72%, var(--vscode-foreground)); }
+.chat-workitem-issue { --chat-ref-accent: color-mix(in oklab, #14b8a6 62%, var(--vscode-foreground)); }
+/* Paths keep the neutral treatment (THE LILA fix): a file reference is
+ * not a status carrier, and they dominate agent prose by volume. */
+.chat-path-ref {
+  border-radius: var(--vf-r-sm);
+  border-color: color-mix(in oklab, var(--vscode-foreground) 18%, transparent);
+  background: color-mix(in oklab, var(--vscode-foreground) 7%, transparent);
+}
+/* A commit hash / work-item ref is short and atomic — never let
+ * `overflow-wrap` break it across a line. Paths can still wrap. */
+.chat-commit-hash,
+.chat-workitem-ref { white-space: nowrap; }
 .chat-commit-hash:hover,
+.chat-workitem-ref:hover {
+  background: color-mix(in oklab, var(--chat-ref-accent) 20%, transparent);
+  border-color: color-mix(in oklab, var(--chat-ref-accent) 55%, transparent);
+}
 .chat-path-ref:hover {
   background: color-mix(in oklab, var(--vscode-foreground) 13%, transparent);
   border-color: color-mix(in oklab, var(--vscode-foreground) 34%, transparent);
 }
 .chat-commit-hash:active,
-.chat-path-ref:active {
+.chat-path-ref:active,
+.chat-workitem-ref:active {
   transform: scale(0.97);
 }
 .chat-commit-hash:focus-visible,
-.chat-path-ref:focus-visible {
+.chat-path-ref:focus-visible,
+.chat-workitem-ref:focus-visible {
   outline: 2px solid var(--vscode-focusBorder);
   outline-offset: 1px;
 }

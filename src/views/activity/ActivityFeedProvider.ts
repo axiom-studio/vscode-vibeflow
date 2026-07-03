@@ -3,7 +3,7 @@ import type { ActivityEntry } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import { assertNever, type ActivityFeedClientMessage, type ActivityFeedHostMessage, type FeedState, type ProgressIndicatorPayload } from '../../core/webviewMessages.js';
-import { openCommitDiff, openWorkspaceRelativePath } from '../sessions/chatActions.js';
+import { openCommitDiff, openWorkItemFromChat, openWorkspaceRelativePath } from '../sessions/chatActions.js';
 
 /**
  * Hard cap on the host-side replay buffer. Matches the webview's
@@ -113,6 +113,9 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
           break;
         case 'chatOpenCommit':
           void openCommitDiff(message.payload.hash);
+          break;
+        case 'chatOpenWorkItem':
+          openWorkItemFromChat(message.payload.kind, message.payload.id);
           break;
         case 'chatOpenPath':
           void openWorkspaceRelativePath(
