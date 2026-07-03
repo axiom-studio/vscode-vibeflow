@@ -54,3 +54,7 @@ TEST*.xml
 .yarn/cache
 .yarn/unplugged
 .pnp.*
+
+# Agent skills (locally installed)
+.agents/
+skills-lock.json
