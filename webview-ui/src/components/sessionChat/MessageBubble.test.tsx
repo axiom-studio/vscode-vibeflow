@@ -205,3 +205,48 @@ describe('MessageBubble side avatars (#2772)', () => {
     expect(container.querySelector('.msg-side-avatar-spacer')).toBeNull();
   });
 });
+
+/**
+ * "Agent needs your input" treatment guard for #2774 (web-chat parity,
+ * assets #1442/#1443): an agent-initiated pending prompt must be visually
+ * unmistakable — attention class + caps label — and carry the prominent
+ * reply box wired to onRespond. Ordinary rows get none of it.
+ */
+describe('MessageBubble agent-needs-input treatment (#2774)', () => {
+  const base = {
+    personaName: 'Kai',
+    personaColor: '#ffffff',
+    diffView: 'unified' as const,
+    sessionMode: 'chat_first',
+  };
+  const pendingAgent: ChatPrompt = { ...MSG, id: 5, prompt_id: 'p5', source: 'agent', status: 'pending', response_text: '' };
+
+  it('marks the row, shows the label, and submits a reply through onRespond', () => {
+    const replies: Array<[string, string]> = [];
+    const { container } = render(
+      <MessageBubble
+        msg={pendingAgent}
+        groupStart
+        onRespond={(p, t) => replies.push([p, t])}
+        {...base}
+      />,
+    );
+    expect(container.querySelector('.msg-row')!.className).toContain('msg-needs-input');
+    expect(screen.getByText('Agent needs your input')).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText('Type your response...') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '1' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(replies).toEqual([['p5', '1']]);
+    expect(input.value).toBe('');
+  });
+
+  it('applies none of the treatment to an ordinary responded message', () => {
+    const { container } = render(
+      <MessageBubble msg={MSG} groupStart onRespond={() => {}} {...base} />,
+    );
+    expect(container.querySelector('.msg-row')!.className).not.toContain('msg-needs-input');
+    expect(screen.queryByText('Agent needs your input')).toBeNull();
+    expect(screen.queryByPlaceholderText('Type your response...')).toBeNull();
+  });
+});

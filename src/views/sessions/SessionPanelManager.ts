@@ -7,6 +7,7 @@ import { categorize, isAllowedMime, verifyDeclaredMime, MAX_ATTACHMENT_BYTES } f
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
 import { escapeHtml, serverOriginForCsp } from '../../utils/html.js';
+import { nextPendingIds, nextAgentPendingIds } from './chatPendingIds.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
@@ -63,24 +64,10 @@ interface ChatCursor {
   pendingIds: Set<number>;
 }
 
-/**
- * Update the pending-id set from a fresh batch of prompts. Adds ids
- * still in `pending`, removes ids that have flipped to any other status
- * (responded / expired / activity). Returns a NEW set so the caller
- * can keep ChatCursor instances immutable.
- */
-function nextPendingIds(prev: Set<number>, messages: VibeFlowPrompt[]): Set<number> {
-  if (messages.length === 0) { return prev; }
-  const next = new Set(prev);
-  for (const m of messages) {
-    if (m.status === 'pending') {
-      next.add(m.id);
-    } else {
-      next.delete(m.id);
-    }
-  }
-  return next;
-}
+// nextPendingIds / nextAgentPendingIds live in chatPendingIds.ts (pure,
+// vscode-free, unit-tested) — the agent-only variant drives the tab's
+// "needs input" indicator (#2774).
+const NEEDS_INPUT_PREFIX = '❓ ';
 
 /**
  * Page size for paginated chat-history loads (initial fetch, load-older page,
@@ -135,6 +122,10 @@ const DIFF_SCHEME = 'vibeflow-diff';
 
 export class SessionPanelManager implements vscode.Disposable {
   private panels = new Map<string, vscode.WebviewPanel>();
+  /** Agent prompts awaiting the user, per session — drives the tab's
+   *  "❓" title prefix so a pending question is visible without the
+   *  panel focused (#2774; editor webview tabs have no badge API). */
+  private readonly agentPendingBySession = new Map<string, Set<number>>();
   private pollSubs = new Map<string, Disposer>();
   private chatState = new Map<string, ChatCursor>();
 
@@ -296,6 +287,7 @@ export class SessionPanelManager implements vscode.Disposable {
               initialized: state?.initialized ?? true,
               pendingIds: nextPendingIds(state?.pendingIds ?? new Set(), [created]),
             });
+            this.trackAgentInputPending(panel, session.session_id, [created]);
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
             this.postToWebview(panel, { type: 'chatError', payload: { message: `Failed to send: ${errMsg}` } });
@@ -332,6 +324,7 @@ export class SessionPanelManager implements vscode.Disposable {
                 initialized: state.initialized,
                 pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
               });
+              this.trackAgentInputPending(panel, session.session_id, resp.prompts);
               this.postToWebview(panel, {
                 type: 'chatPrepend',
                 payload: { messages: resp.prompts, hasMore: resp.page.has_more },
@@ -430,6 +423,7 @@ export class SessionPanelManager implements vscode.Disposable {
     panel.onDidDispose(() => {
       this.panels.delete(key);
       this.chatState.delete(key);
+      this.agentPendingBySession.delete(key);
       const s = this.pollSubs.get(key);
       if (s) {
         s.dispose();
@@ -602,6 +596,21 @@ export class SessionPanelManager implements vscode.Disposable {
    * Failures are absorbed (state stays as it was) — chat polling is
    * non-critical UX and must not break the Progress Ledger refresh.
    */
+  /** Fold a fresh batch of rows into the agent-pending set and mirror the
+   *  result on the tab title (#2774). Called at every point rows flow to
+   *  the webview so the ❓ appears with the prompt and clears the moment
+   *  it is answered or expires. */
+  private trackAgentInputPending(panel: vscode.WebviewPanel, sessionId: string, messages: VibeFlowPrompt[]): void {
+    const prev = this.agentPendingBySession.get(sessionId) ?? new Set<number>();
+    const next = nextAgentPendingIds(prev, messages);
+    this.agentPendingBySession.set(sessionId, next);
+    const base = panel.title.startsWith(NEEDS_INPUT_PREFIX)
+      ? panel.title.slice(NEEDS_INPUT_PREFIX.length)
+      : panel.title;
+    const wanted = next.size > 0 ? `${NEEDS_INPUT_PREFIX}${base}` : base;
+    if (panel.title !== wanted) { panel.title = wanted; }
+  }
+
   private async pollChatUpdates(projectId: number, sessionId: string, panel: vscode.WebviewPanel): Promise<void> {
     const state = this.chatState.get(sessionId);
     try {
@@ -618,6 +627,7 @@ export class SessionPanelManager implements vscode.Disposable {
           initialized: true,
           pendingIds: nextPendingIds(state?.pendingIds ?? new Set(), resp.prompts),
         });
+        this.trackAgentInputPending(panel, sessionId, resp.prompts);
         this.postToWebview(panel, {
           type: 'chatTranscript',
           payload: { messages: resp.prompts, hasMore: resp.page.has_more },
@@ -646,6 +656,7 @@ export class SessionPanelManager implements vscode.Disposable {
             pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
           };
           this.chatState.set(sessionId, cursor);
+          this.trackAgentInputPending(panel, sessionId, resp.prompts);
           this.postToWebview(panel, { type: 'chatAppend', payload: { messages: resp.prompts } });
         }
         // Refresh in-place response_text updates: after_id only returns
@@ -663,6 +674,7 @@ export class SessionPanelManager implements vscode.Disposable {
               initialized: true,
               pendingIds: nextPendingIds(cursor.pendingIds, windowResp.prompts),
             });
+            this.trackAgentInputPending(panel, sessionId, windowResp.prompts);
             this.postToWebview(panel, { type: 'chatAppend', payload: { messages: windowResp.prompts } });
           }
         }
@@ -676,6 +688,7 @@ export class SessionPanelManager implements vscode.Disposable {
             initialized: true,
             pendingIds: nextPendingIds(state.pendingIds, resp.prompts),
           });
+          this.trackAgentInputPending(panel, sessionId, resp.prompts);
           this.postToWebview(panel, {
             type: 'chatTranscript',
             payload: { messages: resp.prompts, hasMore: resp.page.has_more },
