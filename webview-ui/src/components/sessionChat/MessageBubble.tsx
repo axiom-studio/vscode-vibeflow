@@ -140,7 +140,7 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
 
   return (
     <div
-      className={`msg-row ${isUser ? 'msg-user' : 'msg-agent'}${groupStart ? ' msg-group-start' : ''}`}
+      className={`msg-row ${isUser ? 'msg-user' : 'msg-agent'}${groupStart ? ' msg-group-start' : ''}${isAgentPending ? ' msg-needs-input' : ''}`}
       style={rowStyle}
     >
       {/* Side avatar rail (#2772, web-chat parity): the persona portrait sits
@@ -185,6 +185,15 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
         )}
         {promptBody.trim().length > 0 && (
           <div className="msg-content">
+            {/* Web-parity attention label (#2774): the amber bubble alone
+                wasn't enough — say explicitly that the agent is blocked
+                on the human. aria-live announces it to screen readers. */}
+            {isAgentPending && (
+              <div className="msg-needs-input-label" aria-live="polite">
+                <span className="msg-needs-input-q" aria-hidden="true">?</span>
+                Agent needs your input
+              </div>
+            )}
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
@@ -234,7 +243,7 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
           >
             <input
               type="text"
-              placeholder="Reply to this prompt..."
+              placeholder="Type your response..."
               value={replyText}
               onChange={e => setReplyText(e.target.value)}
               autoFocus
