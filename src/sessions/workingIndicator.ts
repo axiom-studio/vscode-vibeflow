@@ -113,6 +113,14 @@ export function classifyActivitySummary(summary: string): ActivityClassification
 export class SessionWorkingState {
   private readonly sessions = new Map<string, SessionWorkingRecord>();
 
+  /**
+   * @param isOwned Optional session-ownership gate (#3348): events from
+   * sessions not running on behalf of this user are ignored, so another
+   * org member's agent never drives this window's Working indicator.
+   * Defaults to allow-all for callers without an ownership source.
+   */
+  constructor(private readonly isOwned: (sessionId: string) => boolean = () => true) {}
+
   applyEnvelope(envelope: unknown, watchedProjectId: number, nowMs = Date.now()): boolean {
     if (!isRecord(envelope)) { return false; }
     const type = typeof envelope.type === 'string' ? envelope.type : '';
@@ -128,6 +136,7 @@ export class SessionWorkingState {
   recordActivity(input: WorkingActivityInput, watchedProjectId: number, nowMs = Date.now()): boolean {
     const event = normalizeActivity(input);
     if (!event || event.projectId !== watchedProjectId) { return false; }
+    if (!this.isOwned(event.sessionId)) { return false; }
 
     const existing = this.sessions.get(event.sessionId);
     const record: SessionWorkingRecord = existing ?? {
@@ -168,6 +177,7 @@ export class SessionWorkingState {
   recordIdle(input: WorkingIdleInput, watchedProjectId: number, nowMs = Date.now()): boolean {
     const event = normalizeIdle(input);
     if (!event || event.projectId !== watchedProjectId) { return false; }
+    if (!this.isOwned(event.sessionId)) { return false; }
 
     const existing = this.sessions.get(event.sessionId);
     const record: SessionWorkingRecord = existing ?? {
