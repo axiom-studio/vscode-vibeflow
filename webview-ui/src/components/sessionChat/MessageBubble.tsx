@@ -7,7 +7,7 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import type { ChatPrompt, SessionMode } from './sessionChatTypes';
 import { DiffBlock } from './DiffBlock';
-import { enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
+import { CommitHashButton, enhanceLeafText, type ChatTokenDispatch } from './chatTokens';
 import { AssetCard } from './AssetCard';
 import { PersonaAvatar } from './PersonaAvatar';
 import { StructuredAgentBody } from './agentStructure';
@@ -301,6 +301,24 @@ function stripAgentFooter(text: string): string {
 function markdownComponents(diffView: 'unified' | 'split'): Components {
   return {
     a({ href, children }) {
+      // Markdown-LINKED commit hashes (#3360): the backend's done
+      // notification links the full hash, and a plain anchor either
+      // dead-ends (href is a web-app route the webview can't resolve)
+      // or bypasses the commit affordances entirely. Anchors whose
+      // text IS a hash render as the canonical commit chip instead,
+      // routing through the same host path as tokenizer chips
+      // (session-repo attribution #3355, silent probe #3357,
+      // Open-on-remote fallback #3350).
+      const label = childrenToString(children).trim();
+      const hashText = label.replace(/^[(`[\s]+|[)`\]\s]+$/g, '');
+      if (/^[a-f0-9]{7,40}$/.test(hashText)) {
+        return (
+          <CommitHashButton
+            hash={hashText}
+            onClick={() => chatTokenDispatch.openCommit(hashText)}
+          />
+        );
+      }
       return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
     },
     table({ children }) {
