@@ -195,4 +195,13 @@ describe('MessageBubble side avatars (#2772)', () => {
     expect(container.querySelector('.msg-side-avatar')).toBeNull();
     expect(container.querySelector('.msg-side-avatar-spacer')).not.toBeNull();
   });
+
+  it('renders the avatar on a mid-group agent PENDING row — any headered row shows its author (#3344)', () => {
+    const pendingAgent: ChatPrompt = { ...MSG, id: 4, source: 'agent', status: 'pending', response_text: '' };
+    const { container } = render(<MessageBubble msg={pendingAgent} groupStart={false} {...base} />);
+    const avatar = container.querySelector('.msg-side-avatar');
+    expect(avatar).not.toBeNull();
+    expect(avatar!.textContent).toBe('K');
+    expect(container.querySelector('.msg-side-avatar-spacer')).toBeNull();
+  });
 });

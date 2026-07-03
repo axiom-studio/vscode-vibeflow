@@ -134,6 +134,10 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
   // row — can carry a faint persona tint. #chat-persona.
   const rowStyle = { '--msg-stripe-color': personaColor } as React.CSSProperties;
 
+  // One condition drives BOTH the header and the side avatar (#3344): a row
+  // that announces its author must also show who that author is.
+  const showHeader = groupStart || msg.status === 'pending' || msg.status === 'expired';
+
   return (
     <div
       className={`msg-row ${isUser ? 'msg-user' : 'msg-agent'}${groupStart ? ' msg-group-start' : ''}`}
@@ -141,10 +145,12 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
     >
       {/* Side avatar rail (#2772, web-chat parity): the persona portrait sits
           beside agent bubbles (left) and a "U" badge beside user bubbles
-          (right — .msg-user reverses the row). Avatar only on the group's
-          first row; grouped follow-ups keep an invisible spacer so bubbles
-          stay aligned. Replaces the old 20px header avatar. */}
-      {groupStart ? (
+          (right — .msg-user reverses the row). Rendered on every row that
+          shows a header — group starts AND mid-group pending/expired rows,
+          which render their own header and looked identity-less with just
+          the spacer (#3344). Header-less grouped follow-ups keep the
+          invisible spacer so bubbles stay aligned. */}
+      {showHeader ? (
         isUser ? (
           <div className="msg-side-avatar msg-side-avatar-user" aria-hidden="true">U</div>
         ) : (
@@ -159,7 +165,7 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
         <div className="msg-side-avatar-spacer" aria-hidden="true" />
       )}
       <div className="msg-body">
-        {(groupStart || msg.status === 'pending' || msg.status === 'expired') && (
+        {showHeader && (
           <div className="msg-header">
             <span
               className="msg-author"
