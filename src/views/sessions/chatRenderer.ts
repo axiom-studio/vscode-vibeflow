@@ -73,7 +73,10 @@ const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{
 // like `80998aa-42ec-4d21-b8c4-6989d27...`) don't have their 7-hex
 // segments mis-recognized as commit hashes. Mirrors the parallel
 // fix in `chatTokens.tsx:41` for the webview-side copy. Issue #2326.
-const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
+// #3358 guards (kept in sync with chatTokens.tsx): a hex run 1-3
+// separators after the word "prompt" is a prompt reference, and an
+// all-digit run is an id/number — neither renders as a commit chip.
+const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<![Pp]rompt[\s:(-]{1,3})(?<!0x)\b(?!\d{7,40}\b)([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
 
 /**
  * Tokenize a chat message body into structured segments.

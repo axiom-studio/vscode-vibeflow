@@ -43,7 +43,20 @@ import { Fragment, type ReactNode, type MouseEvent } from 'react';
 // their 7-hex-char segments rendered as clickable commit hashes.
 // A real commit hash in prose is bounded by punctuation / whitespace,
 // never by `-<hex>` on either side. Issue #2326.
-const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<!0x)\b([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
+//
+// Issue #3358 adds two more guards, because bare prompt-id fragments
+// ("user prompt 6d85db0f", "From user prompt 76197006 (asset ...)")
+// are lexically identical to short hashes:
+//   1. a hex run 1-3 separators after the word "prompt" is a prompt
+//      reference, never a commit;
+//   2. an all-digit run is overwhelmingly an id/number, not a hash —
+//      abbreviated git hashes virtually always carry a letter (the
+//      rare pure-digit hash staying plain text is the cheaper error).
+// Known residual: a backticked prompt id (`d4156609`) reaches the
+// tokenizer as a bare code leaf with no surrounding text, so keyword
+// context can't save it — clicking such a chip lands on the polite
+// #3357 fallback rather than a raw git error.
+const RE_COMMIT = /(?<![#A-Za-z0-9-])(?<![Pp]rompt[\s:(-]{1,3})(?<!0x)\b(?!\d{7,40}\b)([a-f0-9]{7,40})\b(?![A-Za-z0-9-])/g;
 const RE_PATH = /(?<![A-Za-z0-9_/\\.-])(\.{0,2}\/?[A-Za-z0-9_./-]+\.[A-Za-z0-9]{1,8})(?::(\d{1,6})(?::(\d{1,6}))?)?(?![A-Za-z0-9_/\\.-])/g;
 
 /**
