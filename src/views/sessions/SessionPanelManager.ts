@@ -348,7 +348,9 @@ export class SessionPanelManager implements vscode.Disposable {
           break;
         }
         case 'chatOpenCommit': {
-          await openCommitDiff(msg.payload.hash);
+          // The session's own remote (#3355) — a chat can belong to a
+          // session working on a different repo than the open workspace.
+          await openCommitDiff(msg.payload.hash, session.git_remote_url);
           break;
         }
         case 'chatOpenWorkItem': {

@@ -51,6 +51,22 @@ function parseRemote(remote: string): { host: string; path: string } | undefined
 }
 
 /**
+ * Whether two git remote URLs point at the same repository (#3355),
+ * regardless of transport form (scp-like vs https vs ssh://), `.git`
+ * suffix, user info, or host casing. Used to decide when a chat's
+ * commit hash cannot possibly resolve from the open workspace repo.
+ * Unparseable inputs compare as NOT the same repo (fail open to the
+ * local-first flow).
+ */
+export function sameRepo(remoteA: string, remoteB: string): boolean {
+  const a = parseRemote(remoteA.trim());
+  const b = parseRemote(remoteB.trim());
+  if (!a || !b) { return false; }
+  return a.host.toLowerCase() === b.host.toLowerCase()
+    && a.path.toLowerCase() === b.path.toLowerCase();
+}
+
+/**
  * Commit-page path segment per host family. GitHub-style `/commit/` is
  * also what Gitea/Gogs/Forgejo use, so it's the default for unknown hosts.
  */
