@@ -11,7 +11,7 @@ import { nextPendingIds, nextAgentPendingIds } from './chatPendingIds.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
-import { openCommitDiff, openWorkspaceRelativePath } from './chatActions.js';
+import { openCommitDiff, openWorkItemFromChat, openWorkspaceRelativePath } from './chatActions.js';
 import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
 import type { MentionItem } from '../../core/webviewMessages.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
@@ -349,6 +349,10 @@ export class SessionPanelManager implements vscode.Disposable {
         }
         case 'chatOpenCommit': {
           await openCommitDiff(msg.payload.hash);
+          break;
+        }
+        case 'chatOpenWorkItem': {
+          openWorkItemFromChat(msg.payload.kind, msg.payload.id);
           break;
         }
         case 'openDiff': {

@@ -83,6 +83,18 @@ const RE_PATH_VIBEFLOW_DOC_BLOCKLIST = /(?:-context\.md|-architecture\.md|^prd[-
 const RE_ASSET = /\[asset:(\d+)\s+"((?:[^"\\]|\\[\\"])*)"\]/g;
 
 /**
+ * Work-item reference token (#3350): `issue #123` / `todo #123`
+ * (case-insensitive, optional bold/backtick handled by the markdown
+ * layer before we see the leaf). Click → host opens the work item in
+ * a new editor tab via `vibeflow.openWorkItemPanel`.
+ *
+ * Deliberately keyword-prefixed: a bare `#123` is too ambiguous (PR
+ * numbers, markdown artifacts, ordinal shorthand) — a false link that
+ * opens the wrong work item is worse than plain text.
+ */
+const RE_WORK_ITEM = /\b(issue|todo)\s+#(\d{1,10})\b/gi;
+
+/**
  * Validators that re-assert the regex output before we emit a
  * postMessage. The host re-validates on receipt, but matching the
  * host's shape here keeps us from posting obviously-malformed
@@ -101,6 +113,11 @@ export interface ChatTokenDispatch {
    * like the Activity Feed where assets don't apply.
    */
   renderAsset?: (assetId: number, name: string) => ReactNode;
+  /**
+   * Open a referenced work item (#3350). When omitted, `issue #N` /
+   * `todo #N` stay plain text — same opt-in contract as renderAsset.
+   */
+  openWorkItem?: (kind: 'issue' | 'todo', id: number) => void;
 }
 
 /** Reverse the escapes that `useChatAttachments.buildAssetToken` applies. */
@@ -205,6 +222,32 @@ function scanString(text: string, dispatch: ChatTokenDispatch): ReactNode {
     });
   }
 
+  // Work-item references — `issue #N` / `todo #N` (#3350). Only emit
+  // when the dispatch supplies a handler; otherwise leave plain text.
+  if (dispatch.openWorkItem) {
+    const openWorkItem = dispatch.openWorkItem;
+    const workItemRe = new RegExp(RE_WORK_ITEM.source, RE_WORK_ITEM.flags);
+    while ((m = workItemRe.exec(text)) !== null) {
+      if (m[0].length === 0) { workItemRe.lastIndex++; continue; }
+      const kind = m[1].toLowerCase() as 'issue' | 'todo';
+      const id = Number(m[2]);
+      if (!Number.isFinite(id) || id <= 0) { continue; }
+      hits.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        node: (
+          <WorkItemRefButton
+            key={`w-${m.index}`}
+            kind={kind}
+            id={id}
+            label={m[0]}
+            onClick={() => openWorkItem(kind, id)}
+          />
+        ),
+      });
+    }
+  }
+
   // Chat attachment tokens — `[asset:N "name"]` (#1670). Only emit when
   // the dispatch supplies a renderer; otherwise leave the literal in
   // place (Activity Feed case).
@@ -265,6 +308,30 @@ function CommitHashButton({ hash, onClick }: { hash: string; onClick: () => void
       onClick={(e: MouseEvent<HTMLButtonElement>) => { e.preventDefault(); onClick(); }}
     >
       {short}
+    </button>
+  );
+}
+
+/**
+ * Render an `issue #N` / `todo #N` reference as a click-to-open bubble
+ * chip (#3350, per reference screenshot asset #1449). Label preserves
+ * the original text so casing ("Issue #12") survives; the kind drives
+ * the per-kind accent color in CSS.
+ */
+function WorkItemRefButton({ kind, id, label, onClick }: {
+  kind: 'issue' | 'todo';
+  id: number;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`chat-workitem-ref chat-workitem-${kind}`}
+      title={`Open ${kind} #${id} in a new tab`}
+      onClick={(e: MouseEvent<HTMLButtonElement>) => { e.preventDefault(); onClick(); }}
+    >
+      {label}
     </button>
   );
 }
