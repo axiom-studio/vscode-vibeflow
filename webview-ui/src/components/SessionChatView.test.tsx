@@ -148,6 +148,45 @@ describe('SessionChatView optimistic Working bubble on send (#2769)', () => {
   });
 });
 
+/**
+ * Pin-on-send guard for #2775 (asset #1444): sending must pin the view to
+ * the bottom with an INSTANT scroll — the smooth animation #2769 used
+ * raced the scroll handler's pinned detection, so the send echo and the
+ * Working bubble landed below the fold behind the scroll-down pill. With
+ * the pin intact, subsequent appends auto-scroll as messages arrive.
+ */
+describe('SessionChatView pins to bottom on send (#2775)', () => {
+  it('scrolls instantly on send and keeps auto-scrolling on the echo append', async () => {
+    const user = userEvent.setup();
+    render(<SessionChatView />);
+    const scroller = document.querySelector('.chat-scroller') as HTMLElement;
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1000 });
+
+    sendHost('chatTranscript', { messages: [userMsg(10, 'earlier')], hasMore: false });
+    // Simulate the user having drifted off the bottom (e.g. a mid-animation
+    // scroll sample) before sending.
+    scroller.scrollTop = 200;
+    fireEvent.scroll(scroller);
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    await user.click(textarea);
+    await user.type(textarea, 'hello agent');
+    await user.click(screen.getByRole('button', { name: /send/i }));
+
+    // send() pins + queues an instant scroll on the next frame.
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(scroller.scrollTop).toBe(1000);
+
+    // The host echo grows the transcript — still pinned, so it auto-scrolls.
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: 1400 });
+    sendHost('chatAppend', {
+      messages: [{ ...userMsg(11, 'hello agent'), status: 'pending', responded_at: '', response_text: '' }],
+    });
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    expect(scroller.scrollTop).toBe(1400);
+  });
+});
+
 describe('SessionChatView opens at the bottom (#2712)', () => {
   it('jumps the transcript to the bottom on the initial full-replace load', () => {
     render(<SessionChatView />);
