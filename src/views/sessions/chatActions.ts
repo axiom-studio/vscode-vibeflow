@@ -51,6 +51,7 @@ export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): P
   type RepoLike = {
     rootUri: { fsPath: string };
     state?: { remotes?: Array<{ name?: string; fetchUrl?: string; pushUrl?: string }> };
+    getCommit?: (ref: string) => Promise<unknown>;
   };
   let repo: RepoLike | undefined;
   if (gitExt) {
@@ -109,13 +110,19 @@ export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): P
 
   if (repo && !foreign) {
     try {
+      // Probe existence SILENTLY first (#3357): a rejecting API call
+      // shows nothing, whereas a failing `git.viewCommit` command lets
+      // the git extension toast its raw `fatal: bad revision` error at
+      // the user before our fallback can run. Missing commit (unfetched,
+      // checkout behind, committed elsewhere) → straight to the web
+      // fallback below (#3350). Older git APIs without getCommit keep
+      // the direct-invoke behavior.
+      await repo.getCommit?.(hash);
       await vscode.commands.executeCommand('git.viewCommit', repo, hash);
       return;
     } catch {
-      // `git.viewCommit` rejects when the commit object isn't in the
-      // local repository (unfetched, checkout behind, or committed
-      // from another machine). Fall through to the fallbacks — the
-      // remote web page can still serve the source (#3350).
+      // Fall through to the fallbacks — the remote web page can still
+      // serve the source (#3350).
     }
   }
 
