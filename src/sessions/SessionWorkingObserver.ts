@@ -45,6 +45,8 @@ interface SessionWorkingObserverOptions {
   logger?: WorkingObserverLogger;
   now?: () => number;
   reconnectBackoffMs?: number[];
+  /** Session-ownership gate (#3348) — see SessionWorkingState. */
+  isOwnedSession?: (sessionId: string) => boolean;
 }
 
 const DEFAULT_RECONNECT_BACKOFF_MS = [2_000, 5_000, 10_000, 30_000];
@@ -57,7 +59,7 @@ const NOOP_LOGGER: WorkingObserverLogger = {
 };
 
 export class SessionWorkingObserver implements Disposer {
-  private readonly state = new SessionWorkingState();
+  private readonly state: SessionWorkingState;
   private readonly connector: UIWebSocketConnector;
   private readonly logger: WorkingObserverLogger;
   private readonly now: () => number;
@@ -83,6 +85,7 @@ export class SessionWorkingObserver implements Disposer {
     this.logger = options.logger ?? NOOP_LOGGER;
     this.now = options.now ?? Date.now;
     this.reconnectBackoffMs = options.reconnectBackoffMs ?? DEFAULT_RECONNECT_BACKOFF_MS;
+    this.state = new SessionWorkingState(options.isOwnedSession);
   }
 
   start(): void {
