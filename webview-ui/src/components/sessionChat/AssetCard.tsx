@@ -36,10 +36,19 @@ interface ResolvedMessage {
   payload: { id: number; uri: string } | { id: number; error: string };
 }
 
+/** Bounded auto-retry for resolve failures (#3345): after a restart the
+ *  cache may be empty and the host's re-download races the async auth /
+ *  project-connection restore, so the mount-time resolve can fail while
+ *  everything is healthy a second later. 3 attempts at ~1s/3s/9s absorb
+ *  that window; beyond it the failed chip is click-to-retry. */
+const AUTO_RETRY_LIMIT = 3;
+const AUTO_RETRY_BASE_MS = 1_000;
+
 export function AssetCard({ id, name }: AssetCardProps) {
   const [uri, setUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [imageBroken, setImageBroken] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     function handle(event: MessageEvent<ResolvedMessage>) {
@@ -48,6 +57,7 @@ export function AssetCard({ id, name }: AssetCardProps) {
       if (msg.payload.id !== id) { return; }
       if ('uri' in msg.payload) {
         setUri(msg.payload.uri);
+        setError(null);
       } else {
         setError(msg.payload.error);
       }
@@ -55,7 +65,21 @@ export function AssetCard({ id, name }: AssetCardProps) {
     window.addEventListener('message', handle);
     vscode.postMessage({ type: 'chatGetAssetUri', payload: { id, name } });
     return () => { window.removeEventListener('message', handle); };
-  }, [id, name]);
+  }, [id, name, attempt]);
+
+  useEffect(() => {
+    if (!error || attempt >= AUTO_RETRY_LIMIT) { return; }
+    const timer = window.setTimeout(() => {
+      setError(null);
+      setAttempt(a => a + 1);
+    }, AUTO_RETRY_BASE_MS * Math.pow(3, attempt));
+    return () => { window.clearTimeout(timer); };
+  }, [error, attempt]);
+
+  const retryNow = (): void => {
+    setError(null);
+    setAttempt(a => a + 1);
+  };
 
   const ext = (name.split('.').pop() ?? '').toLowerCase();
   const looksLikeImage = IMAGE_EXTS.has(ext);
@@ -66,11 +90,16 @@ export function AssetCard({ id, name }: AssetCardProps) {
 
   if (error) {
     return (
-      <span className="asset-card is-error" title={error}>
+      <button
+        type="button"
+        className="asset-card is-error"
+        title={`${error} — click to retry`}
+        onClick={retryNow}
+      >
         <FileIcon size={12} />
         <span className="asset-card-name">{name}</span>
-        <span className="asset-card-error">failed</span>
-      </span>
+        <span className="asset-card-error">failed — retry</span>
+      </button>
     );
   }
 
