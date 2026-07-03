@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commitWebUrl } from './commitWebUrl.js';
+import { commitWebUrl, sameRepo } from './commitWebUrl.js';
 
 const HASH = '575542919a42a19aaa654a5d0c1a8a6232d0e8dd';
 
@@ -50,5 +50,42 @@ describe('commitWebUrl', () => {
   it('tolerates trailing slashes and nested group paths', () => {
     expect(commitWebUrl('https://gitlab.com/group/sub/project/', HASH))
       .toBe(`https://gitlab.com/group/sub/project/-/commit/${HASH}`);
+  });
+});
+
+describe('sameRepo', () => {
+  it('matches the same repo across transport forms, .git suffix, and host case', () => {
+    expect(sameRepo(
+      'git@github.com:axiom-studio/vscode-vibeflow.git',
+      'https://github.com/axiom-studio/vscode-vibeflow',
+    )).toBe(true);
+    expect(sameRepo(
+      'ssh://git@GitHub.com/axiom-studio/vscode-vibeflow.git',
+      'git@github.com:axiom-studio/vscode-vibeflow.git',
+    )).toBe(true);
+    expect(sameRepo(
+      'https://user@bitbucket.org/ws/slug.git',
+      'git@bitbucket.org:ws/slug',
+    )).toBe(true);
+  });
+
+  it('distinguishes different repos, owners, and hosts', () => {
+    expect(sameRepo(
+      'git@github.com:axiom-studio/vscode-vibeflow.git',
+      'git@github.com:axiom-studio/axiomcloud.git',
+    )).toBe(false);
+    expect(sameRepo(
+      'git@github.com:axiom-studio/repo.git',
+      'git@github.com:other-org/repo.git',
+    )).toBe(false);
+    expect(sameRepo(
+      'git@github.com:o/repo.git',
+      'git@gitlab.com:o/repo.git',
+    )).toBe(false);
+  });
+
+  it('treats unparseable inputs as not the same repo', () => {
+    expect(sameRepo('', 'git@github.com:o/r.git')).toBe(false);
+    expect(sameRepo('not a remote', 'also not')).toBe(false);
   });
 });
