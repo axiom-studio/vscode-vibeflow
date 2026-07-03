@@ -135,6 +135,21 @@ describe('tokenizeChatMessage — quick coverage of the core path', () => {
     expect(out.every(s => s.kind !== 'commitHash')).toBe(true);
   });
 
+  it('does NOT tokenize prompt-id references or pure-digit runs (issue #3358 regression)', () => {
+    for (const text of [
+      'From user prompt 76197006 (asset #1452)',
+      'user prompt 6d85db0f: created the item',
+      'agent prompt (0223bfe9) noted',
+      'ids 12345678 and 20260703 in prose',
+    ]) {
+      const out = tokenizeChatMessage(text);
+      expect(out.every(s => s.kind !== 'commitHash'), text).toBe(true);
+    }
+    // Lettered hashes still tokenize.
+    const out = tokenizeChatMessage('commit dbfecb8 shipped');
+    expect(out.some(s => s.kind === 'commitHash' && s.hash === 'dbfecb8')).toBe(true);
+  });
+
   it('tokenizes bold (**…**)', () => {
     const out = tokenizeChatMessage('hello **world** stuff');
     expect(out.some(s => s.kind === 'bold' && s.text === 'world')).toBe(true);
