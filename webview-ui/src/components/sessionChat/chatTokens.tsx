@@ -309,8 +309,11 @@ function scanString(text: string, dispatch: ChatTokenDispatch): ReactNode {
  * reference" without shouting in the chat flow. Short-form (7 chars)
  * shown in the UI; full hash carried in the data attribute + the
  * `onClick` closure so the host gets the original string.
+ *
+ * Exported (#3360) so the markdown `a` override can render markdown-
+ * LINKED hashes with the same canonical chip instead of a dead anchor.
  */
-function CommitHashButton({ hash, onClick }: { hash: string; onClick: () => void }) {
+export function CommitHashButton({ hash, onClick }: { hash: string; onClick: () => void }) {
   const short = hash.length > 7 ? hash.slice(0, 7) : hash;
   return (
     <button
