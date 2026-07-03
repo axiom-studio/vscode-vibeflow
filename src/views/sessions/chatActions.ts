@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { isValidCommitHash, parsePathReference } from './chatRenderer.js';
-import { commitWebUrl } from './commitWebUrl.js';
+import { commitWebUrl, sameRepo } from './commitWebUrl.js';
 
 /**
  * Shared host-side handlers for the two chat click-to-open affordances
@@ -21,17 +21,29 @@ import { commitWebUrl } from './commitWebUrl.js';
  * `vscode.git` extension; falls back to a `git show --stat` terminal
  * spawn if the extension isn't available.
  *
+ * `sessionRemoteUrl` (#3355) is the remote of the repository the CHAT's
+ * session works on — a session chat can belong to a different repo than
+ * the open workspace, in which case the local repo can never show the
+ * commit and the session repo's commit web page is opened directly.
+ *
  * The hash is re-validated via `isValidCommitHash` even though the
  * webview tokenizer is supposed to emit only valid hashes — defense
  * in depth in case a future caller forgets.
  */
-export async function openCommitDiff(hash: string): Promise<void> {
+export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): Promise<void> {
   if (!isValidCommitHash(hash)) {
     vscode.window.showWarningMessage(`Chat link rejected (invalid commit hash): ${hash}`);
     return;
   }
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
+    // No workspace repo to resolve against — the session repo's web
+    // page is still reachable when the chat supplied its remote.
+    const noFolderUrl = sessionRemoteUrl ? commitWebUrl(sessionRemoteUrl, hash) : undefined;
+    if (noFolderUrl) {
+      await vscode.env.openExternal(vscode.Uri.parse(noFolderUrl));
+      return;
+    }
     vscode.window.showWarningMessage('Open a folder to view commit diffs.');
     return;
   }
@@ -79,10 +91,26 @@ export async function openCommitDiff(hash: string): Promise<void> {
         // Case 4: single registered repo, no path overlap — trust it.
         repo = repos[0];
       }
-      if (repo) {
-        await vscode.commands.executeCommand('git.viewCommit', repo, hash);
-        return;
-      }
+    } catch {
+      // Git extension unavailable/broken — fall through to the fallbacks.
+    }
+  }
+
+  const remotes = repo?.state?.remotes ?? [];
+  const remote = remotes.find(r => r.name === 'origin') ?? remotes[0];
+  const workspaceRemoteUrl = remote?.fetchUrl ?? remote?.pushUrl;
+
+  // Foreign-repo shortcut (#3355): when the chat's session works on a
+  // DIFFERENT repository than the open workspace, the local repo can
+  // never contain the commit — skip the doomed local attempt and give
+  // the link click link behavior: open the session repo's commit page.
+  const foreign = !!sessionRemoteUrl && !!workspaceRemoteUrl
+    && !sameRepo(sessionRemoteUrl, workspaceRemoteUrl);
+
+  if (repo && !foreign) {
+    try {
+      await vscode.commands.executeCommand('git.viewCommit', repo, hash);
+      return;
     } catch {
       // `git.viewCommit` rejects when the commit object isn't in the
       // local repository (unfetched, checkout behind, or committed
@@ -92,12 +120,15 @@ export async function openCommitDiff(hash: string): Promise<void> {
   }
 
   // Remote-web fallback (#3350): agents push after every commit, so the
-  // origin's commit page shows the source even when the local clone
-  // doesn't have the object yet.
-  const remotes = repo?.state?.remotes ?? [];
-  const remote = remotes.find(r => r.name === 'origin') ?? remotes[0];
-  const remoteUrl = remote?.fetchUrl ?? remote?.pushUrl;
-  const webUrl = remoteUrl ? commitWebUrl(remoteUrl, hash) : undefined;
+  // commit page shows the source even when the local clone doesn't have
+  // the object. The session's own remote wins over the workspace origin.
+  const webUrl = (sessionRemoteUrl ? commitWebUrl(sessionRemoteUrl, hash) : undefined)
+    ?? (workspaceRemoteUrl ? commitWebUrl(workspaceRemoteUrl, hash) : undefined);
+
+  if (foreign && webUrl) {
+    await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    return;
+  }
 
   const actions = [
     ...(webUrl ? ['Open on remote'] : []),
