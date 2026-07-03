@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.2.0 (2026-07-03)
+
+A Session-Chat and Browse release — richer chat with avatars, live "working" feedback, and clickable references; clearer signalling when an agent is waiting on you; and paginated Browse tables that stay fast on large projects.
+
+### Added
+
+- **Avatars in Session Chat.** Persona and user avatars now sit beside each message bubble, shown on every headered row for a clearer at-a-glance conversation.
+- **Live "working" feedback.** Sending a message shows a working bubble immediately, and sessions surface a live working indicator so you can see when an agent is actively responding.
+- **Prompts awaiting input stand out.** When an agent is waiting on your answer, its message is highlighted and the editor tab shows a beacon icon — so you notice it even from another tab.
+- **Clickable references in chat.** Issue and todo references render as clickable chips, and commit hashes become links that open the commit — falling back to the remote when it isn't available locally.
+- **Paginated Browse tables.** Todos, Issues, Backlog, Security Review, and Pending QA now load incrementally with a **Load more** control, so large projects stay responsive.
+- **Configurable CLI launch arguments.** Settings → CLI Interface lets you pass optional launch arguments when opening the CLI, with the launch command logged and a warning when a terminal is reused.
+
+### Changed
+
+- Chat now pins to the bottom instantly when you send, instead of animating, so new messages appear without a scroll lag.
+
+### Fixed
+
+- **Chat scroll no longer jumps** when you've scrolled up to read history.
+- **Commit-hash clicks resolve against the session's own repository**, and plain prompt ids and digit runs are no longer mistaken for commit chips.
+- **Failed chat attachments now retry** instead of staying broken.
+- **Browse review queues load correctly** — corrected the route segments that returned 404 on Security Review and Pending QA, and query/sort now apply to paged tickets.
+- **Sessions stay live without a local tmux**, trusting backend liveness instead.
+- **Project-view notifications are scoped to your own sessions.**
+- **Switching projects reliably closes the previous project's tabs** across all switch paths.
+- **CLI launch settings persist and take effect** before the CLI opens.
+
+### Internal
+
+- Cleared npm audit advisories (root + webview dev tooling), and the `check` gate now runs webview tests.
+
 ## 1.1.3 (2026-07-01)
 
 A performance and responsiveness release — lighter background polling, a faster session chat, and snappier typing.
