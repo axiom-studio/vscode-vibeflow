@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
+  <!-- Amber "beacon" for the chat tab while an agent prompt awaits the user
+       (#2776). Editor tab icons are static images — the layered radial
+       gradient fakes the glow. Amber (#e5a13a-ish) reads on both light and
+       dark tab bars. -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffc94d" stop-opacity="0.95"/>
+      <stop offset="45%" stop-color="#f2a33c" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#f2a33c" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="8" cy="8" r="8" fill="url(#glow)"/>
+  <circle cx="8" cy="8" r="3.6" fill="#f2a33c"/>
+  <circle cx="8" cy="8" r="3.6" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="0.9"/>
+  <text x="8" y="10.6" text-anchor="middle" font-family="-apple-system, 'Segoe UI', sans-serif" font-size="7.2" font-weight="700" fill="#3b2a00">?</text>
+</svg>

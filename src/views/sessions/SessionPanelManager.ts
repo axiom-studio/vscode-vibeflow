@@ -609,6 +609,14 @@ export class SessionPanelManager implements vscode.Disposable {
       : panel.title;
     const wanted = next.size > 0 ? `${NEEDS_INPUT_PREFIX}${base}` : base;
     if (panel.title !== wanted) { panel.title = wanted; }
+    // Beacon tab icon (#2776): per-tab styling/glow isn't exposed to
+    // extensions, so the icon is the strongest visual lever the tab has —
+    // amber radial-glow dot while input is pending, logo otherwise.
+    panel.iconPath = vscode.Uri.joinPath(
+      this.extensionUri,
+      'media',
+      next.size > 0 ? 'needs-input-beacon.svg' : 'vibeflow-icon.svg',
+    );
   }
 
   private async pollChatUpdates(projectId: number, sessionId: string, panel: vscode.WebviewPanel): Promise<void> {
