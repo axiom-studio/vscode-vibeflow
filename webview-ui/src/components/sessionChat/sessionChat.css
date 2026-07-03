@@ -1979,3 +1979,44 @@ button.asset-card { /* reset native button styling */
   font-size: 11px;
   padding-right: 6px;
 }
+
+/* ===== "Agent needs your input" treatment (#2774, web-chat parity) =====
+ * Agent-initiated prompts awaiting the human get the amber attention
+ * bubble + caps label + prominent reply controls from the web UI, so a
+ * blocking question can't be mistaken for an ordinary message. Colors
+ * derive from the theme's warning/error foregrounds — readable in light,
+ * dark, and high-contrast themes. Placed at the end of the file so these
+ * rules win the equal-specificity race against the base bubble chrome. */
+
+.msg-needs-input .msg-content {
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 9%, var(--vscode-editor-background));
+  border: 1px solid color-mix(in srgb, var(--vscode-editorWarning-foreground) 45%, transparent);
+}
+
+.msg-needs-input-label {
+  display: flex;
+  align-items: center;
+  gap: var(--vf-sp-2);
+  margin-bottom: var(--vf-sp-2);
+  font-family: var(--vf-font-display);
+  font-size: var(--vf-text-sm);
+  font-weight: var(--vf-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.msg-needs-input-q {
+  color: var(--vscode-errorForeground);
+  font-weight: 700;
+}
+
+.msg-needs-input .msg-reply-form input {
+  border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 45%, transparent);
+}
+
+.msg-needs-input .msg-reply-form button {
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 75%, var(--vscode-editor-background));
+  color: var(--vscode-editor-background);
+  font-weight: 600;
+}
