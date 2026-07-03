@@ -250,3 +250,47 @@ describe('MessageBubble agent-needs-input treatment (#2774)', () => {
     expect(screen.queryByPlaceholderText('Type your response...')).toBeNull();
   });
 });
+
+/**
+ * Markdown-LINKED commit hashes (#3360): the backend's done notification
+ * embeds the full hash as a markdown link. A plain anchor dead-ends in
+ * the webview, so anchors whose text is a hash must render as the
+ * canonical commit chip; ordinary links keep anchor behavior.
+ */
+describe('MessageBubble markdown-linked commit hashes (#3360)', () => {
+  const base = {
+    personaName: 'Kai',
+    personaColor: '#ffffff',
+    diffView: 'unified' as const,
+    sessionMode: 'chat_first',
+  };
+  const FULL = 'c5f6181f1f83db7ab771addacb1b2c603600b52c';
+
+  it('renders a hash-text link as the commit chip, not an anchor', () => {
+    const msg: ChatPrompt = {
+      ...MSG,
+      id: 6,
+      prompt_text: `Updated issue #3345 → **done** ([${FULL}](https://cloud.axiomstudio.ai/x/y))`,
+    };
+    const { container } = render(<MessageBubble msg={msg} groupStart {...base} />);
+
+    const chip = container.querySelector('button.chat-commit-hash');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toBe(FULL.slice(0, 7));
+    expect(chip!.getAttribute('data-hash')).toBe(FULL);
+    expect(container.querySelector('.msg-content a')).toBeNull();
+  });
+
+  it('keeps ordinary links as anchors', () => {
+    const msg: ChatPrompt = {
+      ...MSG,
+      id: 7,
+      prompt_text: 'See [the docs](https://example.com/docs) for details.',
+    };
+    const { container } = render(<MessageBubble msg={msg} groupStart {...base} />);
+    const anchor = container.querySelector('.msg-content a') as HTMLAnchorElement;
+    expect(anchor).not.toBeNull();
+    expect(anchor.textContent).toBe('the docs');
+    expect(container.querySelector('button.chat-commit-hash')).toBeNull();
+  });
+});
