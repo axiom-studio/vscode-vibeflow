@@ -54,6 +54,7 @@ import { ActivityPoller } from './views/activity/ActivityPoller.js';
 import { FeedStateController } from './views/activity/feedStateController.js';
 import { ContextProxy } from './core/ContextProxy.js';
 import { SessionWorkingObserver } from './sessions/SessionWorkingObserver.js';
+import { SessionOwnershipTracker } from './sessions/sessionOwnership.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   // --- Core services ---
@@ -372,6 +373,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Work-item panels need projectId for compliance findings lookup.
     workItemPanelManager.setProjectId(project.projectId);
 
+    // Session-ownership gate (#3348): notification surfaces only cover
+    // sessions verifiably running on behalf of this user (sidecar proof),
+    // never other org members' agents on the same project. Shared between
+    // the activity poller (which refreshes it) and the Working observer.
+    const sessionOwnership = new SessionOwnershipTracker(
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    );
+
     // Start real Activity Feed polling (stop any previous)
     activityPoller?.stop();
     activityPoller = new ActivityPoller(
@@ -380,6 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       promptNotifier,
       project.projectId,
       pollingCoordinator,
+      sessionOwnership,
       fileDecorationProvider,
       feedStateController,
     );
@@ -402,6 +412,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           warn: msg => workingIndicatorChannel.warn(msg),
           error: msg => workingIndicatorChannel.error(msg),
         },
+        isOwnedSession: id => sessionOwnership.isOwned(id),
       },
     );
     workingObserver.start();

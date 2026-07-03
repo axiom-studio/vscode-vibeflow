@@ -95,4 +95,33 @@ describe('SessionWorkingState', () => {
     state.markProjectIdleExcept(projectId, new Set(), 1_000 + PRIMED_IDLE_GUARD_MS);
     expect(state.getSnapshot(projectId).activeCount).toBe(0);
   });
+
+  it('ignores activity and idle events from sessions the ownership gate rejects (#3348)', () => {
+    const state = new SessionWorkingState(id => id === sessionId);
+
+    expect(state.recordActivity(
+      { ...activity('claimed todo #1'), session_id: 'session-other-user' }, projectId, 1_000,
+    )).toBe(false);
+    expect(state.getSnapshot(projectId).activeCount).toBe(0);
+
+    expect(state.recordIdle(
+      { session_id: 'session-other-user', project_id: projectId }, projectId, 1_000,
+    )).toBe(false);
+
+    // Owned session still drives the indicator through the same gate.
+    expect(state.recordActivity(activity('claimed todo #1'), projectId, 1_000)).toBe(true);
+    expect(state.getSnapshot(projectId).activeCount).toBe(1);
+  });
+
+  it('applies the ownership gate to envelopes from /ws/ui', () => {
+    const state = new SessionWorkingState(id => id === sessionId);
+    const envelope = (sid: string) => ({
+      type: 'vibeflow_activity',
+      data: { session_id: sid, project_id: projectId, summary: 'claimed todo #1' },
+    });
+
+    expect(state.applyEnvelope(envelope('session-other-user'), projectId, 1_000)).toBe(false);
+    expect(state.applyEnvelope(envelope(sessionId), projectId, 1_000)).toBe(true);
+    expect(state.getSnapshot(projectId).sessions.map(s => s.sessionId)).toEqual([sessionId]);
+  });
 });

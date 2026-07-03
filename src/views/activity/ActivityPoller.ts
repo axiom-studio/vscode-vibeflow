@@ -9,6 +9,7 @@ import type { PromptNotifier } from '../../notifications/PromptNotifier.js';
 import type { AgentFileDecorationProvider, FileAction } from '../decorations/AgentFileDecorationProvider.js';
 import { personaDisplayName } from '../../sessions/personas.js';
 import { isActiveSession } from '../../sessions/sessionStatus.js';
+import type { SessionOwnershipTracker } from '../../sessions/sessionOwnership.js';
 import type { ProgressIndicatorPayload } from '../../core/webviewMessages.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 import { liveIntervalMs } from '../../core/pollingConfig.js';
@@ -163,6 +164,13 @@ export class ActivityPoller {
     private readonly promptNotifier: PromptNotifier,
     private readonly projectId: number,
     private readonly coordinator: PollingCoordinator,
+    /**
+     * Session-ownership gate (#3348): every notification surface this
+     * poller feeds (feed entries, prompt toasts, progress indicator, file
+     * decorations) is scoped to sessions running on behalf of this user.
+     * Other org members' agents on the same project stay silent here.
+     */
+    private readonly ownership: SessionOwnershipTracker,
     private readonly fileDecorations?: AgentFileDecorationProvider,
     /**
      * Optional health observer — receives pollSucceeded/pollFailed signals
@@ -232,7 +240,8 @@ export class ActivityPoller {
    */
   private async pollPendingPrompts(): Promise<void> {
     const prompts = await this.client.listPendingPrompts(this.projectId);
-    const hydrated = prompts.map(p => {
+    const owned = prompts.filter(p => this.ownership.isOwned(p.session_id));
+    const hydrated = owned.map(p => {
       const personaKey = this.sessionPersonaMap.get(p.session_id) ?? 'developer';
       return {
         id: p.prompt_id,
@@ -270,7 +279,12 @@ export class ActivityPoller {
       }
     }
 
+    // Ownership refresh must precede all three tracks' filtering — poll()
+    // runs Tracks B and C after this method, so they see a current set.
+    await this.ownership.refresh(sessions);
+
     for (const session of sessions) {
+      if (!this.ownership.isOwned(session.session_id)) { continue; }
       if (!isActiveSession(session)) { continue; }
       if (!session.last_message || !session.last_message_at) { continue; }
 
@@ -327,9 +341,11 @@ export class ActivityPoller {
     };
 
     try {
-      // Implementing issues
+      // Implementing issues claimed by this user's sessions. Unclaimed
+      // items are skipped too — without a claimed_by there is no way to
+      // verify the item runs on this user's behalf (#3348).
       const issues = await this.coordinator.query(`listIssues:${this.projectId}`, () => this.client.listIssues(this.projectId));
-      const activeIssues = issues.filter(i => i.status === 'implementing');
+      const activeIssues = issues.filter(i => i.status === 'implementing' && this.ownership.isOwned(i.claimed_by));
       for (const issue of activeIssues) {
         considerProgress('issue', issue);
         await this.fetchAndPushLogs('issue', issue.id, issue.claimed_by, workspaceRoot);
@@ -346,6 +362,7 @@ export class ActivityPoller {
           // round-trip 50× the entire todo list every poll cycle.
           const activeTodos = await this.client.listTodos(feature.id, { status: 'implementing' });
           for (const todo of activeTodos) {
+            if (!this.ownership.isOwned(todo.claimed_by)) { continue; }
             considerProgress('todo', todo);
             await this.fetchAndPushLogs('todo', todo.id, todo.claimed_by, workspaceRoot);
           }
