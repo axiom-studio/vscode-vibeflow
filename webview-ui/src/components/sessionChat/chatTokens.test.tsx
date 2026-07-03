@@ -77,6 +77,27 @@ describe('chatTokens — work-item references (#3350)', () => {
     expect(container.textContent).toBe('todo #2776 stays text');
   });
 
+  it('leaves prompt-id references as plain text (#3358)', () => {
+    const { dispatch } = recordingDispatch();
+    const { container } = render(
+      <p>{enhanceLeafText(
+        'From user prompt 76197006 (asset #1452); also user prompt 6d85db0f: and agent prompt (0223bfe9) noted.',
+        dispatch,
+      )}</p>,
+    );
+    expect(container.querySelector('button.chat-commit-hash')).toBeNull();
+  });
+
+  it('leaves pure-digit runs as plain text but keeps lettered hashes clickable (#3358)', () => {
+    const { dispatch } = recordingDispatch();
+    const { container } = render(
+      <p>{enhanceLeafText('ids 12345678 and 20260703 vs commit dbfecb8 shipped', dispatch)}</p>,
+    );
+    const buttons = container.querySelectorAll('button.chat-commit-hash');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].textContent).toBe('dbfecb8');
+  });
+
   it('coexists with commit-hash tokenization in one leaf (done-notification shape)', () => {
     const { dispatch, opened, commits } = recordingDispatch();
     const text = 'Updated issue #3347 → done (575542919a42a19aaa654a5d0c1a8a6232d0e8dd)';
