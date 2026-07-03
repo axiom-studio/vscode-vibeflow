@@ -6,7 +6,7 @@ import type { AssetCache } from '../../assets/AssetCache.js';
 import { categorize, isAllowedMime, verifyDeclaredMime, MAX_ATTACHMENT_BYTES } from '../../assets/mimeAllowlist.js';
 import type { VibeFlowSession, VibeFlowTodo, VibeFlowIssue, VibeFlowPrompt } from '../../api/types.js';
 import { getNonce } from '../../utils/nonce.js';
-import { escapeHtml } from '../../utils/html.js';
+import { escapeHtml, serverOriginForCsp } from '../../utils/html.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
@@ -1398,6 +1398,10 @@ export class SessionPanelManager implements vscode.Disposable {
     // chat header / message bubbles render the persona portrait instead
     // of a single-letter glyph.
     const serverUrl = this.client.getBaseUrl();
+    // CSP img-src token for the configured server origin (#2773): local
+    // http test servers get exactly their own origin allowed; https-only
+    // was silently blocking portraits there and forcing letter fallbacks.
+    const serverImgSrc = serverOriginForCsp(serverUrl);
 
     const distUri = vscode.Uri.joinPath(this.extensionUri, 'webview-ui', 'dist');
     const scriptUri = webview.asWebviewUri(
@@ -1421,7 +1425,7 @@ export class SessionPanelManager implements vscode.Disposable {
     content="default-src 'none';
       style-src ${webview.cspSource} 'unsafe-inline';
       script-src 'nonce-${nonce}';
-      img-src ${webview.cspSource} https: data:;
+      img-src ${webview.cspSource}${serverImgSrc ? ` ${serverImgSrc}` : ''} https: data:;
       font-src ${webview.cspSource};">
   <link rel="stylesheet" href="${styleUri}">
   <title>${escapeHtml(personaName)}</title>
