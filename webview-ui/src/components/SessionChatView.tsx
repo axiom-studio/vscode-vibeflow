@@ -440,7 +440,13 @@ export function SessionChatView() {
     // createPrompt round-trip, let alone the next poll tick.
     sendAnchorIdRef.current = messages.length > 0 ? messages[messages.length - 1].id : 0;
     setSendWorkingSince(new Date().toISOString());
-    queueScrollToBottom(true);
+    // Pin + INSTANT scroll (#2775): sending declares intent to follow the
+    // conversation. A smooth animation here raced the scroll handler —
+    // mid-flight positions un-pinned the view, so the echo/bubble landing
+    // moments later skipped the auto-scroll and sat below the fold (the
+    // #2746 lesson again: programmatic scroll corrections stay instant).
+    pinnedToBottomRef.current = true;
+    queueScrollToBottom();
   }
 
   // Clear the optimistic Working bubble once the agent's reply lands (#2769).
