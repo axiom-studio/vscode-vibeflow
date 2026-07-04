@@ -2,7 +2,7 @@
 
 **Who this is for**: You've finished [Getting Started](getting-started.md), the extension is installed, you're signed in, and you have a project picked. Now you want to know what every button, view, panel, and command actually *does* before you go deeper.
 
-**TL;DR**: VibeFlow ships five sidebar TreeViews (a Welcome/setup view before you're configured, then four operational views once you are), one bottom-panel webview, six editor-area panels, a chat participant, a status bar quartet, and 43 commands. This page walks you through them in the order you'll hit them.
+**TL;DR**: VibeFlow ships five sidebar TreeViews (a Welcome/setup view before you're configured, then four operational views once you are), one bottom-panel webview, six editor-area panels, a chat participant, a status bar quintet, and 43 commands. This page walks you through them in the order you'll hit them.
 
 > Jargon in **bold** is defined in [the glossary](glossary.md).
 
@@ -111,7 +111,7 @@ Use this view to understand the shape of the project; use Work Items for day-to-
 
 **What it is**: a flat list of every **document** attached to the project, plus the features and work items that have docs hanging off them. Documents are markdown: PRDs, architecture notes, design specs, runbooks, uploaded by you or authored by an agent.
 
-Click a row to open the [Document Viewer](#document-viewer) in the editor area.
+Click a row to open the [Document Viewer](#document-viewer) in the editor area. Alongside the typed document categories, the view also surfaces **Contexts** (the agent memory notes), **References** (Confluence pages imported as read-only pointers), and **Brainstorms** — the project's multi-persona **brainstorm** sessions. Selecting a brainstorm opens its brainstorm document in the viewer, the same way any other document opens (the finalized write-up once the brainstorm is done, otherwise the live working draft). Categories with nothing in them stay hidden, so **Brainstorms** only appears once the project has at least one.
 
 Title-bar actions: **+ Create Document** (new untitled doc, attached to a project / feature / work item), **Refresh**, **Settings**.
 
@@ -155,7 +155,7 @@ These open in VS Code's main editor area (the same place files open). They're fu
 - **Vanilla mode** → input disabled. The agent talks to its terminal, not to you; chat is read-only.
 - **Chat-First Mode** → input is *the* interaction surface. Type, attach, paste, send.
 
-Diffs render with a `+/-` gutter or split view (`vibeflow.chat.diffView`). Each diff has an **Open in Editor** button that opens VS Code's native diff editor. Commit hashes and file paths are clickable. A **Working…** indicator shows while a prompt is in flight, and pending prompts get an inline Respond form.
+Diffs render with a `+/-` gutter or split view (`vibeflow.chat.diffView`). Each diff has an **Open in Editor** button that opens VS Code's native diff editor. Reference chips and links inside a message are clickable: **commit hashes** open the diff (and offer an **Open on remote** fallback when the commit isn't in your local clone yet), **file paths** open the file, and **issue/todo references** (`#1982`) open that work item's detail panel in a new tab. A **Working…** indicator shows while a prompt is in flight. When an agent asks *you* a question, its message gets an amber "needs your input" treatment with an inline Respond form, the editor tab is prefixed with a **❓** and shows a beacon icon so you can spot it among other tabs.
 
 Open via **Open Session Panel** on an Agent Fleet row.
 
@@ -188,10 +188,10 @@ Open by clicking a row in the [Documents view](#documents-view).
 4. **Sticky Models**: per-persona pinned model (so Architect always uses Sonnet, Developer always uses Haiku, etc.).
 5. **Worktrees**: base directory, auto-create-on-launch, cleanup-on-kill.
 6. **Notifications**: toggle agent-prompt and work-item-complete notifications, set polling interval.
-7. **CLI Interface**: toggle delegating session management to `vibeflow-cli`, set binary path.
+7. **CLI Interface**: toggle delegating session management to `vibeflow-cli`, set binary path, and set optional launch arguments — an MCP name (`--mcp`) and a root path (`--root`) passed through when opening the CLI, with a **Clear** button to blank them. Every Open CLI launch is logged to the **VibeFlow CLI** output channel, and reopening while a CLI terminal is already running warns that the new options can't apply until you close it.
 8. **About**: extension version, install detection info, repo links.
 
-The header carries a version badge and a **Done** button. Settings persist as soon as you change them. There's no Save button.
+The header carries a version badge and a **Done** button. Settings persist as soon as you change them — there's no Save button. A write also clears any masking workspace / folder-level override so the change actually takes effect at the level you'd expect, and if a write fails it surfaces a warning toast instead of silently dropping the change.
 
 Open via the gear icon in any view's title bar, or run **VibeFlow: Settings**. For exhaustive per-setting documentation see [settings-reference.md](settings-reference.md).
 
@@ -225,9 +225,10 @@ Open via **Open Compliance** on Work Items, or `Cmd/Ctrl+Shift+V C`.
 
 ## 8. Status Bar items
 
-VS Code's status bar (the thin coloured strip at the very bottom of the window) carries four VibeFlow indicators:
+VS Code's status bar (the thin coloured strip at the very bottom of the window) carries five VibeFlow indicators:
 
-- **VibeFlow connection status** (left side). Shows the connection state to the cloud server. A persona-prompt-count badge sits next to it: when one or more agents are waiting on a user response, this badge counts them. Click to run **VibeFlow: Respond to Prompt**.
+- **VibeFlow connection status** (left side). Shows the connection state to the cloud server. A persona-prompt-count badge sits next to it: when one or more agents are waiting on a user response, this badge counts them. It counts only *your own* sessions' prompts — agents other people are running against the same project don't inflate your badge. Click to run **VibeFlow: Respond to Prompt**.
+- **Working indicator** (right side). A live `$(sync~spin)` spinner that appears while your agents are actively working — `Working 0:12` for a single session, or `3 working · 0:12` when several are busy, with elapsed time. It aggregates only your own sessions and disappears a short while after they go idle, so a glance tells you whether anything of yours is still churning.
 - **Work summary** (right side). A rolling one-liner like "12 implementing, 3 done, 2 pending QA". Click to focus the Work Items view.
 - **Branch review status** (right side). Shows a check (✓) when every work item targeting your current branch has passed both security and QA. A partial state shows the count outstanding. Click to open a checklist for the current branch. Handy for the "is this branch shippable?" gut check before opening a PR.
 - **Project switcher**. Sits next to the connection status. Shows the linked project name. Click to run **VibeFlow: Switch Project…**.

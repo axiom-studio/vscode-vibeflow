@@ -9,7 +9,7 @@ VibeFlow is a backend platform (Projects, Features, Todos, Issues, Documents, Co
 - See every running agent session in the **Agent Fleet** view, grouped by branch.
 - Read and write work items in the **Work Items** and **Project Items** views.
 - Watch real-time agent activity (claims, status transitions, commits, prompts) in the **Activity Feed**.
-- Open a **Session Chat** panel to talk to a chat-first agent the way you'd talk to Copilot Chat, with @-mentions, file drop, clickable commit hashes, and inline diffs.
+- Open a **Session Chat** panel to talk to a chat-first agent the way you'd talk to Copilot Chat, with @-mentions, file drop, persona avatars, clickable commit hashes and issue/todo references, and inline diffs.
 - Govern AI-generated changes through **security review** and **QA verification** gates before they ship.
 - See the agents collaborate on a **Dashboard** (React Flow topology + metrics) or a **Kanban Board** organized by status.
 
@@ -37,7 +37,7 @@ If you already know what VibeFlow is from the cloud product, the extension is th
 | [Workflows and Flow Diagrams](workflows-and-flows.md) | When you want to understand how the pieces fit together. Sequence and state diagrams in Mermaid. |
 | [Chat-First Mode](chat-first-mode.md) | When you've heard "chat-first" and want the deep dive. What it is, when to use it, and why it differs from vanilla. |
 | [Settings Reference](settings-reference.md) | Every key, type, default, and gotcha. |
-| [Troubleshooting](troubleshooting.md) | When something broke. Symptom, cause, and fix for the ~16 most common problems. |
+| [Troubleshooting](troubleshooting.md) | When something broke. Symptom, cause, and fix for the ~17 most common problems. |
 | [Glossary](glossary.md) | Every VibeFlow-specific word defined for non-technical readers. |
 | [FAQ](faq.md) | ~27 questions across 8 sections. |
 
@@ -59,4 +59,4 @@ Open an issue at the [VibeFlow extension repository](https://github.com/axiom-st
 
 ---
 
-*Last updated 2026-06-17. Generated as part of the VibeFlow extension's user documentation initiative (feature #418, todo #1982).*
+*Last updated 2026-07-03. Generated as part of the VibeFlow extension's user documentation initiative (feature #418, todo #1982).*
