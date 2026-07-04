@@ -12,7 +12,7 @@
  * a message from another panel's protocol.
  */
 
-import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView } from '../api/types.js';
+import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView, GlobalCloudRunnerView } from '../api/types.js';
 
 /**
  * Progress payload pushed to the Activity Feed when an agent publishes a
@@ -459,6 +459,18 @@ export type TicketsClientMessage =
   | { type: 'ticketsRefresh' }
   | { type: 'ticketsOpenItem'; payload: { itemType: 'todo' | 'issue' | 'feature'; itemId: number; title: string } }
   | { type: 'ticketsChangeStatus'; payload: { itemType: 'todo' | 'issue'; itemId: number; newStatus: string } };
+
+// ============================================================
+// Cloud Runners Panel (feature #603)
+// ============================================================
+
+export type CloudRunnersHostMessage =
+  | { type: 'cloudRunnersData'; payload: { runners: GlobalCloudRunnerView[]; generatedAt: string } }
+  | { type: 'cloudRunnersError'; payload: { message: string } };
+
+export type CloudRunnersClientMessage =
+  | { type: 'cloudRunnersLoad' }
+  | { type: 'cloudRunnersRefresh' };
 
 // ============================================================
 // Dashboard Panel
