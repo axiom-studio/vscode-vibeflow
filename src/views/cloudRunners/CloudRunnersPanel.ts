@@ -6,6 +6,14 @@ import {
   type CloudRunnersClientMessage,
   type CloudRunnersHostMessage,
 } from '../../core/webviewMessages.js';
+import { runnerActionErrorMessage, isRunnerTransitioning } from '../../api/cloudRunners.js';
+
+const SETTLE_POLL_MS = 3000;
+const SETTLE_POLL_MAX = 10;
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /**
  * Cloud Runners TABLE panel (feature #603) — a single webview (one instance)
@@ -20,6 +28,7 @@ export class CloudRunnersPanel {
 
   private readonly panel: vscode.WebviewPanel;
   private lastFetchAt = 0;
+  private disposed = false;
 
   private constructor(panel: vscode.WebviewPanel, private readonly client: VibeFlowClient) {
     this.panel = panel;
@@ -63,6 +72,7 @@ export class CloudRunnersPanel {
       void this.load();
     });
     this.panel.onDidDispose(() => {
+      this.disposed = true;
       if (CloudRunnersPanel.instance === this) {
         CloudRunnersPanel.instance = undefined;
       }
@@ -75,8 +85,75 @@ export class CloudRunnersPanel {
       case 'cloudRunnersRefresh':
         await this.load();
         return;
+      case 'cloudRunnerStart':
+      case 'cloudRunnerStop': {
+        const { projectId, id } = msg.payload;
+        try {
+          if (msg.type === 'cloudRunnerStart') {
+            await this.client.startCloudRunner(projectId, id);
+          } else {
+            await this.client.stopCloudRunner(projectId, id);
+          }
+        } catch (err) {
+          this.showActionError(err);
+          await this.load();
+          return;
+        }
+        await this.load(); // reflect the optimistic starting/stopping status
+        void this.pollUntilSettled(projectId, id); // then track the reconciler
+        return;
+      }
+      case 'cloudRunnerDelete': {
+        const { projectId, id, name } = msg.payload;
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete runner "${name}"? This removes the Studio runner.`,
+          { modal: true },
+          'Delete',
+        );
+        if (confirm !== 'Delete') { return; }
+        try {
+          await this.client.deleteCloudRunner(projectId, id);
+          vscode.window.showInformationMessage(`VibeFlow: cloud runner "${name}" deleted.`);
+        } catch (err) {
+          // A 404 means it's already gone — treat as success and just refresh.
+          if ((err as { status?: number }).status !== 404) {
+            this.showActionError(err);
+          }
+        }
+        await this.load();
+        return;
+      }
       default:
         assertNever(msg);
+    }
+  }
+
+  /** Surface a start/stop/delete failure as a toast (keeps the table intact). */
+  private showActionError(err: unknown): void {
+    const status = (err as { status?: number }).status;
+    const text = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`VibeFlow: ${runnerActionErrorMessage(status, text)}`);
+  }
+
+  /**
+   * After a start/stop, poll the runner's live status and reload the panel as
+   * the leader-only reconciler settles it (~15–30s). Stops early once the
+   * runner is no longer transitioning, on timeout, or if the panel is disposed.
+   */
+  private async pollUntilSettled(projectId: number, id: number): Promise<void> {
+    for (let i = 0; i < SETTLE_POLL_MAX && !this.disposed; i++) {
+      await delay(SETTLE_POLL_MS);
+      if (this.disposed) { return; }
+      let settled = false;
+      try {
+        const s = await this.client.getRunnerStatus(projectId, id);
+        settled = !!s.status && !isRunnerTransitioning(s.status);
+      } catch {
+        // Transient (e.g. 409 not-provisioned-yet) — keep polling.
+      }
+      if (this.disposed) { return; }
+      await this.load();
+      if (settled) { return; }
     }
   }
 

@@ -10,6 +10,7 @@ import {
   createRunnerErrorMessage,
   isRunnerRunning,
   isRunnerTransitioning,
+  runnerActionErrorMessage,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -181,5 +182,23 @@ describe('isRunnerRunning / isRunnerTransitioning', () => {
     for (const s of ['active', 'running', 'stopped', 'pending', 'failed', '']) {
       expect(isRunnerTransitioning(s)).toBe(false);
     }
+  });
+});
+
+describe('runnerActionErrorMessage', () => {
+  it('maps 403/409/502/503 to specific messages', () => {
+    expect(runnerActionErrorMessage(403, 'forbidden')).toMatch(/permission/i);
+    expect(runnerActionErrorMessage(409, 'conflict')).toMatch(/current state/i);
+    expect(runnerActionErrorMessage(502, 'bad gateway')).toMatch(/temporarily unavailable/i);
+    expect(runnerActionErrorMessage(503, 'unavailable')).toMatch(/temporarily unavailable/i);
+  });
+
+  it('softens transient pod/DNS errors to "still starting"', () => {
+    expect(runnerActionErrorMessage(500, 'dial tcp: no such host')).toMatch(/still starting/i);
+    expect(runnerActionErrorMessage(undefined, 'connection refused')).toMatch(/still starting/i);
+  });
+
+  it('passes through an unrecognized server message', () => {
+    expect(runnerActionErrorMessage(400, 'name is required')).toBe('name is required');
   });
 });

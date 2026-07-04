@@ -125,3 +125,28 @@ export function isRunnerRunning(status: string): boolean {
 export function isRunnerTransitioning(status: string): boolean {
   return status === 'starting' || status === 'stopping';
 }
+
+// Transient pod/DNS signals the page softens so users retry instead of seeing
+// raw pod errors (#436 §6 / §0).
+const TRANSIENT_RUNNER_RE = /no such host|connection refused|dial tcp|pod not found|i\/o timeout|context deadline exceeded|no endpoints available/i;
+
+/**
+ * Map a start/stop/delete failure to a user-facing message (#2816). 403 →
+ * permissions, 409 → invalid-state, 502/503 → transient outage, and transient
+ * pod/DNS errors → "still starting"; otherwise the server error text.
+ */
+export function runnerActionErrorMessage(status: number | undefined, serverText: string): string {
+  if (status === 403) {
+    return "You don't have permission to manage this runner (owner or org admin only).";
+  }
+  if (status === 409) {
+    return "That action isn't valid for the runner's current state — refresh and try again.";
+  }
+  if (status === 502 || status === 503) {
+    return 'Cloud Runner service is temporarily unavailable — please try again shortly.';
+  }
+  if (TRANSIENT_RUNNER_RE.test(serverText)) {
+    return 'Runner is still starting. Try again in a moment.';
+  }
+  return serverText;
+}

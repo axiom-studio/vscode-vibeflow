@@ -5,6 +5,7 @@ import type {
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
 import type { GlobalCloudRunnerView } from '../../../src/api/types';
+import { isRunnerRunning, isRunnerTransitioning } from '../../../src/api/cloudRunners';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage) => void };
 
@@ -48,6 +49,12 @@ const td: CSSProperties = {
   verticalAlign: 'middle', maxWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
 const msgStyle: CSSProperties = { fontSize: 12, color: 'var(--feed-muted)', padding: '16px 24px' };
+// Actions cell opts out of the ellipsis clamp so the buttons keep their width.
+const actionsTd: CSSProperties = { padding: '5px 12px', fontSize: 12, borderBottom: '1px solid var(--feed-border)', verticalAlign: 'middle', whiteSpace: 'nowrap', textAlign: 'right' };
+const actionBtn: CSSProperties = {
+  padding: '4px 10px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
+  background: 'transparent', color: 'var(--feed-fg)', border: '1px solid var(--feed-border)',
+};
 
 export function CloudRunnersView() {
   const [state, setState] = useState<State>({ runners: [], loading: true, error: undefined, generatedAt: undefined });
@@ -104,6 +111,7 @@ export function CloudRunnersView() {
                 <th style={th}>Pod Status</th>
                 <th style={th}>Project</th>
                 <th style={th}>Created</th>
+                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -119,6 +127,25 @@ export function CloudRunnersView() {
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{r.podStatus || '—'}</td>
                   <td style={td}>{r.projectName || '—'}</td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{formatCreatedAt(r.createdAt)}</td>
+                  <td style={actionsTd}>
+                    {isRunnerTransitioning(r.status) ? (
+                      <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>
+                        {r.status === 'starting' ? 'Starting…' : 'Stopping…'}
+                      </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                        {isRunnerRunning(r.status) ? (
+                          <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerStop', payload: { projectId: r.projectId, id: r.id } })}>Stop</button>
+                        ) : (
+                          <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerStart', payload: { projectId: r.projectId, id: r.id } })}>Start</button>
+                        )}
+                        <button
+                          style={{ ...actionBtn, color: 'var(--feed-error)' }}
+                          onClick={() => vscode.postMessage({ type: 'cloudRunnerDelete', payload: { projectId: r.projectId, id: r.id, name: r.name } })}
+                        >Delete</button>
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
