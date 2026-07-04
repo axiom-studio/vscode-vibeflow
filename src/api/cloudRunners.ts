@@ -109,3 +109,19 @@ export function createRunnerErrorMessage(status: number | undefined, serverText:
       return `could not create cloud runner — ${serverText}`;
   }
 }
+
+/**
+ * A runner is "running" (the page shows a Stop action) when its lifecycle
+ * status is `active` or `running` (#603 management, spec #436 §2).
+ */
+export function isRunnerRunning(status: string): boolean {
+  return status === 'active' || status === 'running';
+}
+
+/**
+ * A runner is transitioning while `starting`/`stopping` — the page disables
+ * its row actions and shows a spinner until the reconciler settles (#436 §2).
+ */
+export function isRunnerTransitioning(status: string): boolean {
+  return status === 'starting' || status === 'stopping';
+}
