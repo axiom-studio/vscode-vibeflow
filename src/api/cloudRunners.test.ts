@@ -8,6 +8,8 @@ import {
   parseRepoUrls,
   runnerPollState,
   createRunnerErrorMessage,
+  isRunnerRunning,
+  isRunnerTransitioning,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -161,5 +163,23 @@ describe('createRunnerErrorMessage', () => {
   it('falls back to the server text for other/unknown statuses', () => {
     expect(createRunnerErrorMessage(500, 'boom')).toBe('could not create cloud runner — boom');
     expect(createRunnerErrorMessage(undefined, 'network down')).toBe('could not create cloud runner — network down');
+  });
+});
+
+describe('isRunnerRunning / isRunnerTransitioning', () => {
+  it('treats active and running as running', () => {
+    expect(isRunnerRunning('active')).toBe(true);
+    expect(isRunnerRunning('running')).toBe(true);
+    for (const s of ['stopped', 'starting', 'stopping', 'pending', 'failed', '']) {
+      expect(isRunnerRunning(s)).toBe(false);
+    }
+  });
+
+  it('treats starting and stopping as transitioning', () => {
+    expect(isRunnerTransitioning('starting')).toBe(true);
+    expect(isRunnerTransitioning('stopping')).toBe(true);
+    for (const s of ['active', 'running', 'stopped', 'pending', 'failed', '']) {
+      expect(isRunnerTransitioning(s)).toBe(false);
+    }
   });
 });
