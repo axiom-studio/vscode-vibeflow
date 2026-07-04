@@ -411,7 +411,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       client,
       project.projectId,
       pollingCoordinator,
-      update => workingStatusBar.updateWorking(update),
+      update => {
+        workingStatusBar.updateWorking(update);
+        // Relay the SAME snapshot into open chat panels so the in-chat Working
+        // bubble tracks live agent activity, not just the optimistic post-send
+        // bubble (feature #3387).
+        sessionPanelManager.updateWorking(update);
+      },
       {
         logger: {
           trace: msg => workingIndicatorChannel.trace(msg),

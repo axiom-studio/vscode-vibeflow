@@ -80,6 +80,10 @@ export type ChatHostMessage =
   // client's monotonic counter so stale results from older queries can
   // be dropped before render.
   | { type: 'chatMentionResults'; payload: { requestId: number; kind: string; items: MentionItem[] } }
+  // Live "Working…" state for this session (#3387) — the host relays the
+  // SessionWorkingObserver's /ws/ui state so the chat shows the agent working
+  // even without a user send; `working:false` clears it (done/idle).
+  | { type: 'chatWorking'; payload: { working: boolean; startedAtMs?: number } }
   | {
       type: 'update';
       payload: {

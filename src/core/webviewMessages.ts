@@ -276,7 +276,14 @@ export type SessionPanelHostMessage =
       payload:
         | { id: number; uri: string }
         | { id: number; error: string };
-    };
+    }
+  // Live "Working…" state for THIS panel's session (feature #3387), relayed
+  // from the SessionWorkingObserver's /ws/ui state machine (vibeflow_activity
+  // ON / vibeflow_session_idle OFF, done-summary → hide). `working:true` while
+  // the agent is active; the webview shows the standalone Working bubble from
+  // `startedAtMs`. Clears (working:false) on done/idle — so autonomous agent
+  // work shows in-chat, not just optimistically after a user send.
+  | { type: 'chatWorking'; payload: { working: boolean; startedAtMs?: number } };
 
 /**
  * One entry in the @mention picker (todo #1614). Shared host↔webview
