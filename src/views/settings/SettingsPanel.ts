@@ -402,35 +402,25 @@ export class SettingsPanel {
             vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
             break;
           }
-          const { name, gitUrl, authType, userName } = msg.payload;
-          // Secrets are collected HERE, host-side — never in the webview.
+          // Per #3389 (user chose the inline-form design) the webview collects
+          // the secret and sends it in the payload. Forward it straight to the
+          // server. NEVER log msg.payload — it holds accessToken/sshPrivateKey.
+          const { name, authType, userName, accessToken, sshPrivateKey } = msg.payload;
+          const gitUrl = msg.payload.gitUrl?.trim() || 'https://github.com';
           const body: CreateGitProviderRequest = { name, gitUrl, authType };
           if (authType === 'pat') {
-            const token = await vscode.window.showInputBox({
-              prompt: `Personal access token for "${name}"`,
-              placeHolder: 'ghp_… / glpat-…',
-              password: true,
-              ignoreFocusOut: true,
-            });
-            // Empty or cancelled → abort without creating a credential-less provider.
-            if (!token) { break; }
-            body.userName = userName;
-            body.accessToken = token;
-          } else {
-            const picked = await vscode.window.showOpenDialog({
-              canSelectMany: false,
-              openLabel: 'Use SSH private key',
-              title: `Select the SSH private key for "${name}"`,
-            });
-            if (!picked || picked.length === 0) { break; } // cancelled
-            try {
-              const bytes = await vscode.workspace.fs.readFile(picked[0]);
-              body.sshPrivateKey = Buffer.from(bytes).toString('utf8');
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              vscode.window.showErrorMessage(`VibeFlow: could not read key file — ${message}`);
+            if (!accessToken) {
+              vscode.window.showWarningMessage('VibeFlow: an access token is required');
               break;
             }
+            if (userName) { body.userName = userName; }
+            body.accessToken = accessToken;
+          } else {
+            if (!sshPrivateKey) {
+              vscode.window.showWarningMessage('VibeFlow: an SSH private key is required');
+              break;
+            }
+            body.sshPrivateKey = sshPrivateKey;
           }
           try {
             await deps.client.createGitProvider(body);
