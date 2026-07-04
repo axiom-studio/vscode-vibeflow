@@ -100,7 +100,10 @@ export type SettingsHostMessage =
   // Git Configuration tab (feature #603) — the list is fetched lazily and
   // pushed back on demand, kept out of the main settings snapshot so a slow
   // or failing network call never blocks the rest of Settings.
-  | { type: 'gitProvidersData'; payload: { providers: GitProviderView[]; loading?: boolean; error?: string } };
+  | { type: 'gitProvidersData'; payload: { providers: GitProviderView[]; loading?: boolean; error?: string } }
+  // Explicit outcome of an add-provider attempt (#3393) so the tab can show it
+  // inline instead of relying on an easily-missed toast.
+  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } };
 
 export type SettingsClientMessage =
   | { type: 'closeSettings' }

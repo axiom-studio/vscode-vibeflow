@@ -425,9 +425,13 @@ export class SettingsPanel {
           try {
             await deps.client.createGitProvider(body);
             vscode.window.showInformationMessage(`VibeFlow: git configuration "${name}" saved`);
+            postToWebview({ type: 'gitProviderCreateResult', payload: { ok: true } });
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`VibeFlow: could not save git configuration — ${message}`);
+            // Surface the failure inline too — a toast is easy to miss, and the
+            // form having cleared can read as success (#3393).
+            postToWebview({ type: 'gitProviderCreateResult', payload: { ok: false, error: message } });
           }
           await refreshGitProviders();
           break;
