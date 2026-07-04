@@ -7,6 +7,7 @@ import {
   validateCreateRunner,
   parseRepoUrls,
   runnerPollState,
+  createRunnerErrorMessage,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -144,5 +145,21 @@ describe('runnerPollState', () => {
     expect(runnerPollState('starting')).toBe('pending');
     expect(runnerPollState('stopping')).toBe('pending');
     expect(runnerPollState('')).toBe('pending');
+  });
+});
+
+describe('createRunnerErrorMessage', () => {
+  it('maps 403 to a permission message', () => {
+    expect(createRunnerErrorMessage(403, 'forbidden')).toMatch(/permission/i);
+  });
+
+  it('maps 502 and 503 to a transient-outage message', () => {
+    expect(createRunnerErrorMessage(502, 'bad gateway')).toMatch(/temporarily unavailable/i);
+    expect(createRunnerErrorMessage(503, 'unavailable')).toMatch(/temporarily unavailable/i);
+  });
+
+  it('falls back to the server text for other/unknown statuses', () => {
+    expect(createRunnerErrorMessage(500, 'boom')).toBe('could not create cloud runner — boom');
+    expect(createRunnerErrorMessage(undefined, 'network down')).toBe('could not create cloud runner — network down');
   });
 });
