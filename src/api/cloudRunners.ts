@@ -208,6 +208,25 @@ export function suggestRunnerName(name: string, salt: string): string {
   return `${name.trim()}-${salt}`;
 }
 
+/**
+ * Summarize a response's SHAPE for the debug trace (#3396) — top-level keys with
+ * array lengths and value TYPES, never values. Reveals response-shape drift
+ * (e.g. `{git_providers[3]}` vs `{providers[3]}`, or `array[3]`) without logging
+ * any data, so it is safe even if a payload were to carry sensitive fields.
+ */
+export function summarizeResponseShape(data: unknown): string {
+  if (Array.isArray(data)) {
+    return `array[${data.length}]`;
+  }
+  if (data && typeof data === 'object') {
+    const parts = Object.entries(data as Record<string, unknown>).map(([k, v]) =>
+      Array.isArray(v) ? `${k}[${v.length}]` : `${k}:${typeof v}`,
+    );
+    return `{${parts.join(', ')}}`;
+  }
+  return typeof data;
+}
+
 /** The 9 vibeflow personas selectable when configuring a runner session. */
 export const VIBEFLOW_PERSONAS = [
   'developer', 'principal_engineer', 'architect', 'ux_designer', 'qa_lead',
