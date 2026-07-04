@@ -76,8 +76,21 @@ describe('unwrapList', () => {
     expect(unwrapList<string>({ providers: ['a'] }, 'providers')).toEqual(['a']);
   });
 
-  it('returns an empty array when the key is missing', () => {
-    expect(unwrapList({ other: [1] }, 'runners')).toEqual([]);
+  it('falls back to the sole array property when the documented key is absent (#3393 shape drift)', () => {
+    expect(unwrapList({ git_providers: [{ id: 1 }] }, 'providers')).toEqual([{ id: 1 }]);
+    expect(unwrapList({ items: [1, 2] }, 'runners')).toEqual([1, 2]);
+  });
+
+  it('handles a bare top-level array (#3393)', () => {
+    expect(unwrapList([{ id: 1 }, { id: 2 }], 'providers')).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('returns an empty array when there is no array to find', () => {
+    expect(unwrapList({ other: 'x', n: 1 }, 'runners')).toEqual([]);
+  });
+
+  it('does not guess when multiple array properties are present (ambiguous → empty)', () => {
+    expect(unwrapList({ a: [1], b: [2] }, 'runners')).toEqual([]);
   });
 
   it('returns an empty array when the value is not an array', () => {
