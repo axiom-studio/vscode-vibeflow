@@ -33,15 +33,28 @@ export function cloudRunnersEnabled(flags: FeatureFlags | undefined | null): boo
 }
 
 /**
- * Unwrap a `{ [key]: T[] }` list envelope defensively. AxiomCloud list
- * endpoints wrap their arrays (e.g. `{providers: [...]}`, `{runners: [...]}`);
- * a missing/null field or a non-array value means "zero rows", not an error.
+ * Extract a list from an AxiomCloud list response, tolerant of response-shape
+ * drift (#3393 — existing git providers weren't rendering because the live
+ * shape differed from the spec's `{providers: [...]}`). In order:
+ *   1. a bare top-level array (some endpoints don't wrap),
+ *   2. the documented wrapper `key` (e.g. `providers`, `runners`),
+ *   3. the sole array-valued property, if there's exactly one (covers a
+ *      wrapper-key mismatch such as `git_providers` vs `providers`).
+ * Anything else (missing/null/non-array, or ambiguous multiple arrays) means
+ * "zero rows", not an error.
  */
 export function unwrapList<T>(envelope: unknown, key: string): T[] {
+  if (Array.isArray(envelope)) {
+    return envelope as T[];
+  }
   if (envelope && typeof envelope === 'object') {
-    const value = (envelope as Record<string, unknown>)[key];
-    if (Array.isArray(value)) {
-      return value as T[];
+    const obj = envelope as Record<string, unknown>;
+    if (Array.isArray(obj[key])) {
+      return obj[key] as T[];
+    }
+    const arrays = Object.values(obj).filter((v): v is unknown[] => Array.isArray(v));
+    if (arrays.length === 1) {
+      return arrays[0] as T[];
     }
   }
   return [];
