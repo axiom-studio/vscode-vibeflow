@@ -9,7 +9,7 @@
  * Wire contract: the "Cloud Runners External Integration — API Specification"
  * (axiomcloud doc #433) + Workflow (#434).
  */
-import type { FeatureFlags, CreateRunnerRequest } from './types.js';
+import type { FeatureFlags, CreateRunnerRequest, CloudRunnerRepo } from './types.js';
 
 /**
  * Org feature-flag key that gates every Cloud Runners + git-provider route.
@@ -62,4 +62,31 @@ export function validateCreateRunner(body: CreateRunnerRequest): string | null {
     return 'repositories require a git provider';
   }
   return null;
+}
+
+/**
+ * Parse a free-text list of repo URLs (comma- or newline-separated) into the
+ * `gitRepos` shape. Blank entries are dropped; an empty/whitespace input
+ * yields an empty list (no repos requested).
+ */
+export function parseRepoUrls(input: string): CloudRunnerRepo[] {
+  return input
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(url => ({ url }));
+}
+
+/** Terminal/transient classification of a runner status while polling create. */
+export type RunnerPollState = 'active' | 'failed' | 'pending';
+
+/**
+ * Classify a runner's lifecycle status for the create-and-wait poll loop.
+ * `active` = ready (stop, success); `failed` = terminal error (stop, surface);
+ * everything else (pending/starting/…) = keep polling.
+ */
+export function runnerPollState(status: string): RunnerPollState {
+  if (status === 'active') { return 'active'; }
+  if (status === 'failed') { return 'failed'; }
+  return 'pending';
 }

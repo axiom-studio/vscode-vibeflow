@@ -5,6 +5,8 @@ import {
   cloudRunnersEnabled,
   unwrapList,
   validateCreateRunner,
+  parseRepoUrls,
+  runnerPollState,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -113,5 +115,34 @@ describe('validateCreateRunner', () => {
 
   it('treats an empty gitRepos array as no repos', () => {
     expect(validateCreateRunner({ ...base, gitRepos: [] })).toBeNull();
+  });
+});
+
+describe('parseRepoUrls', () => {
+  it('splits on commas and newlines, trimming and dropping blanks', () => {
+    expect(parseRepoUrls('https://github.com/a/b, https://github.com/c/d')).toEqual([
+      { url: 'https://github.com/a/b' },
+      { url: 'https://github.com/c/d' },
+    ]);
+    expect(parseRepoUrls('https://x/1\n  https://x/2 \n')).toEqual([
+      { url: 'https://x/1' },
+      { url: 'https://x/2' },
+    ]);
+  });
+
+  it('returns an empty list for empty or whitespace-only input', () => {
+    expect(parseRepoUrls('')).toEqual([]);
+    expect(parseRepoUrls('   ,  \n , ')).toEqual([]);
+  });
+});
+
+describe('runnerPollState', () => {
+  it('maps active/failed to terminal states and everything else to pending', () => {
+    expect(runnerPollState('active')).toBe('active');
+    expect(runnerPollState('failed')).toBe('failed');
+    expect(runnerPollState('pending')).toBe('pending');
+    expect(runnerPollState('starting')).toBe('pending');
+    expect(runnerPollState('stopping')).toBe('pending');
+    expect(runnerPollState('')).toBe('pending');
   });
 });
