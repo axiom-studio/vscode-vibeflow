@@ -32,56 +32,68 @@ describe('GitConfigTab', () => {
     expect(screen.getByText('Not connected — sign in first.')).toBeTruthy();
   });
 
-  it('enables Add only with a name and a valid https URL, and posts create with NO secret', () => {
+  it('enables Add only with a name + valid host + token, and posts create with the inline PAT (blank host → github.com)', () => {
     const commands: SettingsCommand[] = [];
     render(<GitConfigTab onCommand={c => commands.push(c)} />);
-    const addBtn = screen.getByRole('button', { name: 'Add configuration' }) as HTMLButtonElement;
+    const addBtn = screen.getByRole('button', { name: 'Add provider' }) as HTMLButtonElement;
     expect(addBtn.disabled).toBe(true);
 
-    fireEvent.change(screen.getByLabelText('Configuration name'), { target: { value: 'GitHub' } });
-    fireEvent.change(screen.getByLabelText('Git host URL'), { target: { value: 'http://github.com' } });
-    expect(addBtn.disabled).toBe(true); // http is rejected — only https
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GitHub' } });
+    expect(addBtn.disabled).toBe(true); // no secret yet
 
-    fireEvent.change(screen.getByLabelText('Git host URL'), { target: { value: 'https://github.com' } });
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'octocat' } });
+    fireEvent.change(screen.getByLabelText('Git host'), { target: { value: 'http://github.com' } });
+    fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'ghp_123' } });
+    expect(addBtn.disabled).toBe(true); // http host rejected
+
+    // Blank host is allowed (defaults to github.com).
+    fireEvent.change(screen.getByLabelText('Git host'), { target: { value: '' } });
     expect(addBtn.disabled).toBe(false);
 
     fireEvent.click(addBtn);
-    const created = commands.filter(c => c.type === 'gitProviderCreate');
-    expect(created).toEqual([{
-      type: 'gitProviderCreate',
-      payload: { name: 'GitHub', gitUrl: 'https://github.com', authType: 'pat', userName: 'octocat' },
-    }]);
-    // Security invariant: the wire payload must never carry a token/key.
-    const payload = (created[0] as { payload: Record<string, unknown> }).payload;
-    expect('accessToken' in payload).toBe(false);
-    expect('sshPrivateKey' in payload).toBe(false);
-  });
-
-  it('omits an empty username from the PAT create payload', () => {
-    const commands: SettingsCommand[] = [];
-    render(<GitConfigTab onCommand={c => commands.push(c)} />);
-    fireEvent.change(screen.getByLabelText('Configuration name'), { target: { value: 'GH' } });
-    fireEvent.change(screen.getByLabelText('Git host URL'), { target: { value: 'https://github.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add configuration' }));
     expect(commands).toContainEqual({
       type: 'gitProviderCreate',
-      payload: { name: 'GH', gitUrl: 'https://github.com', authType: 'pat' },
+      payload: { name: 'GitHub', gitUrl: 'https://github.com', authType: 'pat', accessToken: 'ghp_123' },
     });
   });
 
-  it('hides Username for SSH and posts authType ssh with no userName', () => {
+  it('includes an optional username and clears the secret field after submit', () => {
     const commands: SettingsCommand[] = [];
     render(<GitConfigTab onCommand={c => commands.push(c)} />);
-    fireEvent.click(screen.getByLabelText('SSH key'));
-    expect(screen.queryByLabelText('Username')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GH' } });
+    fireEvent.change(screen.getByLabelText('Git host'), { target: { value: 'https://ghe.example.com' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'octocat' } });
+    const token = screen.getByLabelText('Access token') as HTMLInputElement;
+    fireEvent.change(token, { target: { value: 'ghp_secret' } });
 
-    fireEvent.change(screen.getByLabelText('Configuration name'), { target: { value: 'work-ssh' } });
-    fireEvent.change(screen.getByLabelText('Git host URL'), { target: { value: 'https://github.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add configuration' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
     expect(commands).toContainEqual({
       type: 'gitProviderCreate',
-      payload: { name: 'work-ssh', gitUrl: 'https://github.com', authType: 'ssh' },
+      payload: { name: 'GH', gitUrl: 'https://ghe.example.com', authType: 'pat', userName: 'octocat', accessToken: 'ghp_secret' },
+    });
+    // The secret must not linger in the form after submit.
+    expect((screen.getByLabelText('Access token') as HTMLInputElement).value).toBe('');
+  });
+
+  it('masks the access token field', () => {
+    render(<GitConfigTab onCommand={vi.fn()} />);
+    expect((screen.getByLabelText('Access token') as HTMLInputElement).type).toBe('password');
+  });
+
+  it('switches to the SSH key textarea and posts sshPrivateKey', () => {
+    const commands: SettingsCommand[] = [];
+    render(<GitConfigTab onCommand={c => commands.push(c)} />);
+
+    fireEvent.change(screen.getByLabelText('Authentication'), { target: { value: 'ssh' } });
+    expect(screen.queryByLabelText('Access token')).toBeNull();
+    expect(screen.queryByLabelText('Username')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'work-ssh' } });
+    fireEvent.change(screen.getByLabelText('SSH private key'), { target: { value: '-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END-----' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    expect(commands).toContainEqual({
+      type: 'gitProviderCreate',
+      payload: { name: 'work-ssh', gitUrl: 'https://github.com', authType: 'ssh', sshPrivateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END-----' },
     });
   });
 

@@ -116,12 +116,13 @@ export type SettingsClientMessage =
   | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
   | { type: 'resetStickyModel'; payload: { persona: string } }
   | { type: 'openCli'; payload: { mcpName: string; rootPath: string } }
-  // Git Configuration tab (feature #603). The create payload deliberately
-  // carries NO secret — the host prompts for the PAT (showInputBox) or reads
-  // the SSH private key from a picked file, so the token/key never enters
-  // the webview. Mirrors the setApiKey / setProviderToken host-side pattern.
+  // Git Configuration tab (features #603 / #604). Per the #3389 design the
+  // secret is entered inline in the form, so the create payload carries the
+  // PAT `accessToken` or the `sshPrivateKey`. The host validates and forwards
+  // it straight to `createGitProvider` (server-side storage); it is never
+  // logged or persisted locally, and the list response never echoes it back.
   | { type: 'gitProvidersList' }
-  | { type: 'gitProviderCreate'; payload: { name: string; gitUrl: string; authType: 'pat' | 'ssh'; userName?: string } }
+  | { type: 'gitProviderCreate'; payload: { name: string; gitUrl: string; authType: 'pat' | 'ssh'; userName?: string; accessToken?: string; sshPrivateKey?: string } }
   | { type: 'gitProviderRename'; payload: { id: number; name: string } }
   | { type: 'gitProviderDelete'; payload: { id: number; name: string } }
   // Generic command-passthrough — the Settings panel uses this to fire
