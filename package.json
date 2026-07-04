@@ -217,6 +217,11 @@
         "icon": "$(table)"
       },
       {
+        "command": "vibeflow.openCloudRunners",
+        "title": "VibeFlow: Open Cloud Runners",
+        "icon": "$(cloud)"
+      },
+      {
         "command": "vibeflow.openCompliance",
         "title": "VibeFlow: Open Compliance",
         "icon": "$(shield)"
