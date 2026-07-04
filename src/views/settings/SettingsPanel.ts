@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { CreateGitProviderRequest } from '../../api/types.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
 import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
@@ -119,6 +120,26 @@ export class SettingsPanel {
     const pushSettings = async () => {
       const payload = await buildSettingsPayload(deps);
       postToWebview({ type: 'settingsData', payload });
+    };
+
+    /**
+     * Fetch the caller's git providers and push them to the Git Configuration
+     * tab (feature #603). Called on the tab's initial `gitProvidersList` and
+     * after every create/rename/delete so the list reflects the mutation.
+     * Failures surface in-band (the tab renders `payload.error`) — never thrown.
+     */
+    const refreshGitProviders = async () => {
+      if (!deps.client) {
+        postToWebview({ type: 'gitProvidersData', payload: { providers: [], error: 'Not connected — sign in first.' } });
+        return;
+      }
+      try {
+        const providers = await deps.client.listGitProviders();
+        postToWebview({ type: 'gitProvidersData', payload: { providers } });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        postToWebview({ type: 'gitProvidersData', payload: { providers: [], error: message } });
+      }
     };
 
     // Handle messages from the settings webview
@@ -371,6 +392,89 @@ export class SettingsPanel {
           }
           await vscode.commands.executeCommand('vibeflow.openCli', launchOptions);
           await pushSettings();
+          break;
+        }
+        case 'gitProvidersList':
+          await refreshGitProviders();
+          break;
+        case 'gitProviderCreate': {
+          if (!deps.client) {
+            vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
+            break;
+          }
+          const { name, gitUrl, authType, userName } = msg.payload;
+          // Secrets are collected HERE, host-side — never in the webview.
+          const body: CreateGitProviderRequest = { name, gitUrl, authType };
+          if (authType === 'pat') {
+            const token = await vscode.window.showInputBox({
+              prompt: `Personal access token for "${name}"`,
+              placeHolder: 'ghp_… / glpat-…',
+              password: true,
+              ignoreFocusOut: true,
+            });
+            // Empty or cancelled → abort without creating a credential-less provider.
+            if (!token) { break; }
+            body.userName = userName;
+            body.accessToken = token;
+          } else {
+            const picked = await vscode.window.showOpenDialog({
+              canSelectMany: false,
+              openLabel: 'Use SSH private key',
+              title: `Select the SSH private key for "${name}"`,
+            });
+            if (!picked || picked.length === 0) { break; } // cancelled
+            try {
+              const bytes = await vscode.workspace.fs.readFile(picked[0]);
+              body.sshPrivateKey = Buffer.from(bytes).toString('utf8');
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`VibeFlow: could not read key file — ${message}`);
+              break;
+            }
+          }
+          try {
+            await deps.client.createGitProvider(body);
+            vscode.window.showInformationMessage(`VibeFlow: git configuration "${name}" saved`);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`VibeFlow: could not save git configuration — ${message}`);
+          }
+          await refreshGitProviders();
+          break;
+        }
+        case 'gitProviderRename': {
+          if (!deps.client) {
+            vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
+            break;
+          }
+          try {
+            await deps.client.renameGitProvider(msg.payload.id, msg.payload.name);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`VibeFlow: rename failed — ${message}`);
+          }
+          await refreshGitProviders();
+          break;
+        }
+        case 'gitProviderDelete': {
+          if (!deps.client) {
+            vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
+            break;
+          }
+          const confirm = await vscode.window.showWarningMessage(
+            `Delete git configuration "${msg.payload.name}"? This removes the stored credentials.`,
+            { modal: true },
+            'Delete',
+          );
+          if (confirm !== 'Delete') { break; }
+          try {
+            await deps.client.deleteGitProvider(msg.payload.id);
+            vscode.window.showInformationMessage(`VibeFlow: git configuration "${msg.payload.name}" deleted`);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`VibeFlow: delete failed — ${message}`);
+          }
+          await refreshGitProviders();
           break;
         }
         case 'runCommand':
