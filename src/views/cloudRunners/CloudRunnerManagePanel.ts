@@ -16,6 +16,7 @@ import {
   buildRunnerManifest,
   runnerActionErrorMessage,
 } from '../../api/cloudRunners.js';
+import { openRunnerTerminal } from './CloudRunnerTerminal.js';
 
 const STATUS_POLL_MS = 3000;
 const HEALTH_POLL_MS = 3000;
@@ -134,6 +135,9 @@ export class CloudRunnerManagePanel {
         this.push();
         if (msg.payload.step === 'configure') { void this.loadConfigureData(); }
         if (msg.payload.step === 'authenticate') { void this.pollStatus(); }
+        return;
+      case 'manageOpenTerminal':
+        openRunnerTerminal(this.client, this.projectId, this.runnerId, this.state.runnerName);
         return;
       default:
         assertNever(msg);

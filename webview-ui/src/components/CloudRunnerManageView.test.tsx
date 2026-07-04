@@ -80,4 +80,13 @@ describe('CloudRunnerManageView', () => {
     pushState(baseState({ step: 'launch', launching: false, launchPhase: 'running' }));
     expect(screen.getByText(/Session is running/)).toBeTruthy();
   });
+
+  it('opens the pod terminal from the header button', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open terminal' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'manageOpenTerminal' });
+    spy.mockRestore();
+  });
 });

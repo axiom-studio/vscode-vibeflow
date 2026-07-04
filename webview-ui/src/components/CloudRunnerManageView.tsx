@@ -54,12 +54,16 @@ export function CloudRunnerManageView() {
   return (
     <div style={wrap}>
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>Manage {state.runnerName}</h2>
-      <div style={{ display: 'flex', gap: 14, margin: '10px 0 18px' }}>
+      <div style={{ display: 'flex', gap: 14, margin: '10px 0 18px', alignItems: 'center' }}>
         {steps.map(s => (
           <span key={s} style={{ fontSize: 12, fontWeight: s === state.step ? 700 : 400, color: s === state.step ? 'var(--feed-fg)' : 'var(--feed-muted)' }}>
             {STEP_LABELS[s]}
           </span>
         ))}
+        <button
+          style={{ ...ghostBtn, marginLeft: 'auto', padding: '4px 10px' }}
+          onClick={() => vscode.postMessage({ type: 'manageOpenTerminal' })}
+        >Open terminal</button>
       </div>
 
       {state.error && (
