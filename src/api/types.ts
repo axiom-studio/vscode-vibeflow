@@ -777,3 +777,31 @@ export interface RunnerStatus {
   authenticated?: boolean;
   configured?: boolean;
 }
+
+/**
+ * Device-code OAuth start payload (`GET .../{id}/oauth/start`). The server
+ * spells the URL/code fields several ways depending on the agent — callers
+ * read the first present value.
+ */
+export interface RunnerOAuthStart {
+  url?: string;
+  verificationUrl?: string;
+  verification_url?: string;
+  code?: string;
+  userCode?: string;
+  user_code?: string;
+}
+
+/** A repo cloned onto the runner pod (`GET .../{id}/repos`). */
+export interface RunnerRepo {
+  name?: string;
+  path?: string;
+  isGitRepo?: boolean;
+  branch?: string;
+}
+
+/** Runner launch health (`GET .../{id}/health`) — `phase` ∈ running|error|…. */
+export interface RunnerHealth {
+  phase?: string;
+  errors?: string[];
+}

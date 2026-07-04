@@ -11,6 +11,10 @@ import {
   isRunnerRunning,
   isRunnerTransitioning,
   runnerActionErrorMessage,
+  canManageRunner,
+  isPodReady,
+  authCompletesAutomatically,
+  canLaunch,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -200,5 +204,49 @@ describe('runnerActionErrorMessage', () => {
 
   it('passes through an unrecognized server message', () => {
     expect(runnerActionErrorMessage(400, 'name is required')).toBe('name is required');
+  });
+});
+
+describe('canManageRunner', () => {
+  it('is false for stopped/stopping/starting (no manageable pod)', () => {
+    for (const s of ['stopped', 'stopping', 'starting']) {
+      expect(canManageRunner(s)).toBe(false);
+    }
+  });
+  it('is true for active/pending/failed', () => {
+    for (const s of ['active', 'running', 'pending', 'failed']) {
+      expect(canManageRunner(s)).toBe(true);
+    }
+  });
+});
+
+describe('isPodReady', () => {
+  it('matches the ready pod-status family, case-insensitively', () => {
+    for (const p of ['Running', 'healthy', 'READY', 'available', 'Succeeded']) {
+      expect(isPodReady(p)).toBe(true);
+    }
+  });
+  it('is false for not-ready / missing pod status', () => {
+    for (const p of ['pending', 'scheduling', undefined, '']) {
+      expect(isPodReady(p)).toBe(false);
+    }
+  });
+});
+
+describe('authCompletesAutomatically', () => {
+  it('is true for codex/cursor and false for claude/unknown', () => {
+    expect(authCompletesAutomatically('codex')).toBe(true);
+    expect(authCompletesAutomatically('cursor')).toBe(true);
+    expect(authCompletesAutomatically('claude')).toBe(false);
+    expect(authCompletesAutomatically(undefined)).toBe(false);
+  });
+});
+
+describe('canLaunch', () => {
+  it('requires a working dir, a project, and ≥1 persona', () => {
+    expect(canLaunch('/w', 'proj', ['developer'])).toBe(true);
+    expect(canLaunch('', 'proj', ['developer'])).toBe(false);
+    expect(canLaunch('/w', '  ', ['developer'])).toBe(false);
+    expect(canLaunch('/w', 'proj', [])).toBe(false);
   });
 });
