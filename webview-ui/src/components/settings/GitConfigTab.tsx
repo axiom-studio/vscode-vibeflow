@@ -3,12 +3,15 @@ import type { SettingsCommand, GitProviderView } from './settingsTypes';
 import { inputStyle } from './_shared';
 
 /**
- * Git Configuration tab (feature #603) — CRUD over the account-level git
- * providers used by Cloud Runners. Supports PAT and SSH key only (OAuth is
- * out of scope here). Secrets are NEVER entered in this webview: the "Add"
- * form collects only the non-secret fields and fires `gitProviderCreate`;
- * the host then prompts for the PAT (masked input) or reads the SSH key from
- * a file the user picks. The list response never carries secrets back.
+ * Git Configuration tab (features #603 / #604) — CRUD over the account-level
+ * git providers used by Cloud Runners. Supports PAT and SSH key only.
+ *
+ * Per the #3389 design (user chose "match the mockup"), the secret is entered
+ * INLINE in the "Add a provider" form: a masked Access-token field for PAT, a
+ * private-key textarea for SSH. The secret lives only transiently in local
+ * component state — it is cleared on submit, never logged, never persisted to
+ * settings, and travels straight to the server via `gitProviderCreate`. The
+ * list response never carries secrets back (write-only).
  */
 
 type AuthType = 'pat' | 'ssh';
@@ -17,8 +20,11 @@ interface Props {
   onCommand: (cmd: SettingsCommand) => void;
 }
 
+const DEFAULT_GIT_HOST = 'https://github.com';
+
 const fullInput: CSSProperties = { ...inputStyle, width: '100%' };
-const labelStyle: CSSProperties = { fontSize: 11, fontWeight: 500, color: 'var(--feed-muted)', marginBottom: 4, display: 'block' };
+const labelStyle: CSSProperties = { fontSize: 12, fontWeight: 600, marginBottom: 4, display: 'block' };
+const helpStyle: CSSProperties = { fontSize: 10, color: 'var(--feed-muted)', marginTop: 4 };
 const buttonStyle: CSSProperties = {
   padding: '5px 12px', fontSize: 11, borderRadius: 4, cursor: 'pointer',
   background: 'var(--feed-button-bg)', color: 'var(--feed-button-fg)', border: 'none',
@@ -28,10 +34,12 @@ const ghostButtonStyle: CSSProperties = {
   background: 'transparent', color: 'var(--feed-muted)', border: '1px solid var(--feed-border)',
 };
 
-/** A well-formed https URL host, e.g. `https://github.com`. */
-function isValidHttpsUrl(value: string): boolean {
+/** Blank is allowed (host defaults to github.com); a provided value must be https. */
+function isValidHost(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) { return true; }
   try {
-    return new URL(value.trim()).protocol === 'https:';
+    return new URL(trimmed).protocol === 'https:';
   } catch {
     return false;
   }
@@ -42,11 +50,13 @@ export function GitConfigTab({ onCommand }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Add-form state.
+  // Add-form state. `accessToken` / `sshPrivateKey` are the transient secrets.
   const [authType, setAuthType] = useState<AuthType>('pat');
   const [name, setName] = useState('');
   const [gitUrl, setGitUrl] = useState('');
   const [userName, setUserName] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [sshPrivateKey, setSshPrivateKey] = useState('');
 
   // Inline rename state.
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -72,24 +82,35 @@ export function GitConfigTab({ onCommand }: Props) {
   }, []);
 
   const nameOk = name.trim().length > 0;
-  const urlOk = isValidHttpsUrl(gitUrl);
-  const canCreate = nameOk && urlOk;
+  const hostOk = isValidHost(gitUrl);
+  const secretOk = authType === 'pat' ? accessToken.trim().length > 0 : sshPrivateKey.trim().length > 0;
+  const canCreate = nameOk && hostOk && secretOk;
 
   function handleCreate() {
     if (!canCreate) { return; }
-    onCommand({
-      type: 'gitProviderCreate',
-      payload: {
-        name: name.trim(),
-        gitUrl: gitUrl.trim(),
-        authType,
-        ...(authType === 'pat' && userName.trim() ? { userName: userName.trim() } : {}),
-      },
-    });
-    // Reset the form; the host re-lists and pushes fresh gitProvidersData.
+    const payload =
+      authType === 'pat'
+        ? {
+            name: name.trim(),
+            gitUrl: gitUrl.trim() || DEFAULT_GIT_HOST,
+            authType,
+            ...(userName.trim() ? { userName: userName.trim() } : {}),
+            accessToken,
+          }
+        : {
+            name: name.trim(),
+            gitUrl: gitUrl.trim() || DEFAULT_GIT_HOST,
+            authType,
+            sshPrivateKey,
+          };
+    onCommand({ type: 'gitProviderCreate', payload });
+    // Clear the form, INCLUDING the secret; the host re-lists and pushes fresh
+    // gitProvidersData (which never carries the secret back).
     setName('');
     setGitUrl('');
     setUserName('');
+    setAccessToken('');
+    setSshPrivateKey('');
   }
 
   function saveRename(id: number) {
@@ -163,52 +184,84 @@ export function GitConfigTab({ onCommand }: Props) {
         </div>
       </div>
 
-      {/* Add a configuration */}
-      <div style={{ padding: '16px 18px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
-        <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600 }}>Add Git Configuration</h3>
+      {/* Add a provider */}
+      <div style={{ padding: '18px 20px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>Add a provider</h3>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          {(['pat', 'ssh'] as AuthType[]).map(t => (
-            <label key={t} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-              background: authType === t ? 'rgba(127,127,127,0.10)' : 'transparent',
-              border: authType === t ? '1px solid var(--feed-border)' : '1px solid transparent',
-            }}>
-              <input type="radio" name="git-auth-type" checked={authType === t} onChange={() => setAuthType(t)} style={{ accentColor: 'var(--feed-link)' }} />
-              {t === 'pat' ? 'Personal access token (PAT)' : 'SSH key'}
-            </label>
-          ))}
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 14 }}>
           <label style={labelStyle} htmlFor="git-config-name">Name</label>
-          <input id="git-config-name" aria-label="Configuration name" value={name} onChange={e => setName(e.target.value)} placeholder="GitHub (work)" style={fullInput} />
+          <input id="git-config-name" aria-label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. my-github" style={fullInput} />
+          <div style={helpStyle}>A label to identify this provider later.</div>
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label style={labelStyle} htmlFor="git-config-url">Git host URL</label>
-          <input id="git-config-url" aria-label="Git host URL" value={gitUrl} onChange={e => setGitUrl(e.target.value)} placeholder="https://github.com" style={fullInput} />
-          {gitUrl.trim().length > 0 && !urlOk && (
-            <div style={{ fontSize: 10, color: 'var(--feed-error)', marginTop: 4 }}>Enter a valid https URL (e.g. https://github.com).</div>
-          )}
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle} htmlFor="git-config-url">Git host</label>
+          <input id="git-config-url" aria-label="Git host" value={gitUrl} onChange={e => setGitUrl(e.target.value)} placeholder={DEFAULT_GIT_HOST} style={fullInput} />
+          {gitUrl.trim().length > 0 && !hostOk
+            ? <div style={{ ...helpStyle, color: 'var(--feed-error)' }}>Enter a valid https URL (e.g. {DEFAULT_GIT_HOST}).</div>
+            : <div style={helpStyle}>Leave blank to default to {DEFAULT_GIT_HOST}.</div>}
         </div>
 
-        {authType === 'pat' && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle} htmlFor="git-config-username">Username (optional)</label>
-            <input id="git-config-username" aria-label="Username" value={userName} onChange={e => setUserName(e.target.value)} placeholder="octocat" style={fullInput} />
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelStyle} htmlFor="git-config-auth">Authentication</label>
+          <select
+            id="git-config-auth"
+            aria-label="Authentication"
+            value={authType}
+            onChange={e => setAuthType(e.target.value as AuthType)}
+            style={fullInput}
+          >
+            <option value="pat">Personal Access Token</option>
+            <option value="ssh">SSH Key</option>
+          </select>
+        </div>
+
+        {authType === 'pat' ? (
+          <div style={{ display: 'flex', gap: 14, marginBottom: 4, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={labelStyle} htmlFor="git-config-username">Username <span style={{ fontWeight: 400, color: 'var(--feed-muted)' }}>(optional)</span></label>
+              <input id="git-config-username" aria-label="Username" value={userName} onChange={e => setUserName(e.target.value)} placeholder="git username" style={fullInput} />
+            </div>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={labelStyle} htmlFor="git-config-token">Access token</label>
+              <input
+                id="git-config-token"
+                aria-label="Access token"
+                type="password"
+                autoComplete="off"
+                value={accessToken}
+                onChange={e => setAccessToken(e.target.value)}
+                placeholder="••••••••"
+                style={fullInput}
+              />
+              <div style={helpStyle}>Needs repository read/write scope.</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 4 }}>
+            <label style={labelStyle} htmlFor="git-config-sshkey">SSH private key</label>
+            <textarea
+              id="git-config-sshkey"
+              aria-label="SSH private key"
+              value={sshPrivateKey}
+              onChange={e => setSshPrivateKey(e.target.value)}
+              placeholder={'-----BEGIN OPENSSH PRIVATE KEY-----'}
+              spellCheck={false}
+              rows={6}
+              style={{ ...fullInput, resize: 'vertical', fontFamily: 'var(--vscode-editor-font-family)', minHeight: 120 }}
+            />
+            <div style={helpStyle}>Paste the private key in PEM format.</div>
           </div>
         )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 6 }}>
-          <button style={{ ...buttonStyle, opacity: canCreate ? 1 : 0.5, cursor: canCreate ? 'pointer' : 'not-allowed' }} disabled={!canCreate} onClick={handleCreate}>
-            Add configuration
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <button
+            style={{ ...buttonStyle, padding: '8px 18px', fontSize: 13, fontWeight: 600, opacity: canCreate ? 1 : 0.5, cursor: canCreate ? 'pointer' : 'not-allowed' }}
+            disabled={!canCreate}
+            onClick={handleCreate}
+          >
+            Add provider
           </button>
-          <span style={{ fontSize: 10, color: 'var(--feed-muted)' }}>
-            {authType === 'pat'
-              ? 'You’ll be prompted securely for the token.'
-              : 'You’ll be asked to pick your private key file.'}
-          </span>
         </div>
       </div>
     </div>
