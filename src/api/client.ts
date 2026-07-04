@@ -38,7 +38,8 @@ import type {
   RunnerRepo,
   RunnerHealth,
 } from './types.js';
-import { cloudRunnersEnabled, unwrapList } from './cloudRunners.js';
+import { cloudRunnersEnabled, unwrapList, summarizeResponseShape } from './cloudRunners.js';
+import { cloudRunnerTrace } from '../util/cloudRunnerLog.js';
 
 /**
  * HTTP client for the VibeFlow REST API + MCP client for write operations.
@@ -120,6 +121,12 @@ export class VibeFlowClient {
       throw new Error(`Refusing to send bearer over insecure transport — ${check.message ?? 'invalid serverUrl'}`);
     }
 
+    // Opt-in Cloud Runners trace (#3396): method/path/status/response-shape
+    // only — NEVER the request body (it may carry apiKey/accessToken/sshKey).
+    const method = (options?.method ?? 'GET').toUpperCase();
+    const trace = path.includes('/cloud-runners') || path.includes('/git-providers');
+    if (trace) { cloudRunnerTrace(`→ ${method} ${path}`); }
+
     const response = await fetch(`${liveUrl}${path}`, {
       ...options,
       headers: {
@@ -142,9 +149,15 @@ export class VibeFlowClient {
       const err = new Error(`API error: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`) as Error & { status?: number; body?: string };
       err.status = response.status;
       err.body = detail;
+      if (trace) { cloudRunnerTrace(`← ${response.status} ${method} ${path}  ERROR: ${detail}`); }
       throw err;
     }
 
+    if (trace) {
+      const data = await response.json();
+      cloudRunnerTrace(`← ${response.status} ${method} ${path}  ${summarizeResponseShape(data)}`);
+      return data as T;
+    }
     return response.json() as Promise<T>;
   }
 

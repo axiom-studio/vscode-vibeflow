@@ -24,6 +24,7 @@ import {
   encodeTmuxResize,
   parseTmuxServerFrame,
   suggestRunnerName,
+  summarizeResponseShape,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -236,6 +237,24 @@ describe('suggestRunnerName', () => {
     expect(suggestRunnerName('  spaced  ', 'k7')).toBe('spaced-k7');
     // The base is used verbatim (no -N walking through reserved names).
     expect(suggestRunnerName('foo-2', 'zz')).toBe('foo-2-zz');
+  });
+});
+
+describe('summarizeResponseShape', () => {
+  it('describes a wrapped list by key + length', () => {
+    expect(summarizeResponseShape({ providers: [{ id: 1 }, { id: 2 }] })).toBe('{providers[2]}');
+    expect(summarizeResponseShape({ git_providers: [{ id: 1 }] })).toBe('{git_providers[1]}');
+  });
+  it('describes a bare array and scalar/object shapes without values', () => {
+    expect(summarizeResponseShape([1, 2, 3])).toBe('array[3]');
+    expect(summarizeResponseShape({ id: 1, name: 'x', authMode: 'pat' })).toBe('{id:number, name:string, authMode:string}');
+    expect(summarizeResponseShape('hi')).toBe('string');
+    expect(summarizeResponseShape(null)).toBe('object');
+  });
+  it('never leaks values — only keys, lengths and types', () => {
+    const out = summarizeResponseShape({ providers: [{ accessToken: 'ghp_secret' }] });
+    expect(out).toBe('{providers[1]}');
+    expect(out).not.toContain('ghp_secret');
   });
 });
 
