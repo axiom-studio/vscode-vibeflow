@@ -2,12 +2,22 @@ import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { ProjectDetector } from '../project/ProjectDetector.js';
 import type { WorkItemsTreeProvider } from '../views/workItems/WorkItemsTreeProvider.js';
+import { createCloudRunner } from './cloudRunnerCommands.js';
 
 const ITEM_TYPES = [
   { label: '$(bug) Issue', description: 'Bug or standalone fix', value: 'issue' as const },
   { label: '$(checklist) Todo', description: 'Enhancement under a feature', value: 'todo' as const },
   { label: '$(package) Feature', description: 'New feature category', value: 'feature' as const },
 ];
+
+// Offered in the "+" picker only when the org has the Cloud Runners
+// capability (feature #603). A cloud runner isn't a tracked work item — it
+// branches to its own provisioning flow (cloudRunnerCommands.ts).
+const CLOUD_RUNNER_OPTION = {
+  label: '$(cloud) Cloud Runner',
+  description: 'Provision a cloud-hosted agent runner',
+  value: 'cloudRunner' as const,
+};
 
 const PRIORITIES = [
   { label: '$(arrow-up) High', value: 'high' as const },
@@ -85,12 +95,20 @@ export async function createWorkItem(
     return;
   }
 
-  // Step 1: Type
-  const itemType = await vscode.window.showQuickPick(ITEM_TYPES, {
-    placeHolder: 'What type of work item?',
-    title: 'VibeFlow: Create Work Item (1/3)',
+  // Step 1: Type. Offer "Cloud Runner" only when the org has the capability.
+  const cloudRunnersEnabled = await client.isCloudRunnersEnabled().catch(() => false);
+  const typeOptions = cloudRunnersEnabled ? [...ITEM_TYPES, CLOUD_RUNNER_OPTION] : ITEM_TYPES;
+  const itemType = await vscode.window.showQuickPick(typeOptions, {
+    placeHolder: 'What would you like to create?',
+    title: 'VibeFlow: Create',
   });
   if (!itemType) { return; }
+
+  // Cloud Runner is not a tracked work item — hand off to its own flow.
+  if (itemType.value === 'cloudRunner') {
+    await createCloudRunner(client, project.projectId);
+    return;
+  }
 
   // Step 2: Title
   const title = await vscode.window.showInputBox({

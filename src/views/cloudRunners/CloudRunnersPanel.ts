@@ -49,6 +49,11 @@ export class CloudRunnersPanel {
     instance.attach();
   }
 
+  /** Reload the panel if it is currently open (e.g. after a runner is created). */
+  static refresh(): void {
+    void CloudRunnersPanel.instance?.load();
+  }
+
   private attach(): void {
     this.panel.webview.onDidReceiveMessage((msg: CloudRunnersClientMessage) => this.handleMessage(msg));
     this.panel.onDidChangeViewState(e => {
