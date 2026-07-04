@@ -544,7 +544,8 @@ export type CloudRunnerManageClientMessage =
   | { type: 'manageSubmitOAuth'; payload: { code: string } }
   | { type: 'manageClone'; payload: { gitProviderId?: number; url: string; branch: string } }
   | { type: 'manageLaunch'; payload: ManageLaunchConfig }
-  | { type: 'manageAdvance'; payload: { step: 'authenticate' | 'configure' | 'launch' } };
+  | { type: 'manageAdvance'; payload: { step: 'authenticate' | 'configure' | 'launch' } }
+  | { type: 'manageOpenTerminal' };
 
 // ============================================================
 // Dashboard Panel
