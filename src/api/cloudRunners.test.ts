@@ -231,11 +231,11 @@ describe('runnerActionErrorMessage', () => {
 });
 
 describe('suggestRunnerName', () => {
-  it('appends -2 to a plain name and increments an existing -N suffix', () => {
-    expect(suggestRunnerName('vscode-dev')).toBe('vscode-dev-2');
-    expect(suggestRunnerName('vscode-dev-2')).toBe('vscode-dev-3');
-    expect(suggestRunnerName('a-b-10')).toBe('a-b-11');
-    expect(suggestRunnerName('  spaced  ')).toBe('spaced-2');
+  it('appends the caller-supplied random salt to the trimmed base name (#3395)', () => {
+    expect(suggestRunnerName('vscode-dev', 'a3f9')).toBe('vscode-dev-a3f9');
+    expect(suggestRunnerName('  spaced  ', 'k7')).toBe('spaced-k7');
+    // The base is used verbatim (no -N walking through reserved names).
+    expect(suggestRunnerName('foo-2', 'zz')).toBe('foo-2-zz');
   });
 });
 
