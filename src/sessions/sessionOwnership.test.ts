@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SessionOwnershipTracker } from './sessionOwnership.js';
+import { SessionOwnershipTracker, isSafePersonaKey } from './sessionOwnership.js';
 import type { VibeFlowSession } from '../api/types.js';
 
 let dirs: string[] = [];
@@ -135,5 +135,51 @@ describe('SessionOwnershipTracker', () => {
     const tracker = new SessionOwnershipTracker(undefined);
     expect(tracker.isOwned(undefined)).toBe(false);
     expect(tracker.isOwned('session-unknown')).toBe(false);
+  });
+
+  // #3383 — path traversal via cross-user persona_key / working_directory.
+  it('rejects a traversal persona_key and never reads outside working_directory (#3383)', async () => {
+    const root = makeDir();
+    const workDir = path.join(root, 'sub');
+    fs.mkdirSync(workDir);
+    // Plant a would-be-matching sidecar at the TRAVERSED target: from workDir,
+    // `.vibeflow-session-` + `x/../../evil` normalizes to `${root}/evil`.
+    fs.writeFileSync(path.join(root, 'evil'), 'session-20260704-000000-eeeeeeee');
+    const tracker = new SessionOwnershipTracker(undefined);
+
+    await tracker.refresh([session({
+      session_id: 'session-20260704-000000-eeeeeeee',
+      working_directory: workDir,
+      persona_key: 'x/../../evil',
+    })]);
+
+    // Without the fix this session would be marked owned by reading ${root}/evil.
+    expect(tracker.isOwned('session-20260704-000000-eeeeeeee')).toBe(false);
+  });
+
+  it('skips a non-regular file at the sidecar path (blocking-special-file DoS guard, #3383)', async () => {
+    const workDir = makeDir();
+    // A directory where the sidecar would be: stat().isFile() is false, so the
+    // read is skipped (stands in for a FIFO / /dev/zero that would hang readFile).
+    fs.mkdirSync(path.join(workDir, '.vibeflow-session-developer'));
+    const tracker = new SessionOwnershipTracker(undefined);
+
+    await tracker.refresh([session({ working_directory: workDir })]);
+
+    expect(tracker.isOwned('session-20260703-000000-aaaaaaaa')).toBe(false);
+  });
+});
+
+describe('isSafePersonaKey (#3383)', () => {
+  it('accepts single lowercase tokens (the real persona keys)', () => {
+    for (const key of ['developer', 'architect', 'principal_engineer', 'security_lead', 'qa_lead', 'x', 'a1']) {
+      expect(isSafePersonaKey(key)).toBe(true);
+    }
+  });
+
+  it('rejects anything with a separator, traversal, dot, space, dash, uppercase, or empty', () => {
+    for (const key of ['', 'x/../zero', 'a/b', 'a\\b', '..', '.', 'a.b', 'Dev', 'x/../../evil', 'a b', 'a-b']) {
+      expect(isSafePersonaKey(key)).toBe(false);
+    }
   });
 });
