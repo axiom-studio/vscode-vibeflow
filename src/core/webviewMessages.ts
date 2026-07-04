@@ -12,7 +12,7 @@
  * a message from another panel's protocol.
  */
 
-import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot } from '../api/types.js';
+import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView } from '../api/types.js';
 
 /**
  * Progress payload pushed to the Activity Feed when an agent publishes a
@@ -96,7 +96,11 @@ export type ActivityFeedClientMessage =
 
 export type SettingsHostMessage =
   | { type: 'settingsData'; payload: unknown }
-  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
+  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } }
+  // Git Configuration tab (feature #603) — the list is fetched lazily and
+  // pushed back on demand, kept out of the main settings snapshot so a slow
+  // or failing network call never blocks the rest of Settings.
+  | { type: 'gitProvidersData'; payload: { providers: GitProviderView[]; loading?: boolean; error?: string } };
 
 export type SettingsClientMessage =
   | { type: 'closeSettings' }
@@ -112,6 +116,14 @@ export type SettingsClientMessage =
   | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
   | { type: 'resetStickyModel'; payload: { persona: string } }
   | { type: 'openCli'; payload: { mcpName: string; rootPath: string } }
+  // Git Configuration tab (feature #603). The create payload deliberately
+  // carries NO secret — the host prompts for the PAT (showInputBox) or reads
+  // the SSH private key from a picked file, so the token/key never enters
+  // the webview. Mirrors the setApiKey / setProviderToken host-side pattern.
+  | { type: 'gitProvidersList' }
+  | { type: 'gitProviderCreate'; payload: { name: string; gitUrl: string; authType: 'pat' | 'ssh'; userName?: string } }
+  | { type: 'gitProviderRename'; payload: { id: number; name: string } }
+  | { type: 'gitProviderDelete'; payload: { id: number; name: string } }
   // Generic command-passthrough — the Settings panel uses this to fire
   // extension commands (like vibeflow.openCli) directly from a tab so we
   // don't need a one-off wire shape per button.

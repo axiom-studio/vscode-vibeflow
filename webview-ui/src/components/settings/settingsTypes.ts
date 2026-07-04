@@ -79,9 +79,14 @@ export interface SettingsData {
 // sides.
 export type { SettingsClientMessage as SettingsCommand } from '../../../../src/core/webviewMessages';
 
+// GitProviderView is defined host-side; re-export the type so the Git
+// Configuration tab (feature #603) can render the list without redeclaring it.
+export type { GitProviderView } from '../../../../src/api/types';
+
 // Extension -> Webview — narrowed locally so the webview can use a typed
 // SettingsData payload instead of the shared `unknown`. Compatible with
 // the shared SettingsHostMessage shape (same variants, tighter payload).
 export type SettingsMessage =
   | { type: 'settingsData'; payload: SettingsData }
-  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } };
+  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } }
+  | { type: 'gitProvidersData'; payload: { providers: import('../../../../src/api/types').GitProviderView[]; loading?: boolean; error?: string } };
