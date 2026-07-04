@@ -36,13 +36,18 @@ interface State {
   generatedAt: string | undefined;
 }
 
+// Standard table styling — mirrors TicketsView's Th/Td so the Cloud Runners
+// page reads as the same "cloud-style table" as the rest of Browse (#2811).
 const th: CSSProperties = {
-  textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600,
-  color: 'var(--feed-muted)', borderBottom: '1px solid var(--feed-border)', whiteSpace: 'nowrap',
+  textAlign: 'left', padding: '7px 12px', fontSize: 10.5, fontWeight: 600,
+  textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--feed-muted)',
+  borderBottom: '1px solid var(--feed-border)', whiteSpace: 'nowrap',
 };
 const td: CSSProperties = {
-  padding: '8px 12px', fontSize: 12, borderBottom: '1px solid var(--feed-border)', verticalAlign: 'top',
+  padding: '7px 12px', fontSize: 12, borderBottom: '1px solid var(--feed-border)',
+  verticalAlign: 'middle', maxWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
+const msgStyle: CSSProperties = { fontSize: 12, color: 'var(--feed-muted)', padding: '16px 24px' };
 
 export function CloudRunnersView() {
   const [state, setState] = useState<State>({ runners: [], loading: true, error: undefined, generatedAt: undefined });
@@ -69,7 +74,7 @@ export function CloudRunnersView() {
   return (
     <div style={{
       fontFamily: 'var(--vscode-font-family)', color: 'var(--feed-fg)', background: 'var(--feed-bg)',
-      height: '100vh', display: 'flex', flexDirection: 'column',
+      height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -82,18 +87,18 @@ export function CloudRunnersView() {
         >Refresh</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-        {state.loading && <div style={{ fontSize: 12, color: 'var(--feed-muted)' }}>Loading runners…</div>}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {state.loading && <div style={msgStyle}>Loading runners…</div>}
         {state.error && !state.loading && (
-          <div style={{ fontSize: 12, color: 'var(--feed-error)' }}>{state.error}</div>
+          <div style={{ ...msgStyle, color: 'var(--feed-error)' }}>{state.error}</div>
         )}
         {!state.loading && !state.error && state.runners.length === 0 && (
-          <div style={{ fontSize: 12, color: 'var(--feed-muted)' }}>No cloud runners yet.</div>
+          <div style={msgStyle}>No cloud runners yet.</div>
         )}
         {!state.loading && !state.error && state.runners.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr>
+              <tr style={{ position: 'sticky', top: 0, background: 'var(--feed-bg)', zIndex: 1 }}>
                 <th style={th}>Name</th>
                 <th style={th}>Status</th>
                 <th style={th}>Pod Status</th>
