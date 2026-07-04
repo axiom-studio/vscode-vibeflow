@@ -19,6 +19,16 @@ const CLOUD_RUNNER_OPTION = {
   value: 'cloudRunner' as const,
 };
 
+/**
+ * Build the "+" (Create) picker options (#3388). "Cloud Runner" is appended
+ * only when the org has the Cloud Runners capability, so the option is a pure
+ * function of the flag — extracted so the capability-exposure gate has a
+ * regression test without mocking the interactive QuickPick.
+ */
+export function buildCreateWorkItemOptions(cloudRunnersEnabled: boolean) {
+  return cloudRunnersEnabled ? [...ITEM_TYPES, CLOUD_RUNNER_OPTION] : [...ITEM_TYPES];
+}
+
 const PRIORITIES = [
   { label: '$(arrow-up) High', value: 'high' as const },
   { label: '$(dash) Medium', value: 'medium' as const },
@@ -97,7 +107,7 @@ export async function createWorkItem(
 
   // Step 1: Type. Offer "Cloud Runner" only when the org has the capability.
   const cloudRunnersEnabled = await client.isCloudRunnersEnabled().catch(() => false);
-  const typeOptions = cloudRunnersEnabled ? [...ITEM_TYPES, CLOUD_RUNNER_OPTION] : ITEM_TYPES;
+  const typeOptions = buildCreateWorkItemOptions(cloudRunnersEnabled);
   const itemType = await vscode.window.showQuickPick(typeOptions, {
     placeHolder: 'What would you like to create?',
     title: 'VibeFlow: Create',
