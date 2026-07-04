@@ -30,6 +30,26 @@ import { commitWebUrl, sameRepo } from './commitWebUrl.js';
  * webview tokenizer is supposed to emit only valid hashes — defense
  * in depth in case a future caller forgets.
  */
+/**
+ * Open an external commit URL derived from a session remote, but ONLY after
+ * the user confirms the destination host (#3386, CWE-601). A session's
+ * `git_remote_url` is a free-form, cross-user-controllable string on a shared
+ * project, so `commitWebUrl` can resolve to an attacker-chosen host
+ * (`https://evil.com/…/commit/<hash>`). Surfacing the host and requiring a
+ * click prevents a peer's session from auto-redirecting the victim's browser.
+ */
+export async function confirmAndOpenExternal(url: string): Promise<void> {
+  let host: string;
+  try { host = new URL(url).host; } catch { host = url; }
+  const pick = await vscode.window.showInformationMessage(
+    `Open this commit on ${host} in your browser?`,
+    'Open',
+  );
+  if (pick === 'Open') {
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+}
+
 export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): Promise<void> {
   if (!isValidCommitHash(hash)) {
     vscode.window.showWarningMessage(`Chat link rejected (invalid commit hash): ${hash}`);
@@ -41,7 +61,8 @@ export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): P
     // page is still reachable when the chat supplied its remote.
     const noFolderUrl = sessionRemoteUrl ? commitWebUrl(sessionRemoteUrl, hash) : undefined;
     if (noFolderUrl) {
-      await vscode.env.openExternal(vscode.Uri.parse(noFolderUrl));
+      // #3386: confirm the (cross-user-controllable) destination host first.
+      await confirmAndOpenExternal(noFolderUrl);
       return;
     }
     vscode.window.showWarningMessage('Open a folder to view commit diffs.');
@@ -133,7 +154,9 @@ export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): P
     ?? (workspaceRemoteUrl ? commitWebUrl(workspaceRemoteUrl, hash) : undefined);
 
   if (foreign && webUrl) {
-    await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+    // #3386: the session repo is foreign; confirm the destination host before
+    // opening (session.git_remote_url is cross-user-controllable).
+    await confirmAndOpenExternal(webUrl);
     return;
   }
 
