@@ -16,6 +16,9 @@ const AUTH_MODES = [
 
 const POLL_INTERVAL_MS = 3000;
 const POLL_DEADLINE_MS = 120_000;
+// Stop the name-conflict retry after this many 409s so a server that reserves
+// many deleted names (the #3394 tombstone) can't trap the user in a loop.
+const MAX_NAME_CONFLICTS = 5;
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -23,6 +26,11 @@ function errText(err: unknown): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/** Short random token for a fresh runner-name suggestion (display only). */
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 6);
 }
 
 /**
@@ -110,7 +118,9 @@ export async function createCloudRunner(
 
   // Create OUTSIDE the progress notification so a 409 name-retry prompt
   // doesn't fight it (#3388). 403/502/503 map to specific messages.
+  const baseName = body.name; // suggest fresh suffixes off the ORIGINAL name
   let runnerId: number;
+  let conflicts = 0;
   for (;;) {
     try {
       const created = await client.createCloudRunner(projectId, body);
@@ -119,9 +129,18 @@ export async function createCloudRunner(
     } catch (err) {
       const status = (err as { status?: number }).status;
       if (status === 409) {
+        conflicts += 1;
+        if (conflicts > MAX_NAME_CONFLICTS) {
+          vscode.window.showErrorMessage(
+            'VibeFlow: the server rejected several names as already in use. Deleted runner names can stay reserved server-side — try a distinctly different name, or check the Cloud Runners panel.',
+          );
+          return;
+        }
+        // A RANDOM suffix off the original name (not a -N walk through
+        // reserved deleted names) so the suggestion is very likely fresh (#3395).
         const newName = await vscode.window.showInputBox({
           prompt: `A cloud runner named "${body.name}" already exists on the server — a recently-deleted name can stay reserved. Choose a different name.`,
-          value: suggestRunnerName(body.name),
+          value: suggestRunnerName(baseName, randomSuffix()),
           ignoreFocusOut: true,
         });
         if (!newName?.trim()) { return; }
