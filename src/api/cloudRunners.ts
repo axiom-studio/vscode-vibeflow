@@ -196,6 +196,20 @@ export function canLaunch(workingDir: string, project: string, personas: readonl
   return workingDir.trim().length > 0 && project.trim().length > 0 && personas.length > 0;
 }
 
+/**
+ * Suggest a de-duplicated runner name for the 409 retry prompt (#3394): append
+ * or increment a `-N` suffix so pressing Enter yields a name that won't collide
+ * with the one that just conflicted. `foo` → `foo-2`, `foo-2` → `foo-3`.
+ */
+export function suggestRunnerName(name: string): string {
+  const trimmed = name.trim();
+  const match = /^(.*)-(\d+)$/.exec(trimmed);
+  if (match) {
+    return `${match[1]}-${Number(match[2]) + 1}`;
+  }
+  return `${trimmed}-2`;
+}
+
 /** The 9 vibeflow personas selectable when configuring a runner session. */
 export const VIBEFLOW_PERSONAS = [
   'developer', 'principal_engineer', 'architect', 'ux_designer', 'qa_lead',
