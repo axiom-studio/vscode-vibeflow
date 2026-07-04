@@ -23,6 +23,7 @@ import {
   encodeTmuxInput,
   encodeTmuxResize,
   parseTmuxServerFrame,
+  suggestRunnerName,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -226,6 +227,15 @@ describe('runnerActionErrorMessage', () => {
 
   it('passes through an unrecognized server message', () => {
     expect(runnerActionErrorMessage(400, 'name is required')).toBe('name is required');
+  });
+});
+
+describe('suggestRunnerName', () => {
+  it('appends -2 to a plain name and increments an existing -N suffix', () => {
+    expect(suggestRunnerName('vscode-dev')).toBe('vscode-dev-2');
+    expect(suggestRunnerName('vscode-dev-2')).toBe('vscode-dev-3');
+    expect(suggestRunnerName('a-b-10')).toBe('a-b-11');
+    expect(suggestRunnerName('  spaced  ')).toBe('spaced-2');
   });
 });
 
