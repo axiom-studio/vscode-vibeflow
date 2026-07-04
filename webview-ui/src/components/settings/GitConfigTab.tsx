@@ -50,6 +50,11 @@ export function GitConfigTab({ onCommand }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Outcome of the last add attempt, shown inline so a failure isn't missed
+  // (a toast alone reads as success once the form clears) (#3393).
+  const [createStatus, setCreateStatus] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
   // Add-form state. `accessToken` / `sshPrivateKey` are the transient secrets.
   const [authType, setAuthType] = useState<AuthType>('pat');
   const [name, setName] = useState('');
@@ -74,6 +79,16 @@ export function GitConfigTab({ onCommand }: Props) {
         setProviders(msg.payload.providers ?? []);
         setError(msg.payload.error ?? null);
         setLoading(false);
+      } else if (msg && msg.type === 'gitProviderCreateResult') {
+        setSubmitting(false);
+        setCreateStatus({ ok: msg.payload.ok, error: msg.payload.error });
+        if (msg.payload.ok) {
+          // Success — clear the remaining (non-secret) fields. On failure they
+          // are kept so the user can fix and retry without re-typing.
+          setName('');
+          setGitUrl('');
+          setUserName('');
+        }
       }
     }
     window.addEventListener('message', handle);
@@ -103,12 +118,12 @@ export function GitConfigTab({ onCommand }: Props) {
             authType,
             sshPrivateKey,
           };
+    setCreateStatus(null);
+    setSubmitting(true);
     onCommand({ type: 'gitProviderCreate', payload });
-    // Clear the form, INCLUDING the secret; the host re-lists and pushes fresh
-    // gitProvidersData (which never carries the secret back).
-    setName('');
-    setGitUrl('');
-    setUserName('');
+    // Clear the SECRET immediately (write-only invariant, #3389). Name / host /
+    // username are cleared only on a successful result (#3393) so a failed add
+    // can be retried without re-entering everything.
     setAccessToken('');
     setSshPrivateKey('');
   }
@@ -254,13 +269,26 @@ export function GitConfigTab({ onCommand }: Props) {
           </div>
         )}
 
+        {createStatus && (
+          <div
+            role="status"
+            style={{
+              fontSize: 12, marginTop: 12, padding: '8px 10px', borderRadius: 4,
+              color: createStatus.ok ? 'var(--feed-success, #3fb950)' : 'var(--feed-error)',
+              border: `1px solid ${createStatus.ok ? 'var(--feed-success, #3fb950)' : 'var(--feed-error)'}`,
+            }}
+          >
+            {createStatus.ok ? 'Provider added.' : (createStatus.error || 'Could not add provider.')}
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
           <button
-            style={{ ...buttonStyle, padding: '8px 18px', fontSize: 13, fontWeight: 600, opacity: canCreate ? 1 : 0.5, cursor: canCreate ? 'pointer' : 'not-allowed' }}
-            disabled={!canCreate}
+            style={{ ...buttonStyle, padding: '8px 18px', fontSize: 13, fontWeight: 600, opacity: canCreate && !submitting ? 1 : 0.5, cursor: canCreate && !submitting ? 'pointer' : 'not-allowed' }}
+            disabled={!canCreate || submitting}
             onClick={handleCreate}
           >
-            Add provider
+            {submitting ? 'Adding…' : 'Add provider'}
           </button>
         </div>
       </div>
