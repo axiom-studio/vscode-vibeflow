@@ -5,7 +5,7 @@ import type {
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
 import type { GlobalCloudRunnerView } from '../../../src/api/types';
-import { isRunnerRunning, isRunnerTransitioning } from '../../../src/api/cloudRunners';
+import { isRunnerRunning, isRunnerTransitioning, canManageRunner } from '../../../src/api/cloudRunners';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage) => void };
 
@@ -134,6 +134,9 @@ export function CloudRunnersView() {
                       </span>
                     ) : (
                       <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
+                        {canManageRunner(r.status) && (
+                          <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerManage', payload: { projectId: r.projectId, id: r.id, name: r.name } })}>Manage</button>
+                        )}
                         {isRunnerRunning(r.status) ? (
                           <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerStop', payload: { projectId: r.projectId, id: r.id } })}>Stop</button>
                         ) : (

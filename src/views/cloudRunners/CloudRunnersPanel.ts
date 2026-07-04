@@ -123,6 +123,15 @@ export class CloudRunnersPanel {
         await this.load();
         return;
       }
+      case 'cloudRunnerManage': {
+        await vscode.commands.executeCommand(
+          'vibeflow.openCloudRunnerManage',
+          msg.payload.projectId,
+          msg.payload.id,
+          msg.payload.name,
+        );
+        return;
+      }
       default:
         assertNever(msg);
     }
