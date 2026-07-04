@@ -90,3 +90,22 @@ export function runnerPollState(status: string): RunnerPollState {
   if (status === 'failed') { return 'failed'; }
   return 'pending';
 }
+
+/**
+ * Map a create-cloud-runner failure to a user-facing message (#3388). 403 →
+ * insufficient permissions; 502/503 → transient Studio outage. 409 (duplicate
+ * name) is handled by the caller's name-retry loop, not here. Any other status
+ * falls back to the server's error text (already ≤300 chars, response-body
+ * only — never the request body/secret).
+ */
+export function createRunnerErrorMessage(status: number | undefined, serverText: string): string {
+  switch (status) {
+    case 403:
+      return 'You do not have permission to create this cloud runner (owner or org admin only).';
+    case 502:
+    case 503:
+      return 'Cloud Runner service is temporarily unavailable — please try again shortly.';
+    default:
+      return `could not create cloud runner — ${serverText}`;
+  }
+}
