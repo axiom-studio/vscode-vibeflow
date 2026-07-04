@@ -53,6 +53,7 @@ export default defineConfig({
         'src/views/sessions/mentionParser.ts',
         'src/views/sessions/chatRenderer.ts',
         'src/views/activity/feedStateController.ts',
+        'src/api/cloudRunners.ts',
         // sessionCommands.ts exports our three pure helpers AND ~1400
         // lines of wizard code that's out of unit scope. The cohort
         // covers ONLY the helpers; full-file branch% would mislead.
