@@ -478,7 +478,13 @@ export type CloudRunnersHostMessage =
 
 export type CloudRunnersClientMessage =
   | { type: 'cloudRunnersLoad' }
-  | { type: 'cloudRunnersRefresh' };
+  | { type: 'cloudRunnersRefresh' }
+  // Per-runner lifecycle actions (#2816). Carry the LOCAL projectId + runner
+  // id (delete also the name for the confirm dialog). Owner/admin enforced
+  // server-side; the host maps 403/409/502/503 + transient-pod errors.
+  | { type: 'cloudRunnerStart'; payload: { projectId: number; id: number } }
+  | { type: 'cloudRunnerStop'; payload: { projectId: number; id: number } }
+  | { type: 'cloudRunnerDelete'; payload: { projectId: number; id: number; name: string } };
 
 // ============================================================
 // Dashboard Panel

@@ -96,3 +96,40 @@ describe('CloudRunnersView', () => {
     spy.mockRestore();
   });
 });
+
+describe('CloudRunnersView — row actions (#2816)', () => {
+  it('shows Stop for a running runner and posts cloudRunnerStop', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 5, projectId: 28, status: 'active' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerStop', payload: { projectId: 28, id: 5 } });
+    spy.mockRestore();
+  });
+
+  it('shows Start for a stopped runner and posts cloudRunnerStart', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 6, projectId: 28, status: 'stopped' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerStart', payload: { projectId: 28, id: 6 } });
+    spy.mockRestore();
+  });
+
+  it('shows a spinner (no Start/Stop) while transitioning', () => {
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 7, status: 'starting' })]);
+    expect(screen.getByText('Starting…')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+  });
+
+  it('posts cloudRunnerDelete with id + name', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 8, projectId: 28, name: 'gamma', status: 'active' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerDelete', payload: { projectId: 28, id: 8, name: 'gamma' } });
+    spy.mockRestore();
+  });
+});
