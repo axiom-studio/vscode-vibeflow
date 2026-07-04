@@ -12,6 +12,15 @@ function pushProviders(providers: GitProviderView[], error?: string) {
   });
 }
 
+/** Simulate the host reporting the outcome of an add-provider attempt (#3393). */
+function pushCreateResult(ok: boolean, error?: string) {
+  act(() => {
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { type: 'gitProviderCreateResult', payload: { ok, error } },
+    }));
+  });
+}
+
 describe('GitConfigTab', () => {
   it('requests the git provider list on mount', () => {
     const commands: SettingsCommand[] = [];
@@ -113,5 +122,31 @@ describe('GitConfigTab', () => {
     fireEvent.change(screen.getByLabelText('Rename old'), { target: { value: 'new-name' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(commands).toContainEqual({ type: 'gitProviderRename', payload: { id: 3, name: 'new-name' } });
+  });
+
+  it('shows the failure inline and keeps the non-secret fields for retry (#3393)', () => {
+    render(<GitConfigTab onCommand={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GH' } });
+    fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'ghp_x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
+    // The secret is cleared on submit; the name is retained.
+    expect((screen.getByLabelText('Access token') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('GH');
+
+    pushCreateResult(false, 'token rejected');
+    expect(screen.getByText('token rejected')).toBeTruthy();
+    // Name stays so the user only re-enters the secret.
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('GH');
+  });
+
+  it('confirms success inline and clears the form on a successful add (#3393)', () => {
+    render(<GitConfigTab onCommand={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GH' } });
+    fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'ghp_x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add provider' }));
+
+    pushCreateResult(true);
+    expect(screen.getByText('Provider added.')).toBeTruthy();
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('');
   });
 });

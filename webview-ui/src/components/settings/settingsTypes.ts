@@ -89,4 +89,5 @@ export type { GitProviderView } from '../../../../src/api/types';
 export type SettingsMessage =
   | { type: 'settingsData'; payload: SettingsData }
   | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } }
-  | { type: 'gitProvidersData'; payload: { providers: import('../../../../src/api/types').GitProviderView[]; loading?: boolean; error?: string } };
+  | { type: 'gitProvidersData'; payload: { providers: import('../../../../src/api/types').GitProviderView[]; loading?: boolean; error?: string } }
+  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } };
