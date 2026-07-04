@@ -11,6 +11,7 @@ import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
+import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
 import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar, createWorkingStatusBar,
@@ -359,6 +360,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
     pullRequestsProvider.connect(client, project.projectId);
+
+    // Feature-flag gate for the "Cloud Runners" browse row (feature #603).
+    // The flag is org-resolved server-side; fetch it once per connect and show
+    // the row only when enabled. Any failure leaves the row hidden.
+    void client.isCloudRunnersEnabled()
+      .then(enabled => ticketsNavProvider.setCloudRunnersEnabled(enabled))
+      .catch(() => ticketsNavProvider.setCloudRunnersEnabled(false));
 
     // Wire the response path so PromptNotifier.collectAndSendResponse
     // actually hits the backend instead of silently no-op'ing. Project id
@@ -1241,6 +1249,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos', pollingCoordinator);
+    }),
+    vscode.commands.registerCommand('vibeflow.openCloudRunners', () => {
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: No project detected. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      CloudRunnersPanel.open(context.extensionUri, client, project.projectName);
     }),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
       const project = detector.getCachedProject();

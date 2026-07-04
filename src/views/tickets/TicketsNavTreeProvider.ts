@@ -27,8 +27,23 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   private readonly sub: vscode.Disposable;
 
+  /**
+   * Whether the org has the Cloud Runners capability (feature #603). Resolved
+   * asynchronously per connect via `client.isCloudRunnersEnabled()`; the
+   * "Cloud Runners" browse row only appears when this is true. Defaults to
+   * hidden so a disabled org (or a pre-connect state) never shows the row.
+   */
+  private cloudRunnersEnabled = false;
+
   constructor(private readonly workItems: WorkItemsTreeProvider) {
     this.sub = this.workItems.onDidRefresh(() => this._onDidChangeTreeData.fire());
+  }
+
+  /** Toggle visibility of the Cloud Runners browse row; re-renders on change. */
+  setCloudRunnersEnabled(enabled: boolean): void {
+    if (this.cloudRunnersEnabled === enabled) { return; }
+    this.cloudRunnersEnabled = enabled;
+    this._onDidChangeTreeData.fire();
   }
 
   getTreeItem(node: SimpleNode): vscode.TreeItem {
@@ -38,7 +53,7 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
   getChildren(element?: SimpleNode): SimpleNode[] {
     if (element) { return []; }
     const counts = this.counts();
-    return SECTIONS.map(s => ({
+    const rows: SimpleNode[] = SECTIONS.map(s => ({
       id: `tickets-nav-${s.mode}`,
       label: s.label,
       description: String(counts[s.mode]),
@@ -47,6 +62,17 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
       contextValue: 'ticketsNavItem',
       command: { command: 'vibeflow.openTickets', title: `Open ${s.label}`, arguments: [s.mode] },
     }));
+    if (this.cloudRunnersEnabled) {
+      rows.push({
+        id: 'tickets-nav-cloud-runners',
+        label: 'Cloud Runners',
+        iconId: 'cloud',
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        contextValue: 'ticketsNavItem',
+        command: { command: 'vibeflow.openCloudRunners', title: 'Open Cloud Runners' },
+      });
+    }
+    return rows;
   }
 
   /** Per-section counts, matching the filters TicketsPanel applies per mode. */
