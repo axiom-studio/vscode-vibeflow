@@ -336,6 +336,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // --- Activity poller (started when connected) ---
   let activityPoller: ActivityPoller | undefined;
   let workingObserver: SessionWorkingObserver | undefined;
+  // Shared so the Dashboard (#3385) can scope its per-card "Waiting for your
+  // input" badge to owned sessions — reassigned on every connectToProject.
+  let sessionOwnership: SessionOwnershipTracker | undefined;
 
   // =============================================
   // CONNECTION LIFECYCLE
@@ -385,9 +388,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // sessions verifiably running on behalf of this user (sidecar proof),
     // never other org members' agents on the same project. Shared between
     // the activity poller (which refreshes it) and the Working observer.
-    const sessionOwnership = new SessionOwnershipTracker(
+    // Local const the closures below capture (definitely-assigned); the shared
+    // module-level `sessionOwnership` mirrors it so the Dashboard (#3385) can
+    // read the current tracker after connect.
+    const ownership = new SessionOwnershipTracker(
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
     );
+    sessionOwnership = ownership;
 
     // Start real Activity Feed polling (stop any previous)
     activityPoller?.stop();
@@ -397,7 +404,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       promptNotifier,
       project.projectId,
       pollingCoordinator,
-      sessionOwnership,
+      ownership,
       fileDecorationProvider,
       feedStateController,
     );
@@ -426,7 +433,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           warn: msg => workingIndicatorChannel.warn(msg),
           error: msg => workingIndicatorChannel.error(msg),
         },
-        isOwnedSession: id => sessionOwnership.isOwned(id),
+        isOwnedSession: id => ownership.isOwned(id),
       },
     );
     workingObserver.start();
@@ -1221,6 +1228,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           terminalRegistry,
           contextProxy,
           pollingCoordinator,
+          // #3385: scope the per-card "Waiting for your input" badge to the
+          // current user's own sessions (the shared tracker is refreshed by
+          // the activity poller). Nothing owned before connect → no badges.
+          id => sessionOwnership?.isOwned(id) ?? false,
         );
       });
     }),

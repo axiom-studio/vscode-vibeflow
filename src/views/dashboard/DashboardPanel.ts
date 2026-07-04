@@ -206,6 +206,8 @@ export class DashboardPanel {
     private readonly terminalRegistry: TerminalRegistry,
     private readonly contextProxy: ContextProxy,
     private readonly coordinator: PollingCoordinator,
+    /** #3385: scopes the per-card "Waiting for your input" badge to owned sessions. */
+    private readonly isOwned: (sessionId: string) => boolean,
   ) {
     this.panel = panel;
   }
@@ -217,6 +219,7 @@ export class DashboardPanel {
     terminalRegistry: TerminalRegistry,
     contextProxy: ContextProxy,
     coordinator: PollingCoordinator,
+    isOwned: (sessionId: string) => boolean,
   ): void {
     if (DashboardPanel.instance) {
       DashboardPanel.instance.panel.reveal();
@@ -237,7 +240,7 @@ export class DashboardPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new DashboardPanel(panel, client, project, terminalRegistry, contextProxy, coordinator);
+    const instance = new DashboardPanel(panel, client, project, terminalRegistry, contextProxy, coordinator, isOwned);
     DashboardPanel.instance = instance;
     instance.attach();
   }
@@ -386,6 +389,7 @@ export class DashboardPanel {
         this.client,
         this.project,
         nodePositions,
+        this.isOwned,
       );
       this.postToWebview({ type: 'dashboardData', payload: snapshot });
     } catch (err) {
@@ -443,6 +447,7 @@ async function composeSnapshot(
   client: VibeFlowClient,
   project: DetectedProject,
   nodePositions: Record<string, { x: number; y: number }> | undefined,
+  isOwned: (sessionId: string) => boolean = () => true,
 ): Promise<DashboardSnapshot> {
   const errors: string[] = [];
 
@@ -521,7 +526,7 @@ async function composeSnapshot(
     personaQueueItems: collectPersonaQueueItems(swimlane, project.projectId, qaItems),
     kanbanCards: swimlane ? flattenForProject(swimlane, project.projectId) : [],
     sessions: tallySessions(sessions),
-    live: { ...collectLiveSnapshot(sessions, client.getBaseUrl()), brainstorm },
+    live: { ...collectLiveSnapshot(sessions, client.getBaseUrl(), isOwned), brainstorm },
     todos: tallyTodos(swimlane, project.projectId),
     issues: tallyIssues(swimlane, project.projectId),
     workSummary: summary
@@ -571,7 +576,16 @@ function roleForPersona(personaKey: string): 'upstream' | 'code' | 'review' {
   return 'upstream';
 }
 
-function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): LiveSnapshot {
+export function collectLiveSnapshot(
+  sessions: VibeFlowSession[],
+  serverUrl: string,
+  // #3385: the "⚠ Waiting for your input" badge is a per-user NOTIFICATION,
+  // not fleet enumeration. Gate the pending-prompt count on session ownership
+  // so a card for another org member's session stays visible (enumeration) but
+  // carries no input-waiting badge (their "your input" prompt isn't yours).
+  // Defaults to allow-all for callers without an ownership source.
+  isOwned: (sessionId: string) => boolean = () => true,
+): LiveSnapshot {
   const toAgent = (s: VibeFlowSession): LiveAgent => ({
     sessionId: s.session_id,
     personaKey: s.persona_key,
@@ -586,7 +600,7 @@ function collectLiveSnapshot(sessions: VibeFlowSession[], serverUrl: string): Li
     agentModel: s.agent_model,
     workDir: s.git_worktree_path ?? s.working_directory,
     lastHeartbeat: s.last_heartbeat,
-    pendingPrompts: s.pending_agent_prompt_count,
+    pendingPrompts: isOwned(s.session_id) ? s.pending_agent_prompt_count : 0,
   });
 
   // Group EVERY live session into its branch's team — advisory + code agents
