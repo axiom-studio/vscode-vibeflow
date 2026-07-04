@@ -19,6 +19,10 @@ import {
   firstPresent,
   buildRunnerManifest,
   VIBEFLOW_PERSONAS,
+  deriveTmuxWsUrl,
+  encodeTmuxInput,
+  encodeTmuxResize,
+  parseTmuxServerFrame,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -286,6 +290,14 @@ describe('VIBEFLOW_PERSONAS', () => {
   });
 });
 
+interface ManifestShape {
+  kind: string;
+  agent: { type: string; authMode: string; skipPermissions: boolean };
+  vibeflow: { project: string; personas: string[]; apiToken: string; serverUrl: string };
+  mcpServers: { headers: { Authorization: string } }[];
+  repos: { path: string; branch: string; trusted: boolean }[];
+}
+
 describe('buildRunnerManifest', () => {
   const cfg: LaunchConfig = {
     agentType: 'claude', authMode: 'oauth', project: 'vscode-vibeflow',
@@ -295,7 +307,7 @@ describe('buildRunnerManifest', () => {
   };
 
   it('produces a RunnerSession doc with the config wired through', () => {
-    const m = buildRunnerManifest(cfg) as Record<string, any>;
+    const m = buildRunnerManifest(cfg) as unknown as ManifestShape;
     expect(m.kind).toBe('RunnerSession');
     expect(m.vibeflow.project).toBe('vscode-vibeflow');
     expect(m.vibeflow.personas).toEqual(['principal_engineer', 'qa_lead']);
@@ -308,9 +320,38 @@ describe('buildRunnerManifest', () => {
     expect(json).toContain('${VAULT:base_url}');
     expect(json).toContain('${VAULT:api_key}');
     // The server resolves the vault refs; the client must not inline a token.
-    const m = buildRunnerManifest(cfg) as Record<string, any>;
+    const m = buildRunnerManifest(cfg) as unknown as ManifestShape;
     expect(m.vibeflow.apiToken).toBe('${VAULT:api_key}');
     expect(m.vibeflow.serverUrl).toBe('${VAULT:base_url}');
     expect(m.mcpServers[0].headers.Authorization).toBe('Bearer ${VAULT:api_key}');
+  });
+});
+
+describe('deriveTmuxWsUrl', () => {
+  it('upgrades https→wss and builds the tmux path', () => {
+    expect(deriveTmuxWsUrl('https://cloud.axiomstudio.ai', 28, 5))
+      .toBe('wss://cloud.axiomstudio.ai/rest/v1/vibeflow/projects/28/cloud-runners/5/tmux/ws');
+  });
+  it('upgrades http→ws for localhost and strips query/hash', () => {
+    expect(deriveTmuxWsUrl('http://localhost:8080/?x=1#f', 1, 2))
+      .toBe('ws://localhost:8080/rest/v1/vibeflow/projects/1/cloud-runners/2/tmux/ws');
+  });
+  it('rejects empty or non-http(s) base URLs (no bearer over insecure transport)', () => {
+    expect(() => deriveTmuxWsUrl('', 1, 1)).toThrow();
+    expect(() => deriveTmuxWsUrl('ftp://x', 1, 1)).toThrow();
+  });
+});
+
+describe('tmux frame codec', () => {
+  it('encodes input and resize frames', () => {
+    expect(JSON.parse(encodeTmuxInput('ls\n'))).toEqual({ type: 'input', data: 'ls\n' });
+    expect(JSON.parse(encodeTmuxResize(120, 40))).toEqual({ type: 'resize', cols: 120, rows: 40 });
+  });
+  it('parses an error control frame', () => {
+    expect(parseTmuxServerFrame('{"type":"error","message":"pod gone"}')).toEqual({ kind: 'error', message: 'pod gone' });
+  });
+  it('treats raw text and non-error JSON as output', () => {
+    expect(parseTmuxServerFrame('hello$ ')).toEqual({ kind: 'output', data: 'hello$ ' });
+    expect(parseTmuxServerFrame('{"type":"data","x":1}')).toEqual({ kind: 'output', data: '{"type":"data","x":1}' });
   });
 });

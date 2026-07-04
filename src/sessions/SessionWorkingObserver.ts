@@ -21,7 +21,14 @@ export interface UIWebSocketHandlers {
   onError(error: Error): void;
 }
 
-export interface UIWebSocketConnection extends Disposer {}
+export interface UIWebSocketConnection extends Disposer {
+  /**
+   * Send a text frame to the server. Optional so existing read-only consumers
+   * and test doubles need not implement it; the Bearer client provides it for
+   * bidirectional surfaces (e.g. the Cloud Runner terminal, #2818).
+   */
+  send?(text: string): void;
+}
 
 export type UIWebSocketConnector = (
   url: string,
@@ -344,6 +351,11 @@ class BearerUIWebSocket implements UIWebSocketConnection {
     private readonly handlers: UIWebSocketHandlers,
   ) {
     this.connect(url, bearerToken);
+  }
+
+  /** Send a UTF-8 text frame (opcode 0x1) to the server. Masked per RFC6455. */
+  send(text: string): void {
+    this.sendFrame(0x1, Buffer.from(text, 'utf8'));
   }
 
   dispose(): void {
