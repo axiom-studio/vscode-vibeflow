@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, parseRepoUrls, runnerPollState, createRunnerErrorMessage } from '../api/cloudRunners.js';
+import { validateCreateRunner, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -120,8 +120,8 @@ export async function createCloudRunner(
       const status = (err as { status?: number }).status;
       if (status === 409) {
         const newName = await vscode.window.showInputBox({
-          prompt: `A cloud runner named "${body.name}" already exists — choose a different name.`,
-          value: body.name,
+          prompt: `A cloud runner named "${body.name}" already exists on the server — a recently-deleted name can stay reserved. Choose a different name.`,
+          value: suggestRunnerName(body.name),
           ignoreFocusOut: true,
         });
         if (!newName?.trim()) { return; }
