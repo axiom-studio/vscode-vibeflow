@@ -96,6 +96,14 @@ After dismissal, re-launch and watch the terminal output. That's where the under
 
 ---
 
+## My Open CLI `--mcp` / `--root` options didn't apply
+
+**What it means**: You set an MCP name or root path in **Settings → CLI Interface** and ran **Open CLI**, but the CLI didn't pick them up. Open CLI reuses an already-open VibeFlow CLI terminal when one exists, and launch flags (`--mcp`, `--root`) are only read when a *fresh* CLI process starts. Reusing the existing terminal keeps the options it was originally launched with. The extension surfaces this as a warning when it happens rather than silently discarding the new values.
+
+**Fix**: Close the existing VibeFlow CLI terminal, then run **Open CLI** again so a new CLI process starts with the current options. To confirm what was actually passed, open the **VibeFlow CLI** output channel (`View → Output`, then pick **VibeFlow CLI**) — it logs the exact command line for every Open CLI launch. Remember these settings only apply when `vibeflow.cli.enabled` is `true`; the **Clear** button next to the fields blanks both so the flags are omitted entirely.
+
+---
+
 ## `.mcp.json` not written, agent can't call VibeFlow MCP tools
 
 **What it means**: The agent terminal starts but every MCP tool call returns "no such tool" or "server not configured." Pre-issue-#2184 the extension only wrote `.mcp.json` if a sibling CLI config already existed. Post-fix, the extension's own stored API key is the primary source of truth.

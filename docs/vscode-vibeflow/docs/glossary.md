@@ -168,6 +168,12 @@ A message from an agent asking the user to make a decision. Appears as a notific
 ### Compliance finding
 A flagged item from the Security Lead persona tied to a specific compliance framework (SOC 2, ISO 27001, PCI-DSS, HIPAA, GDPR, FedRAMP, CMMC). Visible in the **Compliance** panel. Each finding links to the work item where it was found and the framework clause it relates to.
 
+### Brainstorm
+A multi-persona brainstorm session: several agents review and refine a shared working-draft document over a few rounds before it's finalized. Brainstorms show up under the **Documents** view's **Brainstorms** category; selecting one opens its brainstorm document (the finalized write-up once the session is done, otherwise the live working draft).
+
+### Working indicator
+The right-side status-bar item (`$(sync~spin) Working …`) that shows when *your* agent sessions are actively working, with a count and elapsed time. It aggregates only your own sessions and fades out shortly after they go idle. Distinct from the in-chat **Working…** bubble, which is scoped to a single session's current turn.
+
 ### Stream-json
 A communication protocol between the extension and provider CLIs (Claude, Codex, Gemini, Cursor) in chat-first mode. Lets the panel show live agent output as the agent thinks. It's provider-agnostic: adapters in `src/sessions/providerAdapters/` translate each provider's stream format into a common shape.
 
