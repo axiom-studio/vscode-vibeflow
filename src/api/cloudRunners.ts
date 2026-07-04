@@ -150,3 +150,35 @@ export function runnerActionErrorMessage(status: number | undefined, serverText:
   }
   return serverText;
 }
+
+// --- Manage-wizard gating helpers (#603 spec #436 §5) ---
+
+/**
+ * A runner is manageable (the Manage action is enabled) unless it is
+ * `stopped`/`stopping`/`starting` — a stopped runner has no pod, so the
+ * auth/configure/launch steps would DNS-fail or hang. `pending`/`failed`
+ * stay manageable (their pods may be coming up).
+ */
+export function canManageRunner(status: string): boolean {
+  return status !== 'stopped' && status !== 'stopping' && status !== 'starting';
+}
+
+const POD_READY_RE = /healthy|running|ready|available|succeeded/i;
+
+/** The pod is up enough to begin the OAuth device-code handshake (#436 §4.1). */
+export function isPodReady(podStatus: string | undefined): boolean {
+  return !!podStatus && POD_READY_RE.test(podStatus);
+}
+
+/**
+ * Whether OAuth completes server-side (no paste-back code): `codex`/`cursor`
+ * finish via the supervisor's auth poll; `claude` is interactive (#436 §4.1).
+ */
+export function authCompletesAutomatically(agentType: string | undefined): boolean {
+  return agentType === 'codex' || agentType === 'cursor';
+}
+
+/** Launch is enabled only with a working directory, a project, and ≥1 persona. */
+export function canLaunch(workingDir: string, project: string, personas: readonly string[]): boolean {
+  return workingDir.trim().length > 0 && project.trim().length > 0 && personas.length > 0;
+}

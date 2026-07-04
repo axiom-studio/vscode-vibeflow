@@ -34,6 +34,9 @@ import type {
   GlobalCloudRunnerView,
   CreateRunnerRequest,
   RunnerStatus,
+  RunnerOAuthStart,
+  RunnerRepo,
+  RunnerHealth,
 } from './types.js';
 import { cloudRunnersEnabled, unwrapList } from './cloudRunners.js';
 
@@ -1168,6 +1171,83 @@ export class VibeFlowClient {
     return this.request<RunnerStatus>(
       `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/status`,
     );
+  }
+
+  // --- Manage-workflow passthrough (feature #603, spec #435/#436 §4) ---
+  // Owner/admin for mutating verbs (403 otherwise); LOCAL ids only; the manifest
+  // uses `${VAULT:...}` placeholders the server resolves — never real secrets.
+
+  private runnerBase(projectId: number, id: number): string {
+    return `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}`;
+  }
+
+  async getRunnerOAuthStart(projectId: number, id: number): Promise<RunnerOAuthStart> {
+    return this.request<RunnerOAuthStart>(`${this.runnerBase(projectId, id)}/oauth/start`);
+  }
+
+  async submitRunnerOAuth(projectId: number, id: number, code: string): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/oauth/submit`, {
+      method: 'POST', body: JSON.stringify({ code }),
+    });
+  }
+
+  async getRunnerManifest(projectId: number, id: number): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(`${this.runnerBase(projectId, id)}/manifest`);
+  }
+
+  async putRunnerManifest(projectId: number, id: number, manifest: Record<string, unknown>): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/manifest`, {
+      method: 'POST', body: JSON.stringify(manifest),
+    });
+  }
+
+  async listRunnerRepos(projectId: number, id: number): Promise<RunnerRepo[]> {
+    const data = await this.request<{ repos?: RunnerRepo[] }>(`${this.runnerBase(projectId, id)}/repos`);
+    return unwrapList<RunnerRepo>(data, 'repos');
+  }
+
+  async cloneRunnerRepo(projectId: number, id: number, repo: { url: string; branch?: string }): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/repos/clone`, {
+      method: 'POST', body: JSON.stringify(repo),
+    });
+  }
+
+  async listRunnerAgentProjects(projectId: number, id: number): Promise<string[]> {
+    const data = await this.request<{ projects?: string[] }>(`${this.runnerBase(projectId, id)}/agent/projects`);
+    return unwrapList<string>(data, 'projects');
+  }
+
+  async injectRunnerGitCredentials(projectId: number, id: number, gitProviderId: number): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/git-credentials`, {
+      method: 'POST', body: JSON.stringify({ gitProviderId }),
+    });
+  }
+
+  async getRunnerHealth(projectId: number, id: number): Promise<RunnerHealth> {
+    return this.request<RunnerHealth>(`${this.runnerBase(projectId, id)}/health`);
+  }
+
+  async execOnRunner(projectId: number, id: number, command: string): Promise<unknown> {
+    return this.request(`${this.runnerBase(projectId, id)}/exec`, {
+      method: 'POST', body: JSON.stringify({ command }),
+    });
+  }
+
+  async getRunnerTmuxOutput(projectId: number, id: number): Promise<string> {
+    const data = await this.request<{ output?: string }>(`${this.runnerBase(projectId, id)}/tmux/output`);
+    return data.output ?? '';
+  }
+
+  async sendRunnerTmuxInput(projectId: number, id: number, data: string): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/tmux/input`, {
+      method: 'POST', body: JSON.stringify({ data }),
+    });
+  }
+
+  async resizeRunnerTmux(projectId: number, id: number, cols: number, rows: number): Promise<void> {
+    await this.request(`${this.runnerBase(projectId, id)}/tmux/resize`, {
+      method: 'POST', body: JSON.stringify({ cols, rows }),
+    });
   }
 }
 
