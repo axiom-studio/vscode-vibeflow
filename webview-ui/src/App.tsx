@@ -11,8 +11,9 @@ import { ComplianceView } from './components/ComplianceView';
 import { BrainstormView } from './components/BrainstormView';
 import { TicketsView } from './components/TicketsView';
 import { CloudRunnersView } from './components/CloudRunnersView';
+import { CloudRunnerManageView } from './components/CloudRunnerManageView';
 
-type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem' | 'session-chat' | 'compliance' | 'brainstorm' | 'tickets' | 'cloudRunners';
+type View = 'activity' | 'settings' | 'document' | 'dashboard' | 'kanban' | 'workitem' | 'session-chat' | 'compliance' | 'brainstorm' | 'tickets' | 'cloudRunners' | 'cloudRunnerManage';
 
 /**
  * `entityType` covers the three things this shell can render as a markdown
@@ -59,6 +60,8 @@ export function App() {
       setView('tickets');
     } else if (initialMode === 'cloudRunners') {
       setView('cloudRunners');
+    } else if (initialMode === 'cloudRunnerManage') {
+      setView('cloudRunnerManage');
     } else if (initialMode === 'document') {
       setView('document');
       const initialContent = document.body.dataset.vfContent;
@@ -104,6 +107,7 @@ export function App() {
   if (view === 'brainstorm') { return <BrainstormView />; }
   if (view === 'tickets') { return <TicketsView />; }
   if (view === 'cloudRunners') { return <CloudRunnersView />; }
+  if (view === 'cloudRunnerManage') { return <CloudRunnerManageView />; }
   if (view === 'document' && doc) {
     // References render read-only — the canonical page lives in Confluence
     // and the host doesn't wire comment routes for them, so route through
