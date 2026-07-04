@@ -85,6 +85,12 @@ export function SessionChatView() {
   // replied. Id-anchoring (not timestamps) avoids webview↔server clock skew.
   const [sendWorkingSince, setSendWorkingSince] = useState<string | undefined>(undefined);
   const sendAnchorIdRef = useRef(0);
+  // Live Working bubble (#3387): driven by the host's `chatWorking` messages,
+  // which relay the SessionWorkingObserver's /ws/ui state for THIS session.
+  // Covers autonomous agent work (no user send) and persists while the agent
+  // is active, clearing on done/idle. Complements the optimistic
+  // `sendWorkingSince` above (which gives instant feedback the moment you send).
+  const [liveWorkingSince, setLiveWorkingSince] = useState<string | undefined>(undefined);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -106,6 +112,9 @@ export function SessionChatView() {
   const serverUrl = document.body.dataset.vfServerUrl ?? '';
   const personaAvatar = personaAvatarUrl(meta.personaKey, serverUrl);
   const personaColor = PERSONA_COLORS[meta.personaKey] ?? 'var(--vscode-textLink-foreground)';
+  // Live observer state (#3387) wins for the elapsed clock; the optimistic
+  // post-send bubble fills the gap before the first activity event arrives.
+  const workingSince = liveWorkingSince ?? sendWorkingSince;
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -368,6 +377,16 @@ export function SessionChatView() {
           break;
         case 'chatPrefill':
           setDraft(m.payload.text);
+          break;
+        case 'chatWorking':
+          // Live working state for this session (#3387). Anchor the elapsed
+          // timer on the observer's startedAtMs (authoritative agent-work
+          // start); working:false clears the bubble (done/idle).
+          setLiveWorkingSince(
+            m.payload.working && m.payload.startedAtMs !== undefined
+              ? new Date(m.payload.startedAtMs).toISOString()
+              : undefined,
+          );
           break;
         case 'chatMentionResults': {
           // Drop stale results — only the latest in-flight requestId wins.
@@ -695,9 +714,10 @@ export function SessionChatView() {
               />
             ))
           )}
-          {sendWorkingSince && (
-            /* Optimistic agent-side Working bubble (#2769) — renders OUTSIDE
-               the memoized MessageBubble rows, so it adds no props to them and
+          {workingSince && (
+            /* Agent-side Working bubble — optimistic on send (#2769) AND
+               live-driven by the observer (#3387). Renders OUTSIDE the
+               memoized MessageBubble rows, so it adds no props to them and
                the #2702/#2703 memo guarantees hold. */
             <div className="msg-row msg-agent msg-group-start" style={{ '--msg-stripe-color': personaColor } as React.CSSProperties} aria-live="polite">
               <PersonaAvatar
@@ -709,7 +729,7 @@ export function SessionChatView() {
               <div className="msg-body">
                 <div className="msg-header">
                   <span className="msg-author" style={{ color: personaColor }}>{meta.personaName}</span>
-                  <WorkingIndicator startTime={sendWorkingSince} />
+                  <WorkingIndicator startTime={workingSince} />
                 </div>
               </div>
             </div>

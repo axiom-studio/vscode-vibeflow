@@ -10,6 +10,7 @@ import { escapeHtml, serverOriginForCsp } from '../../utils/html.js';
 import { nextPendingIds, nextAgentPendingIds } from './chatPendingIds.js';
 import { assertNever, type SessionPanelClientMessage, type SessionPanelHostMessage } from '../../core/webviewMessages.js';
 import type { SessionStreamRegistry } from '../../sessions/SessionStreamRegistry.js';
+import type { WorkingIndicatorUpdate } from '../../sessions/workingIndicator.js';
 import type { NormalizedAgentEvent } from '../../sessions/providerAdapters/types.js';
 import { openCommitDiff, openWorkItemFromChat, openWorkspaceRelativePath } from './chatActions.js';
 import { MENTION_KINDS, type MentionKind } from './mentionParser.js';
@@ -215,6 +216,30 @@ export class SessionPanelManager implements vscode.Disposable {
   /** Wire (or rewire) the active project. Called from `connectToProject`. */
   setProjectId(projectId: number | undefined): void {
     this.projectId = projectId;
+  }
+
+  /**
+   * Relay the aggregate Working-indicator snapshot (feature #3387) into each
+   * open chat panel so the in-chat Working bubble reflects the SAME
+   * /ws/ui-driven state the status bar uses. A panel whose `session_id` is
+   * active in the snapshot gets `chatWorking { working:true, startedAtMs }`;
+   * every other open panel gets `working:false`. Persists while the agent
+   * works (even autonomously, with no user send) and clears on done/idle per
+   * the observer's state machine — fixing the "no in-chat working indicator"
+   * gap vs the web UI.
+   */
+  updateWorking(update: WorkingIndicatorUpdate): void {
+    if (this.panels.size === 0) { return; }
+    const startedBySession = new Map(
+      update.snapshot.sessions.map(s => [s.sessionId, s.startedAtMs]),
+    );
+    for (const [sessionId, panel] of this.panels) {
+      const startedAtMs = startedBySession.get(sessionId);
+      this.postToWebview(panel, {
+        type: 'chatWorking',
+        payload: { working: startedAtMs !== undefined, startedAtMs },
+      });
+    }
   }
 
   /**

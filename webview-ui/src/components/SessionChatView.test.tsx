@@ -206,3 +206,27 @@ describe('SessionChatView opens at the bottom (#2712)', () => {
     expect(scroller.scrollTop).toBe(1000);
   });
 });
+
+/**
+ * Live Working indicator (#3387). The chat panel must show a Working bubble
+ * whenever the agent is active — driven by the host's `chatWorking` relay of
+ * the SessionWorkingObserver state — not only optimistically after a user
+ * send. It clears when the host reports `working:false` (done/idle).
+ */
+describe('SessionChatView live Working indicator (#3387)', () => {
+  it('shows the Working bubble on chatWorking:true and hides it on chatWorking:false', () => {
+    render(<SessionChatView />);
+    // Past the loading skeleton with no user-sent message (so any bubble is
+    // live-driven, not the optimistic post-send one).
+    sendHost('chatTranscript', { messages: [], hasMore: false });
+    expect(screen.queryByLabelText(/^Working for/)).toBeNull();
+
+    // Live activity for this session → the Working bubble appears.
+    sendHost('chatWorking', { working: true, startedAtMs: Date.now() - 5000 });
+    expect(screen.getByLabelText(/^Working for/)).toBeInTheDocument();
+
+    // Agent goes done/idle → the bubble clears.
+    sendHost('chatWorking', { working: false });
+    expect(screen.queryByLabelText(/^Working for/)).toBeNull();
+  });
+});
