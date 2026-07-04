@@ -8,10 +8,11 @@ import { WorktreesTab } from './WorktreesTab';
 import { NotificationsTab } from './NotificationsTab';
 import { AboutTab } from './AboutTab';
 import { CliTab } from './CliTab';
+import { GitConfigTab } from './GitConfigTab';
 import { getVsCodeApi } from '../../vscodeApi';
 import {
   PlugIcon, CpuIcon, SlidersIcon, BrainIcon, GitBranchIcon,
-  BellIcon, TerminalIcon, InfoIcon,
+  BellIcon, TerminalIcon, InfoIcon, LockIcon,
 } from '../_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
@@ -51,6 +52,7 @@ type TabIcon = ComponentType<{ size?: number }>;
 const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   { id: 'connection',    label: 'Connection',       Icon: PlugIcon },
   { id: 'providers',     label: 'Providers',        Icon: CpuIcon },
+  { id: 'git',           label: 'Git Configuration', Icon: LockIcon },
   { id: 'session',       label: 'Session Defaults', Icon: SlidersIcon },
   { id: 'models',        label: 'Sticky Models',    Icon: BrainIcon },
   { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
@@ -209,6 +211,9 @@ export function SettingsView() {
           )}
           {activeTab === 'providers' && (
             <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
+          )}
+          {activeTab === 'git' && (
+            <GitConfigTab onCommand={sendCommand} />
           )}
           {activeTab === 'session' && (
             <SessionDefaultsTab data={data} onUpdate={updateSetting} />
