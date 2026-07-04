@@ -2,7 +2,7 @@
 
 **Who this is for**: You've seen a setting key and want the full story: what it does, valid values, default, when to change it.
 
-**TL;DR**: VibeFlow ships **14** settings. Most have sensible defaults. This is the authoritative list, pulled straight from `package.json`. If a setting isn't here, it doesn't exist.
+**TL;DR**: VibeFlow ships **16** settings. Most have sensible defaults. This is the authoritative list, pulled straight from `package.json`. If a setting isn't here, it doesn't exist.
 
 ---
 
@@ -91,6 +91,34 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 **When to change it**: You have multiple CLI versions or your CLI lives outside `PATH`.
 
 **Gotchas**: Must be *absolute* (e.g. `/usr/local/bin/vibeflow`, not `~/bin/vibeflow`). Ignored unless `vibeflow.cli.enabled` is `true`. Typos fail at launch time, not save time.
+
+### `vibeflow.cli.mcpName`
+
+| Field | Value |
+|---|---|
+| **Key** | `vibeflow.cli.mcpName` |
+| **Type** | `string` |
+| **Default** | `""` (empty, flag omitted) |
+
+**What it does**: An optional MCP name passed to the `vibeflow` CLI as `--mcp <value>` when you use **Open CLI**. Leave it blank and the flag is omitted entirely.
+
+**When to change it**: Your workflow needs the CLI pointed at a specific MCP server by name.
+
+**Gotchas**: Only used by **Open CLI** (so `vibeflow.cli.enabled` must be `true`). Set it via the Settings **CLI Interface** tab, or clear both this and `rootPath` with that tab's **Clear** button. Reopening a CLI while its terminal is still running warns that the new value can't apply until you close the old terminal.
+
+### `vibeflow.cli.rootPath`
+
+| Field | Value |
+|---|---|
+| **Key** | `vibeflow.cli.rootPath` |
+| **Type** | `string` |
+| **Default** | `""` (empty, flag omitted) |
+
+**What it does**: An optional root path passed to the `vibeflow` CLI as `--root <value>` when you use **Open CLI**. Blank means the flag is omitted.
+
+**When to change it**: You want the CLI to treat a directory other than the current workspace as its project root.
+
+**Gotchas**: Same as `mcpName` — **Open CLI** only, cleared via the **CLI Interface** tab's **Clear** button, and blank values are dropped from the command line rather than passed as empty flags.
 
 ---
 
@@ -295,6 +323,7 @@ The average user opens **`VibeFlow: Settings`** once during setup and never come
 - `vibeflow.serverUrl`: only matters on a self-hosted server.
 - `vibeflow.cli.enabled`: most people use the extension's built-in session management.
 - `vibeflow.cli.binaryPath`: only meaningful when `cli.enabled` is on.
+- `vibeflow.cli.mcpName` / `vibeflow.cli.rootPath`: only meaningful when `cli.enabled` is on and you use **Open CLI**.
 - `vibeflow.session.reattachMode`: `vanilla` is the right answer unless you have a specific reason.
 - `vibeflow.chat.diffView`: try the default, switch once if you don't like it, then forget about it.
 - `vibeflow.worktree.baseDir`: the default path is fine for most repos.
@@ -312,4 +341,4 @@ The changes most users make in their first week:
 
 ---
 
-*Last updated: 2026-06-17*
+*Last updated: 2026-07-03*
