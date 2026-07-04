@@ -1,6 +1,11 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { VibeFlowDocument, VibeFlowContext, VibeFlowReference } from '../../api/types.js';
+import type {
+  VibeFlowDocument,
+  VibeFlowContext,
+  VibeFlowReference,
+  VibeFlowBrainstormSession,
+} from '../../api/types.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
 
 interface DocumentNode {
@@ -22,6 +27,43 @@ const TYPE_CONFIG: { key: VibeFlowDocument['type']; label: string; icon: string 
   { key: 'design_system', label: 'Design System', icon: 'symbol-color' },
   { key: 'general', label: 'General', icon: 'file' },
 ];
+
+/** Leaf descriptor for one brainstorm under the Documents tree. */
+export interface BrainstormLeaf {
+  id: number;
+  label: string;
+  /** Short status string shown as the tree description (e.g. "active", "done"). */
+  description: string;
+  /**
+   * Document to open on select — the finalized document when the brainstorm
+   * produced one, else the live working draft. `null` when the brainstorm has
+   * no document yet (e.g. a session still in `setup`), in which case the leaf
+   * renders without an open command.
+   */
+  documentId: number | null;
+}
+
+/**
+ * Map brainstorm sessions to Documents-tree leaves. Pure + vitest-testable
+ * (no `vscode` import) — mirrors `brainstormData.ts` / `kanbanData.ts`.
+ *
+ * Ordering is newest-first by id (ids are monotonic, so this is a stable proxy
+ * for creation order without parsing timestamps). The open target prefers
+ * `final_document_id` over `document_id` so a completed brainstorm opens its
+ * polished output while an active one falls back to the working draft — the
+ * same draft `BrainstormPanel` opens inline.
+ */
+export function buildBrainstormLeaves(brainstorms: VibeFlowBrainstormSession[]): BrainstormLeaf[] {
+  return brainstorms
+    .slice()
+    .sort((a, b) => b.id - a.id)
+    .map(b => ({
+      id: b.id,
+      label: `Brainstorm #${b.id}`,
+      description: b.status,
+      documentId: b.final_document_id ?? b.document_id,
+    }));
+}
 
 /**
  * Documents TreeView — surfaces three classes of project content matching
@@ -48,6 +90,7 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
   private documents: VibeFlowDocument[] = [];
   private contexts: VibeFlowContext[] = [];
   private references: VibeFlowReference[] = [];
+  private brainstorms: VibeFlowBrainstormSession[] = [];
   private pollSub: Disposer | undefined;
 
   constructor(private readonly coordinator: PollingCoordinator) {}
@@ -81,17 +124,19 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
       return;
     }
 
-    // Fetch all three sources in parallel — partial failure leaves the
-    // affected list stale rather than blanking the tree (matches the
-    // pre-existing documents-only behavior).
-    const [docsR, ctxR, refsR] = await Promise.allSettled([
+    // Fetch all sources in parallel — partial failure leaves the affected
+    // list stale rather than blanking the tree (matches the pre-existing
+    // documents-only behavior).
+    const [docsR, ctxR, refsR, bsR] = await Promise.allSettled([
       this.client.listDocuments(this.projectId),
       this.client.listContexts(this.projectId),
       this.client.listReferences(this.projectId),
+      this.client.listBrainstorms(this.projectId),
     ]);
     if (docsR.status === 'fulfilled') { this.documents = docsR.value; }
     if (ctxR.status === 'fulfilled') { this.contexts = ctxR.value; }
     if (refsR.status === 'fulfilled') { this.references = refsR.value; }
+    if (bsR.status === 'fulfilled') { this.brainstorms = bsR.value; }
     this._onDidChangeTreeData.fire();
   }
 
@@ -119,10 +164,12 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
 
   private buildRootTree(): DocumentNode[] {
     const docCategories = this.buildDocumentCategories();
+    const brainstormsNode = this.buildBrainstormsNode();
     const contextsNode = this.buildContextsNode();
     const referencesNode = this.buildReferencesNode();
 
     const roots: DocumentNode[] = [...docCategories];
+    if (brainstormsNode) { roots.push(brainstormsNode); }
     if (contextsNode) { roots.push(contextsNode); }
     if (referencesNode) { roots.push(referencesNode); }
     return roots;
@@ -154,6 +201,41 @@ export class DocumentsTreeProvider implements vscode.TreeDataProvider<DocumentNo
         })),
       };
     }).filter(cat => (cat.children?.length ?? 0) > 0 || this.documents.length === 0);
+  }
+
+  /**
+   * Top-level "Brainstorms" node. Lists the project's multi-persona brainstorm
+   * sessions; selecting one opens its document (finalized output when present,
+   * else the working draft) in the same viewer the document leaves use. Hidden
+   * entirely when the project has no brainstorms, matching the collapse-empty
+   * behavior of the References/Contexts sections.
+   */
+  private buildBrainstormsNode(): DocumentNode | undefined {
+    if (this.brainstorms.length === 0) { return undefined; }
+    const leaves = buildBrainstormLeaves(this.brainstorms);
+    return {
+      id: 'cat-brainstorms',
+      label: 'Brainstorms',
+      description: `${leaves.length}`,
+      tooltip: 'Multi-persona brainstorm sessions. Select one to open its document.',
+      iconId: 'lightbulb',
+      collapsibleState: vscode.TreeItemCollapsibleState.Collapsed,
+      contextValue: 'brainstormCategory',
+      children: leaves.map(l => ({
+        id: `brainstorm-${l.id}`,
+        label: l.label,
+        description: l.description,
+        tooltip: l.documentId == null ? 'No brainstorm document yet.' : undefined,
+        iconId: 'comment-discussion',
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        contextValue: 'brainstorm',
+        command: l.documentId == null ? undefined : {
+          command: 'vibeflow.openDocumentViewer',
+          title: 'Open Brainstorm Document',
+          arguments: [l.documentId, l.label],
+        },
+      })),
+    };
   }
 
   /**
