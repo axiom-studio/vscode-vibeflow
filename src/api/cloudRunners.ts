@@ -197,17 +197,15 @@ export function canLaunch(workingDir: string, project: string, personas: readonl
 }
 
 /**
- * Suggest a de-duplicated runner name for the 409 retry prompt (#3394): append
- * or increment a `-N` suffix so pressing Enter yields a name that won't collide
- * with the one that just conflicted. `foo` → `foo-2`, `foo-2` → `foo-3`.
+ * Suggest a de-duplicated runner name for the 409 retry prompt (#3395). Appends
+ * the caller-supplied `salt` (a short random token) to the ORIGINAL base name —
+ * NOT a monotonic `-N`, which just walks through previously-deleted names that
+ * the server still keeps reserved (#3394 tombstone). A random suffix is very
+ * unlikely to collide, so the first suggestion is fresh. Pure/deterministic
+ * given `salt`; the command supplies the entropy so this stays unit-testable.
  */
-export function suggestRunnerName(name: string): string {
-  const trimmed = name.trim();
-  const match = /^(.*)-(\d+)$/.exec(trimmed);
-  if (match) {
-    return `${match[1]}-${Number(match[2]) + 1}`;
-  }
-  return `${trimmed}-2`;
+export function suggestRunnerName(name: string, salt: string): string {
+  return `${name.trim()}-${salt}`;
 }
 
 /** The 9 vibeflow personas selectable when configuring a runner session. */
