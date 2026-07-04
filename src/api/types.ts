@@ -765,3 +765,15 @@ export interface CreateRunnerRequest {
   gitProviderId?: number;
   gitRepos?: CloudRunnerRepo[];
 }
+
+/**
+ * Live runner status relayed from Studio — `GET .../cloud-runners/{id}/status`
+ * (feature #603 management, spec #435/#436). Used to gate the Manage wizard
+ * (authenticated/configured/podStatus) and to reconcile Start/Stop.
+ */
+export interface RunnerStatus {
+  status?: string;
+  podStatus?: string;
+  authenticated?: boolean;
+  configured?: boolean;
+}
