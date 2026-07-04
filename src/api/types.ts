@@ -734,6 +734,12 @@ export interface CloudRunnerView {
   userId: number;
   projectId: number;
   createdAt: string;
+  // The detail endpoint (`GET .../{id}`) additionally returns the agent identity
+  // used by the Manage wizard (routing + manifest). Optional — the list rows
+  // don't populate them.
+  agentType?: string;
+  authMode?: string;
+  loginMethod?: string;
 }
 
 /**

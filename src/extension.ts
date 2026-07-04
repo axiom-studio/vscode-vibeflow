@@ -12,6 +12,7 @@ import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvid
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
+import { CloudRunnerManagePanel } from './views/cloudRunners/CloudRunnerManagePanel.js';
 import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar, createWorkingStatusBar,
@@ -1283,6 +1284,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       CloudRunnersPanel.open(context.extensionUri, client, project.projectName);
     }),
+    vscode.commands.registerCommand(
+      'vibeflow.openCloudRunnerManage',
+      (projectId: number, runnerId: number, runnerName: string) => {
+        if (!client.isAuthenticated()) {
+          vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
+          return;
+        }
+        CloudRunnerManagePanel.open(context.extensionUri, client, projectId, runnerId, runnerName ?? `#${runnerId}`);
+      },
+    ),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
       const project = detector.getCachedProject();
       if (!project) {

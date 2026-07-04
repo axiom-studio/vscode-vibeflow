@@ -484,7 +484,67 @@ export type CloudRunnersClientMessage =
   // server-side; the host maps 403/409/502/503 + transient-pod errors.
   | { type: 'cloudRunnerStart'; payload: { projectId: number; id: number } }
   | { type: 'cloudRunnerStop'; payload: { projectId: number; id: number } }
-  | { type: 'cloudRunnerDelete'; payload: { projectId: number; id: number; name: string } };
+  | { type: 'cloudRunnerDelete'; payload: { projectId: number; id: number; name: string } }
+  // Open the Manage wizard for a runner (#2817). The list host forwards this to
+  // the vibeflow.openCloudRunnerManage command.
+  | { type: 'cloudRunnerManage'; payload: { projectId: number; id: number; name: string } };
+
+// ============================================================
+// Cloud Runner Manage wizard (#2817)
+// ============================================================
+
+/**
+ * A single host→webview snapshot of the Manage wizard. The host owns all async
+ * (hydrate, oauth polling, launch health polling) and pushes the whole state;
+ * the webview is presentational + sends intents below. Secret-free: the launch
+ * manifest is built host-side with `${VAULT:...}` placeholders.
+ */
+export interface CloudRunnerManageState {
+  step: 'authenticate' | 'configure' | 'launch';
+  runnerName: string;
+  agentType: string;
+  authMode: string;
+  authenticated: boolean;
+  configured: boolean;
+  podStatus: string;
+  podReady: boolean;
+  oauthUrl?: string;
+  oauthCode?: string;
+  needsPasteBack: boolean; // claude = interactive paste-back; codex/cursor = auto
+  repos: { name?: string; path?: string; branch?: string }[];
+  agentProjects: string[];
+  gitProviders: { id: number; name: string }[];
+  defaultProject: string;
+  launchPhase?: string;
+  launchErrors?: string[];
+  launching: boolean;
+  error?: string;
+  busy: boolean;
+}
+
+/** The Configure-form fields the webview submits; the host builds the manifest. */
+export interface ManageLaunchConfig {
+  workingDir: string;
+  project: string;
+  personas: string[];
+  sessionType: 'vibeflow' | 'vanilla';
+  branch: string;
+  worktree: boolean;
+  newBranch: boolean;
+  llmGateway: boolean;
+  skipPermissions: boolean;
+}
+
+export type CloudRunnerManageHostMessage =
+  | { type: 'manageState'; payload: CloudRunnerManageState };
+
+export type CloudRunnerManageClientMessage =
+  | { type: 'manageLoad' }
+  | { type: 'manageStartOAuth' }
+  | { type: 'manageSubmitOAuth'; payload: { code: string } }
+  | { type: 'manageClone'; payload: { gitProviderId?: number; url: string; branch: string } }
+  | { type: 'manageLaunch'; payload: ManageLaunchConfig }
+  | { type: 'manageAdvance'; payload: { step: 'authenticate' | 'configure' | 'launch' } };
 
 // ============================================================
 // Dashboard Panel

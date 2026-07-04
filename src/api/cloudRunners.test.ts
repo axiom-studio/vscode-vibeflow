@@ -15,6 +15,11 @@ import {
   isPodReady,
   authCompletesAutomatically,
   canLaunch,
+  routeInitialStep,
+  firstPresent,
+  buildRunnerManifest,
+  VIBEFLOW_PERSONAS,
+  type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
 
@@ -248,5 +253,64 @@ describe('canLaunch', () => {
     expect(canLaunch('', 'proj', ['developer'])).toBe(false);
     expect(canLaunch('/w', '  ', ['developer'])).toBe(false);
     expect(canLaunch('/w', 'proj', [])).toBe(false);
+  });
+});
+
+describe('routeInitialStep', () => {
+  it('lands on configure when authenticated or configured', () => {
+    expect(routeInitialStep({ authenticated: true, authMode: 'oauth' })).toBe('configure');
+    expect(routeInitialStep({ configured: true, authMode: 'oauth' })).toBe('configure');
+  });
+  it('starts at authenticate for an unauthenticated oauth runner', () => {
+    expect(routeInitialStep({ authMode: 'oauth' })).toBe('authenticate');
+  });
+  it('defaults to configure for non-oauth', () => {
+    expect(routeInitialStep({ authMode: 'api_key' })).toBe('configure');
+    expect(routeInitialStep({})).toBe('configure');
+  });
+});
+
+describe('firstPresent', () => {
+  it('returns the first non-empty value', () => {
+    expect(firstPresent(undefined, '', 'https://x')).toBe('https://x');
+    expect(firstPresent('a', 'b')).toBe('a');
+    expect(firstPresent(undefined, '')).toBe('');
+  });
+});
+
+describe('VIBEFLOW_PERSONAS', () => {
+  it('is the 9 canonical personas', () => {
+    expect(VIBEFLOW_PERSONAS).toHaveLength(9);
+    expect(VIBEFLOW_PERSONAS).toContain('principal_engineer');
+    expect(VIBEFLOW_PERSONAS).toContain('security_lead');
+  });
+});
+
+describe('buildRunnerManifest', () => {
+  const cfg: LaunchConfig = {
+    agentType: 'claude', authMode: 'oauth', project: 'vscode-vibeflow',
+    personas: ['principal_engineer', 'qa_lead'], sessionType: 'vibeflow',
+    workingDir: '/workspace/repos/app', branch: 'main', worktree: false,
+    newBranch: false, llmGateway: false, skipPermissions: true,
+  };
+
+  it('produces a RunnerSession doc with the config wired through', () => {
+    const m = buildRunnerManifest(cfg) as Record<string, any>;
+    expect(m.kind).toBe('RunnerSession');
+    expect(m.vibeflow.project).toBe('vscode-vibeflow');
+    expect(m.vibeflow.personas).toEqual(['principal_engineer', 'qa_lead']);
+    expect(m.repos[0]).toEqual({ path: '/workspace/repos/app', branch: 'main', trusted: true });
+    expect(m.agent).toMatchObject({ type: 'claude', authMode: 'oauth', skipPermissions: true });
+  });
+
+  it('NEVER embeds a real secret — only ${VAULT:...} placeholders', () => {
+    const json = JSON.stringify(buildRunnerManifest({ ...cfg, personas: ['developer'] }));
+    expect(json).toContain('${VAULT:base_url}');
+    expect(json).toContain('${VAULT:api_key}');
+    // The server resolves the vault refs; the client must not inline a token.
+    const m = buildRunnerManifest(cfg) as Record<string, any>;
+    expect(m.vibeflow.apiToken).toBe('${VAULT:api_key}');
+    expect(m.vibeflow.serverUrl).toBe('${VAULT:base_url}');
+    expect(m.mcpServers[0].headers.Authorization).toBe('Bearer ${VAULT:api_key}');
   });
 });

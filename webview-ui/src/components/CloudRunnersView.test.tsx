@@ -132,4 +132,20 @@ describe('CloudRunnersView — row actions (#2816)', () => {
     expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerDelete', payload: { projectId: 28, id: 8, name: 'gamma' } });
     spy.mockRestore();
   });
+
+  it('shows Manage for a manageable runner and posts cloudRunnerManage', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 9, projectId: 28, name: 'delta', status: 'active' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerManage', payload: { projectId: 28, id: 9, name: 'delta' } });
+    spy.mockRestore();
+  });
+
+  it('hides Manage for a stopped runner (not manageable)', () => {
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 10, status: 'stopped' })]);
+    expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
+  });
 });

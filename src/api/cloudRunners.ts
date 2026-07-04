@@ -182,3 +182,88 @@ export function authCompletesAutomatically(agentType: string | undefined): boole
 export function canLaunch(workingDir: string, project: string, personas: readonly string[]): boolean {
   return workingDir.trim().length > 0 && project.trim().length > 0 && personas.length > 0;
 }
+
+/** The 9 vibeflow personas selectable when configuring a runner session. */
+export const VIBEFLOW_PERSONAS = [
+  'developer', 'principal_engineer', 'architect', 'ux_designer', 'qa_lead',
+  'security_lead', 'product_manager', 'project_manager', 'customer',
+] as const;
+
+/** The Manage wizard's steps (Authenticate is oauth-only). */
+export type ManageStep = 'authenticate' | 'configure' | 'launch';
+
+/**
+ * Route the wizard's initial step on open (#436 §4.0): an already
+ * authenticated/configured runner lands on Configure; an unauthenticated
+ * oauth runner starts at Authenticate; everything else at Configure.
+ */
+export function routeInitialStep(opts: { authenticated?: boolean; configured?: boolean; authMode?: string }): ManageStep {
+  if (opts.authenticated || opts.configured) { return 'configure'; }
+  if (opts.authMode === 'oauth') { return 'authenticate'; }
+  return 'configure';
+}
+
+/**
+ * The OAuth start payload spells its URL/code fields several ways depending on
+ * the agent — return the first present value (#436 §4.1).
+ */
+export function firstPresent(...vals: Array<string | undefined>): string {
+  for (const v of vals) {
+    if (v) { return v; }
+  }
+  return '';
+}
+
+/** Inputs for {@link buildRunnerManifest}. All values are non-secret config. */
+export interface LaunchConfig {
+  agentType: string;
+  authMode: string;
+  loginMethod?: string;
+  project: string;
+  personas: readonly string[];
+  sessionType: 'vibeflow' | 'vanilla';
+  workingDir: string;
+  branch: string;
+  worktree: boolean;
+  newBranch: boolean;
+  llmGateway: boolean;
+  skipPermissions: boolean;
+}
+
+/**
+ * Build the `RunnerSession` launch manifest (#436 §4.3). The vibeflow
+ * credentials use `${VAULT:...}` placeholders the server resolves from the
+ * runner's per-user vault credential — this function NEVER embeds a real
+ * token/secret (a hard security invariant, enforced by review + tests).
+ */
+export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> {
+  return {
+    apiVersion: 'nimbus.axiom/v1',
+    kind: 'RunnerSession',
+    agent: {
+      type: cfg.agentType,
+      authMode: cfg.authMode,
+      loginMethod: cfg.loginMethod ?? 'claude',
+      skipPermissions: cfg.skipPermissions,
+    },
+    vibeflow: {
+      serverUrl: '${VAULT:base_url}',
+      apiToken: '${VAULT:api_key}',
+      provider: cfg.agentType,
+      project: cfg.project,
+      personas: [...cfg.personas],
+      sessionType: cfg.sessionType,
+      branch: cfg.branch,
+      worktree: cfg.worktree,
+      newBranch: cfg.newBranch,
+      llmGateway: cfg.llmGateway,
+    },
+    mcpServers: [{
+      name: 'vibeflow',
+      transport: 'http',
+      url: '${VAULT:base_url}/mcp',
+      headers: { Authorization: 'Bearer ${VAULT:api_key}' },
+    }],
+    repos: [{ path: cfg.workingDir, branch: cfg.branch, trusted: true }],
+  };
+}
