@@ -6,7 +6,7 @@
     "name": "Axiom Studio AI",
     "url": "https://axiomstudio.ai"
   },
-  "version": "1.2.1",
+  "version": "1.2.6",
   "publisher": "AxiomStudio",
   "license": "Apache-2.0",
   "repository": {
@@ -753,6 +753,11 @@
           "type": "string",
           "default": "https://cloud.axiomstudio.ai",
           "description": "VibeFlow server URL"
+        },
+        "vibeflow.cloudRunners.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log Cloud Runners API calls (method, path, status, and response shape — never request bodies or secrets) to the 'VibeFlow Cloud Runners' output channel. Use to diagnose Cloud Runner / git-provider failures."
         },
         "vibeflow.defaultProvider": {
           "type": "string",
