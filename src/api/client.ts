@@ -27,7 +27,14 @@ import type {
   BrainstormDetailResponse,
   BrainstormRoundResponse,
   StartBrainstormBody,
+  FeatureFlags,
+  GitProviderView,
+  CreateGitProviderRequest,
+  CloudRunnerView,
+  GlobalCloudRunnerView,
+  CreateRunnerRequest,
 } from './types.js';
+import { cloudRunnersEnabled, unwrapList } from './cloudRunners.js';
 
 /**
  * HTTP client for the VibeFlow REST API + MCP client for write operations.
@@ -1047,6 +1054,89 @@ export class VibeFlowClient {
       base: params.base,
     });
     return result as { url?: string };
+  }
+
+  // --- Cloud Runners Integration (feature #603) ---
+  //
+  // REST (Bearer) endpoints on the AxiomCloud API — see the "Cloud Runners
+  // External Integration" API Spec (axiomcloud doc #433). `feature_cloud_runners`
+  // gates the cloud-runner + git-provider routes; GET /feature-flags is NOT
+  // gated and returns the org-resolved flag map. All ids in paths are LOCAL
+  // ids — `studioRunnerId` is informational only and never sent by the client.
+
+  /** Read the caller's org-resolved feature flags. Not itself feature-gated. */
+  async getFeatureFlags(): Promise<FeatureFlags> {
+    const data = await this.request<{ flags?: Record<string, boolean> }>('/rest/v1/feature-flags');
+    return { flags: data.flags ?? {} };
+  }
+
+  /** Whether Cloud Runners is enabled for the caller's org (or globally). */
+  async isCloudRunnersEnabled(): Promise<boolean> {
+    return cloudRunnersEnabled(await this.getFeatureFlags());
+  }
+
+  // Git providers (account-level, per-user). Secrets are write-only — the
+  // list/create responses never echo accessToken / sshPrivateKey back.
+
+  async listGitProviders(): Promise<GitProviderView[]> {
+    const data = await this.request<{ providers?: GitProviderView[] }>(
+      '/rest/v1/vibeflow/git-providers',
+    );
+    return unwrapList<GitProviderView>(data, 'providers');
+  }
+
+  async createGitProvider(body: CreateGitProviderRequest): Promise<GitProviderView> {
+    return this.request<GitProviderView>('/rest/v1/vibeflow/git-providers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async renameGitProvider(id: number, name: string): Promise<GitProviderView> {
+    return this.request<GitProviderView>(`/rest/v1/vibeflow/git-providers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async deleteGitProvider(id: number): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/git-providers/${id}`, { method: 'DELETE' });
+  }
+
+  // Cloud runners.
+
+  async listCloudRunners(): Promise<GlobalCloudRunnerView[]> {
+    const data = await this.request<{ runners?: GlobalCloudRunnerView[] }>(
+      '/rest/v1/vibeflow/cloud-runners',
+    );
+    return unwrapList<GlobalCloudRunnerView>(data, 'runners');
+  }
+
+  async listProjectCloudRunners(projectId: number): Promise<CloudRunnerView[]> {
+    const data = await this.request<{ runners?: CloudRunnerView[] }>(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners`,
+    );
+    return unwrapList<CloudRunnerView>(data, 'runners');
+  }
+
+  async createCloudRunner(projectId: number, body: CreateRunnerRequest): Promise<CloudRunnerView> {
+    return this.request<CloudRunnerView>(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+  }
+
+  async getCloudRunner(projectId: number, id: number): Promise<CloudRunnerView> {
+    return this.request<CloudRunnerView>(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}`,
+    );
+  }
+
+  async deleteCloudRunner(projectId: number, id: number): Promise<void> {
+    await this.request(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}`,
+      { method: 'DELETE' },
+    );
   }
 }
 

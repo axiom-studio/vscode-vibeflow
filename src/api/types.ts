@@ -671,3 +671,97 @@ export interface StartBrainstormBody {
   token_budget: number;
   topics?: { name: string }[];
 }
+
+// --- Cloud Runners Integration (feature #603) ---
+//
+// Wire shape mirrors the "Cloud Runners External Integration — API
+// Specification" (axiomcloud doc #433). NOTE: unlike the older vibeflow
+// types above (which are snake_case because those handlers serialize with
+// `json:"snake_case"` tags), the Cloud Runners handlers
+// (handlers/cloud_runners.go, cloud_runner_git_providers.go) use camelCase
+// field names — the spec documents `podName`, `studioRunnerId`, `gitUrl`,
+// `agentType`, etc. with concrete camelCase JSON examples. These interfaces
+// follow that contract verbatim so bodies can be JSON.stringify'd as-is.
+
+/**
+ * Org-resolved feature flags — `GET /rest/v1/feature-flags`. Not itself
+ * feature-gated; any authenticated user reads their own org's flags. Each
+ * value is the global default merged with any per-org override.
+ */
+export interface FeatureFlags {
+  flags: Record<string, boolean>;
+}
+
+/**
+ * A git provider record (account-level, per-user). Returned by
+ * `GET /rest/v1/vibeflow/git-providers`. Secrets (accessToken / sshPrivateKey)
+ * are NEVER echoed back — only these four fields are exposed.
+ */
+export interface GitProviderView {
+  id: number;
+  name: string;
+  gitUrl: string;
+  authMode: string; // 'pat' | 'ssh' | 'oauth'
+}
+
+/**
+ * Body for `POST /rest/v1/vibeflow/git-providers`. The extension supports
+ * PAT and SSH only (OAuth is out of scope for the Settings UI). Provide
+ * userName+accessToken for `pat`, or sshPrivateKey for `ssh`.
+ */
+export interface CreateGitProviderRequest {
+  name: string;
+  gitUrl: string;
+  authType: 'pat' | 'ssh';
+  userName?: string;
+  accessToken?: string;
+  sshPrivateKey?: string;
+}
+
+/**
+ * A cloud runner scoped to a project (`cloudRunnerView`). `id` is the LOCAL
+ * runner id used in all AxiomCloud paths; `studioRunnerId` is upstream and
+ * informational only — never send it back to the server.
+ */
+export interface CloudRunnerView {
+  id: number;
+  name: string;
+  status: string;
+  podName: string;
+  podStatus: string;
+  lastStatusAt: string;
+  studioRunnerId: number;
+  userId: number;
+  projectId: number;
+  createdAt: string;
+}
+
+/**
+ * A cloud runner from the global cross-project list
+ * (`GET /rest/v1/vibeflow/cloud-runners`) — additionally carries projectName.
+ */
+export interface GlobalCloudRunnerView extends CloudRunnerView {
+  projectName: string;
+}
+
+/** A repository to clone onto a runner at create time. */
+export interface CloudRunnerRepo {
+  url: string;
+}
+
+/**
+ * Body for `POST /rest/v1/vibeflow/projects/{projectId}/cloud-runners`.
+ * `gitRepos` requires a `gitProviderId` (server rejects otherwise — no clone
+ * without push credentials). Cluster/namespace are server-chosen, never sent.
+ */
+export interface CreateRunnerRequest {
+  name: string;
+  agentType: 'claude' | 'codex';
+  authMode: 'api_key' | 'oauth';
+  cloudAgentType?: string;
+  loginMethod?: string;
+  apiKey?: string;
+  podName?: string;
+  gitProviderId?: number;
+  gitRepos?: CloudRunnerRepo[];
+}
