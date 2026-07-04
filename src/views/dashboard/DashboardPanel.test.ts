@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { tallyPersonaQueues, collectPersonaQueueItems, type PersonaQueueItem } from './DashboardPanel.js';
-import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult } from '../../api/types.js';
+import { tallyPersonaQueues, collectPersonaQueueItems, collectLiveSnapshot, type PersonaQueueItem } from './DashboardPanel.js';
+import type { VibeFlowSwimlaneItem, VibeFlowSwimlaneResult, VibeFlowSession } from '../../api/types.js';
 
 /**
  * Unit tests for `tallyPersonaQueues` — the host-side reducer that turns the
@@ -287,5 +287,52 @@ describe('collectPersonaQueueItems', () => {
   it('returns only qa items when the swimlane fetch failed', () => {
     const items = collectPersonaQueueItems(undefined, PROJECT, [qaItem(7)]);
     expect(items).toEqual({ qa_lead: [qaItem(7)] });
+  });
+});
+
+/**
+ * #3385 — the per-card "⚠ Waiting for your input" badge is a per-user
+ * NOTIFICATION, so its pending-prompt count must be scoped to the current
+ * user's OWN sessions. The fleet card itself stays visible (enumeration).
+ */
+describe('collectLiveSnapshot — input-waiting badge ownership gate (#3385)', () => {
+  function sess(overrides: Partial<VibeFlowSession>): VibeFlowSession {
+    return {
+      id: 1,
+      session_id: 'session-a',
+      project_id: 28,
+      working_directory: '/w',
+      git_branch: 'main',
+      agent_type: 'claude',
+      agent_model: 'claude-fable-5',
+      persona_key: 'developer',
+      created_at: '2026-07-04T00:00:00Z',
+      active: true,
+      pending_agent_prompt_count: 2,
+      ...overrides,
+    };
+  }
+
+  function agentsById(snapshot: ReturnType<typeof collectLiveSnapshot>): Map<string, number | undefined> {
+    return new Map(snapshot.branches.flatMap(b => b.agents).map(a => [a.sessionId, a.pendingPrompts]));
+  }
+
+  it('keeps the pending-prompt count for owned sessions and zeroes it for others', () => {
+    const sessions = [
+      sess({ session_id: 'session-mine', pending_agent_prompt_count: 3 }),
+      sess({ session_id: 'session-theirs', pending_agent_prompt_count: 5 }),
+    ];
+    const byId = agentsById(collectLiveSnapshot(sessions, '', id => id === 'session-mine'));
+    // Both cards are still enumerated...
+    expect(byId.has('session-mine')).toBe(true);
+    expect(byId.has('session-theirs')).toBe(true);
+    // ...but the badge count only survives for the owned session.
+    expect(byId.get('session-mine')).toBe(3);
+    expect(byId.get('session-theirs')).toBe(0);
+  });
+
+  it('defaults to allow-all when no ownership predicate is supplied', () => {
+    const byId = agentsById(collectLiveSnapshot([sess({ session_id: 'session-x', pending_agent_prompt_count: 4 })], ''));
+    expect(byId.get('session-x')).toBe(4);
   });
 });
