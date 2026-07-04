@@ -4,6 +4,23 @@ import type { VibeFlowSession } from '../api/types.js';
 
 const SIDECAR_PREFIX = '.vibeflow-session-';
 
+const PERSONA_KEY_RE = /^[a-z0-9_]+$/;
+
+/**
+ * Whether `persona_key` is safe to interpolate into a sidecar filename
+ * (CWE-22, #3383). Both `persona_key` and `working_directory` on a session
+ * come from the PROJECT-WIDE session list, which — by this feature's own
+ * threat model — includes sessions registered by other org members. The
+ * backend accepts them as free-form strings, so a malicious peer could set
+ * `persona_key = "x/../../../etc/passwd"` to make this window read an
+ * arbitrary local path (and hang on a blocking special file like /dev/zero).
+ * A single lowercase token cannot contain a path separator or `..`, so the
+ * `path.join` stays a single segment inside `working_directory`.
+ */
+export function isSafePersonaKey(personaKey: string): boolean {
+  return PERSONA_KEY_RE.test(personaKey);
+}
+
 /**
  * Tracks which VibeFlow sessions run "on behalf of the user" of this
  * VS Code window, so notification surfaces (prompt toasts, activity feed,
@@ -42,7 +59,13 @@ export class SessionOwnershipTracker {
     for (const session of sessions) {
       if (this.owned.has(session.session_id)) { continue; }
       if (!session.working_directory || !session.persona_key) { continue; }
+      // #3383: persona_key/working_directory are attacker-controllable (see
+      // isSafePersonaKey). Reject a persona_key that isn't a single token, then
+      // require the resolved sidecar to sit DIRECTLY inside working_directory —
+      // belt-and-suspenders against traversal via either field.
+      if (!isSafePersonaKey(session.persona_key)) { continue; }
       const sidecar = path.join(session.working_directory, SIDECAR_PREFIX + session.persona_key);
+      if (path.dirname(path.resolve(sidecar)) !== path.resolve(session.working_directory)) { continue; }
       if (await readSessionId(sidecar) === session.session_id) {
         this.owned.add(session.session_id);
       }
@@ -72,6 +95,12 @@ export class SessionOwnershipTracker {
 /** Read a sidecar file's session id; undefined when missing or malformed. */
 async function readSessionId(filePath: string): Promise<string | undefined> {
   try {
+    // #3383 defense-in-depth: only read REGULAR files. A blocking special
+    // file (FIFO, /dev/zero) at the sidecar path would hang readFile and
+    // stall the poll loop; stat resolves symlinks, so a symlink to a device
+    // is skipped too. Regular sidecar files are unaffected.
+    const stats = await fs.promises.stat(filePath);
+    if (!stats.isFile()) { return undefined; }
     const content = await fs.promises.readFile(filePath, 'utf-8');
     const sessionId = content.trim();
     return sessionId.startsWith('session-') ? sessionId : undefined;
