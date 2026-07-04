@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, parseRepoUrls, runnerPollState } from '../api/cloudRunners.js';
+import { validateCreateRunner, parseRepoUrls, runnerPollState, createRunnerErrorMessage } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -108,18 +108,35 @@ export async function createCloudRunner(
     return;
   }
 
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `Creating cloud runner "${body.name}"…`, cancellable: true },
-    async (progress, token) => {
-      let runnerId: number;
-      try {
-        const created = await client.createCloudRunner(projectId, body);
-        runnerId = created.id;
-      } catch (err) {
-        vscode.window.showErrorMessage(`VibeFlow: could not create cloud runner — ${errText(err)}`);
-        return;
+  // Create OUTSIDE the progress notification so a 409 name-retry prompt
+  // doesn't fight it (#3388). 403/502/503 map to specific messages.
+  let runnerId: number;
+  for (;;) {
+    try {
+      const created = await client.createCloudRunner(projectId, body);
+      runnerId = created.id;
+      break;
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 409) {
+        const newName = await vscode.window.showInputBox({
+          prompt: `A cloud runner named "${body.name}" already exists — choose a different name.`,
+          value: body.name,
+          ignoreFocusOut: true,
+        });
+        if (!newName?.trim()) { return; }
+        body.name = newName.trim();
+        continue;
       }
-      CloudRunnersPanel.refresh();
+      vscode.window.showErrorMessage(`VibeFlow: ${createRunnerErrorMessage(status, errText(err))}`);
+      return;
+    }
+  }
+  CloudRunnersPanel.refresh();
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `Provisioning cloud runner "${body.name}"…`, cancellable: true },
+    async (progress, token) => {
       progress.report({ message: 'provisioning…' });
 
       const deadline = Date.now() + POLL_DEADLINE_MS;
