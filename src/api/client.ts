@@ -33,6 +33,7 @@ import type {
   CloudRunnerView,
   GlobalCloudRunnerView,
   CreateRunnerRequest,
+  RunnerStatus,
 } from './types.js';
 import { cloudRunnersEnabled, unwrapList } from './cloudRunners.js';
 
@@ -1136,6 +1137,36 @@ export class VibeFlowClient {
     await this.request(
       `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}`,
       { method: 'DELETE' },
+    );
+  }
+
+  // Runner lifecycle (feature #603 management, spec #435/#436). Passthrough
+  // verbs — owner/admin only (403 otherwise); local ids only.
+
+  /** Start a stopped runner. Server optimistically sets local status `starting`. */
+  async startCloudRunner(projectId: number, id: number): Promise<void> {
+    await this.request(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/start`,
+      { method: 'POST' },
+    );
+  }
+
+  /** Stop an active runner. Server optimistically sets local status `stopping`. */
+  async stopCloudRunner(projectId: number, id: number): Promise<void> {
+    await this.request(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/stop`,
+      { method: 'POST' },
+    );
+  }
+
+  /**
+   * Live Studio status for a runner. Returns `409 runner is not provisioned
+   * yet` (thrown as `err.status === 409`) while `studioRunnerId == 0` — callers
+   * treat that as transient and keep polling.
+   */
+  async getRunnerStatus(projectId: number, id: number): Promise<RunnerStatus> {
+    return this.request<RunnerStatus>(
+      `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/status`,
     );
   }
 }
