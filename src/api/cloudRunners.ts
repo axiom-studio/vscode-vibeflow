@@ -267,3 +267,52 @@ export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> 
     repos: [{ path: cfg.workingDir, branch: cfg.branch, trusted: true }],
   };
 }
+
+// --- Pod terminal (tmux) transport + framing (#2818, spec #436 §4.4) ---
+
+/**
+ * Derive the tmux WebSocket URL for a runner from the REST base URL: `https:`→
+ * `wss:` / `http:`→`ws:` (mirrors `buildUIWebSocketUrl`). Any other protocol is
+ * rejected so a Bearer token is never sent over an insecure transport.
+ */
+export function deriveTmuxWsUrl(baseUrl: string, projectId: number, id: number): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) { throw new Error('serverUrl is empty'); }
+  const base = new URL(trimmed.endsWith('/') ? trimmed : `${trimmed}/`);
+  if (base.protocol === 'https:') { base.protocol = 'wss:'; }
+  else if (base.protocol === 'http:') { base.protocol = 'ws:'; }
+  else { throw new Error(`serverUrl protocol ${base.protocol} does not support WebSocket`); }
+  const prefix = base.pathname.replace(/\/+$/, '');
+  base.pathname = `${prefix}/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/tmux/ws`.replace(/\/{2,}/g, '/');
+  base.search = '';
+  base.hash = '';
+  return base.toString();
+}
+
+/** Client→server keystroke frame. */
+export function encodeTmuxInput(data: string): string {
+  return JSON.stringify({ type: 'input', data });
+}
+
+/** Client→server terminal-resize frame. */
+export function encodeTmuxResize(cols: number, rows: number): string {
+  return JSON.stringify({ type: 'resize', cols, rows });
+}
+
+/**
+ * Classify a server→client tmux frame: a `{type:"error",message}` control frame
+ * (the server sends one then closes) vs raw terminal output. Non-JSON and any
+ * non-error JSON is treated as output bytes.
+ */
+export function parseTmuxServerFrame(text: string): { kind: 'error'; message: string } | { kind: 'output'; data: string } {
+  try {
+    const obj = JSON.parse(text) as unknown;
+    if (obj && typeof obj === 'object' && (obj as { type?: unknown }).type === 'error') {
+      const message = (obj as { message?: unknown }).message;
+      return { kind: 'error', message: typeof message === 'string' ? message : 'terminal error' };
+    }
+  } catch {
+    // Not JSON — raw terminal output.
+  }
+  return { kind: 'output', data: text };
+}
