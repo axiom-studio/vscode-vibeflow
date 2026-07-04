@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 (2026-07-04)
+
+### Added
+
+- **Brainstorms in the Documents tree.** The Documents view now includes a **Brainstorms** node, so brainstorm sessions appear alongside your other documents instead of being hidden.
+
 ## 1.2.0 (2026-07-03)
 
 A Session-Chat and Browse release — richer chat with avatars, live "working" feedback, and clickable references; clearer signalling when an agent is waiting on you; and paginated Browse tables that stay fast on large projects.
