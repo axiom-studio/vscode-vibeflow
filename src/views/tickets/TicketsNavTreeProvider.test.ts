@@ -11,6 +11,7 @@ import type { WorkItemsTreeProvider } from '../workItems/WorkItemsTreeProvider.j
  */
 
 const CLOUD_RUNNERS_ROW = 'tickets-nav-cloud-runners';
+const GIT_PROVIDERS_ROW = 'tickets-nav-git-providers';
 
 /** Minimal WorkItemsTreeProvider — the nav only reads counts + a refresh event. */
 function fakeWorkItems(): WorkItemsTreeProvider {
@@ -42,6 +43,19 @@ describe('TicketsNavTreeProvider — Cloud Runners row flag gate', () => {
 
     nav.setCloudRunnersEnabled(false);
     expect(rowIds(nav)).not.toContain(CLOUD_RUNNERS_ROW);
+  });
+
+  it('shows Git Providers directly after Cloud Runners under the same flag (#2822)', () => {
+    const nav = new TicketsNavTreeProvider(fakeWorkItems());
+    expect(rowIds(nav)).not.toContain(GIT_PROVIDERS_ROW); // hidden by default
+
+    nav.setCloudRunnersEnabled(true);
+    const ids = rowIds(nav);
+    expect(ids).toContain(GIT_PROVIDERS_ROW);
+    expect(ids.indexOf(GIT_PROVIDERS_ROW)).toBe(ids.indexOf(CLOUD_RUNNERS_ROW) + 1);
+
+    nav.setCloudRunnersEnabled(false);
+    expect(rowIds(nav)).not.toContain(GIT_PROVIDERS_ROW);
   });
 
   it('fires onDidChangeTreeData only when the flag actually changes', () => {
