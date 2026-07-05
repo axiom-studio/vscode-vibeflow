@@ -9,6 +9,7 @@ import { assertNever, type SettingsClientMessage, type SettingsHostMessage } fro
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '../../commands/cliCommands.js';
 import { persistEffectiveSetting } from './settingsPersistence.js';
+import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { isBinaryOnPath } from '../../utils/whichBinary.js';
 import { confirmAndCloseTabsForProjectSwitch } from '../../commands/projectCommands.js';
@@ -151,6 +152,16 @@ export class SettingsPanel {
         case 'updateSetting': {
           // Persist a setting change immediately
           const { key, value } = msg.payload;
+
+          // #3398: cloudRunners.debug persists via globalState, NOT
+          // config.update() — VS Code rejects programmatic writes of keys
+          // whose contributes.configuration registration hasn't been
+          // installed yet ("not a registered configuration").
+          if (key === 'cloudRunners.debug') {
+            await setCloudRunnerDebug(value === true);
+            break;
+          }
+
           const config = vscode.workspace.getConfiguration('vibeflow');
 
           // Route to the right storage based on key. Keep this list in
@@ -163,7 +174,7 @@ export class SettingsPanel {
             'session.terminalMode', 'session.headlessBacking',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
             'cli.enabled', 'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
-            'chat.diffView', 'cloudRunners.debug',
+            'chat.diffView',
           ];
 
           if (settingsKeys.includes(key)) {
@@ -554,10 +565,10 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
     sessionHeadlessBacking: config.get<'auto' | 'tmux' | 'vscode'>('session.headlessBacking', 'auto'),
     chatDiffView: config.get<'unified' | 'split'>('chat.diffView', 'unified'),
-    // Diagnostics (#3397): surfaced in the Settings webview because the
-    // package.json declaration only registers on reinstall — the panel toggle
-    // works on a plain rebuild+reload.
-    cloudRunnersDebug: config.get<boolean>('cloudRunners.debug', false),
+    // Diagnostics (#3397/#3398): surfaced in the Settings webview because the
+    // package.json declaration only registers on reinstall. State lives in
+    // globalState (with a config-key fallback for manual settings.json edits).
+    cloudRunnersDebug: isCloudRunnerDebugEnabled(),
     // Models tab data — empty objects when stickyModels isn't wired
     // so the tab can still render its empty-state UI.
     stickyModels: deps.stickyModels?.getAll() ?? {},

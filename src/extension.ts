@@ -57,8 +57,13 @@ import { FeedStateController } from './views/activity/feedStateController.js';
 import { ContextProxy } from './core/ContextProxy.js';
 import { SessionWorkingObserver } from './sessions/SessionWorkingObserver.js';
 import { SessionOwnershipTracker } from './sessions/sessionOwnership.js';
+import { initCloudRunnerDebug } from './util/cloudRunnerLog.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  // Load the persisted Cloud Runners trace toggle (#3398 — globalState, not
+  // config: unregistered keys can't be written via config.update()).
+  initCloudRunnerDebug(context);
+
   // --- Core services ---
   // ContextProxy wraps globalState + secrets behind a typed registry
   // (src/core/ContextProxy.ts). Constructed first so every other
