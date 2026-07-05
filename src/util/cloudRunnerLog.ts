@@ -25,7 +25,7 @@ type DebugStateHost = { globalState: vscode.Memento };
 
 let host: DebugStateHost | undefined;
 let debugEnabled = false;
-let channel: vscode.OutputChannel | undefined;
+let channel: vscode.LogOutputChannel | undefined;
 
 /** Load the persisted toggle at activation. */
 export function initCloudRunnerDebug(ctx: DebugStateHost): void {
@@ -45,15 +45,18 @@ export function isCloudRunnerDebugEnabled(): boolean {
     || vscode.workspace.getConfiguration('vibeflow').get<boolean>('cloudRunners.debug', false);
 }
 
-function getChannel(): vscode.OutputChannel {
+function getChannel(): vscode.LogOutputChannel {
   if (!channel) {
-    channel = vscode.window.createOutputChannel('VibeFlow Cloud Runners');
+    // { log: true } → a LogOutputChannel: the Output panel shows the
+    // log-level gear (#3399) and stamps every line with time + level.
+    channel = vscode.window.createOutputChannel('VibeFlow Cloud Runners', { log: true });
   }
   return channel;
 }
 
-/** Append a timestamped trace line when Cloud Runners debug logging is enabled. */
-export function cloudRunnerTrace(line: string): void {
+/** Emit a trace line (with level) when Cloud Runners debug logging is enabled. */
+export function cloudRunnerTrace(line: string, level: 'info' | 'error' = 'info'): void {
   if (!isCloudRunnerDebugEnabled()) { return; }
-  getChannel().appendLine(`[${new Date().toISOString()}] ${line}`);
+  const ch = getChannel();
+  if (level === 'error') { ch.error(line); } else { ch.info(line); }
 }

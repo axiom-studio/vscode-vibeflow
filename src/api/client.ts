@@ -149,7 +149,7 @@ export class VibeFlowClient {
       const err = new Error(`API error: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`) as Error & { status?: number; body?: string };
       err.status = response.status;
       err.body = detail;
-      if (trace) { cloudRunnerTrace(`← ${response.status} ${method} ${path}  ERROR: ${detail}`); }
+      if (trace) { cloudRunnerTrace(`← ${response.status} ${method} ${path}  ERROR: ${detail}`, 'error'); }
       throw err;
     }
 
