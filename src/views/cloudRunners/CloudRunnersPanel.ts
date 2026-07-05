@@ -3,6 +3,7 @@ import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import {
   assertNever,
+  type CloudRunnerListRow,
   type CloudRunnersClientMessage,
   type CloudRunnersHostMessage,
 } from '../../core/webviewMessages.js';
@@ -17,11 +18,13 @@ function delay(ms: number): Promise<void> {
 
 /**
  * Cloud Runners TABLE panel (feature #603) — a single webview (one instance)
- * listing the runners visible to the signed-in user across their org/projects.
- * Opened from the flag-gated "Cloud Runners" row in the Browse nav. Mirrors the
- * TicketsPanel host pattern (load-on-mount, refresh-on-becoming-visible) but is
- * read-only and unpaginated: the global runner list is small and the mutating
- * verbs (create/start/stop/delete) live on other surfaces.
+ * listing the runners of the CURRENT workspace project (#2825 — the extension
+ * always operates in project context, so the page is project-scoped, not the
+ * cross-project global list). Opened from the flag-gated "Cloud Runners" row
+ * in the Browse nav. Mirrors the TicketsPanel host pattern (load-on-mount,
+ * refresh-on-becoming-visible). Rows are enriched with each provisioned pod's
+ * cloned repos (member-readable `GET .../repos` fan-out, failure-tolerant) so
+ * the table can show Repository/Branch alongside the owning user.
  */
 export class CloudRunnersPanel {
   private static instance: CloudRunnersPanel | undefined;
@@ -30,11 +33,15 @@ export class CloudRunnersPanel {
   private lastFetchAt = 0;
   private disposed = false;
 
-  private constructor(panel: vscode.WebviewPanel, private readonly client: VibeFlowClient) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    private readonly client: VibeFlowClient,
+    private readonly projectId: number,
+  ) {
     this.panel = panel;
   }
 
-  static open(extensionUri: vscode.Uri, client: VibeFlowClient, projectName: string): void {
+  static open(extensionUri: vscode.Uri, client: VibeFlowClient, projectId: number, projectName: string): void {
     if (CloudRunnersPanel.instance) {
       CloudRunnersPanel.instance.panel.reveal();
       return;
@@ -53,7 +60,7 @@ export class CloudRunnersPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new CloudRunnersPanel(panel, client);
+    const instance = new CloudRunnersPanel(panel, client, projectId);
     CloudRunnersPanel.instance = instance;
     instance.attach();
   }
@@ -169,8 +176,20 @@ export class CloudRunnersPanel {
   private async load(): Promise<void> {
     this.lastFetchAt = Date.now();
     try {
-      const runners = await this.client.listCloudRunners();
-      this.post({ type: 'cloudRunnersData', payload: { runners, generatedAt: new Date().toISOString() } });
+      const runners = await this.client.listProjectCloudRunners(this.projectId);
+      // Enrich each provisioned runner with its cloned repos so the table can
+      // show Repository/Branch. Failure-tolerant per row: an unprovisioned
+      // pod 409s and a stopped pod may 502 — the row still renders with dashes.
+      const rows: CloudRunnerListRow[] = await Promise.all(runners.map(async r => {
+        if (!r.studioRunnerId) { return r; }
+        try {
+          const repos = await this.client.listRunnerRepos(this.projectId, r.id);
+          return { ...r, repos };
+        } catch {
+          return r;
+        }
+      }));
+      this.post({ type: 'cloudRunnersData', payload: { runners: rows, generatedAt: new Date().toISOString() } });
     } catch (err) {
       this.post({ type: 'cloudRunnersError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
