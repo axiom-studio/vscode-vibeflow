@@ -61,6 +61,28 @@ export function unwrapList<T>(envelope: unknown, key: string): T[] {
 }
 
 /**
+ * Runner-name constraints (#2827). The server derives the pod's DNS name from
+ * the runner name (spec §7.3: podName auto-derived, valid DNS label ending
+ * `-0`), so the name must be DNS-1035-safe with headroom for the pod ordinal
+ * and the `-xxxx` de-dup salt (#3395): lowercase alphanumerics + hyphens,
+ * letter first, alphanumeric last, at most RUNNER_NAME_MAX chars. The rules
+ * message is user-facing and deliberately infrastructure-free.
+ */
+export const RUNNER_NAME_MAX = 40;
+export const RUNNER_NAME_RULES =
+  `Use 1–${RUNNER_NAME_MAX} characters: lowercase letters, numbers, and hyphens. ` +
+  'Start with a letter and end with a letter or number.';
+const RUNNER_NAME_RE = /^[a-z]([a-z0-9-]*[a-z0-9])?$/;
+
+/** Validate a runner name; returns the user-facing rules message or null. */
+export function validateRunnerName(name: string): string | null {
+  const n = name.trim();
+  if (!n) { return `Name is required. ${RUNNER_NAME_RULES}`; }
+  if (n.length > RUNNER_NAME_MAX || !RUNNER_NAME_RE.test(n)) { return RUNNER_NAME_RULES; }
+  return null;
+}
+
+/**
  * Client-side guard mirroring the server rule (`createRunnerRequest`
  * validation in handlers/cloud_runners.go): a runner may not request
  * `gitRepos` without a `gitProviderId` — there is no clone without push
@@ -70,6 +92,10 @@ export function unwrapList<T>(envelope: unknown, key: string): T[] {
 export function validateCreateRunner(body: CreateRunnerRequest): string | null {
   if (!body.name || !body.name.trim()) {
     return 'name is required';
+  }
+  const nameErr = validateRunnerName(body.name);
+  if (nameErr) {
+    return nameErr;
   }
   if (body.gitRepos && body.gitRepos.length > 0 && !body.gitProviderId) {
     return 'repositories require a git provider';
@@ -220,7 +246,11 @@ export function canLaunch(workingDir: string, project: string, personas: readonl
  * given `salt`; the command supplies the entropy so this stays unit-testable.
  */
 export function suggestRunnerName(name: string, salt: string): string {
-  return `${name.trim()}-${salt}`;
+  // Clip the base so the suggestion stays inside the name budget (#2827) and
+  // strip any hyphen run left at the cut so the result stays a valid name.
+  const maxBase = RUNNER_NAME_MAX - salt.length - 1;
+  const base = name.trim().slice(0, Math.max(1, maxBase)).replace(/-+$/, '');
+  return `${base}-${salt}`;
 }
 
 // Key names whose values are credentials and must never reach the trace log
