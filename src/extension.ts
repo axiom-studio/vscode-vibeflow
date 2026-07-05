@@ -13,6 +13,7 @@ import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
 import { CloudRunnerManagePanel } from './views/cloudRunners/CloudRunnerManagePanel.js';
+import { GitProvidersPanel } from './views/gitProviders/GitProvidersPanel.js';
 import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar, createWorkingStatusBar,
@@ -1288,6 +1289,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       CloudRunnersPanel.open(context.extensionUri, client, project.projectName);
+    }),
+    vscode.commands.registerCommand('vibeflow.openGitProviders', () => {
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage(
+          'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
+        );
+        return;
+      }
+      GitProvidersPanel.open(context.extensionUri, client);
     }),
     vscode.commands.registerCommand(
       'vibeflow.openCloudRunnerManage',

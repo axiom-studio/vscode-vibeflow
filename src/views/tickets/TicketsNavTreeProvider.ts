@@ -71,6 +71,16 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
         contextValue: 'ticketsNavItem',
         command: { command: 'vibeflow.openCloudRunners', title: 'Open Cloud Runners' },
       });
+      // Git providers share the feature_cloud_runners gate — their routes are
+      // behind the same org capability (#2822).
+      rows.push({
+        id: 'tickets-nav-git-providers',
+        label: 'Git Providers',
+        iconId: 'key',
+        collapsibleState: vscode.TreeItemCollapsibleState.None,
+        contextValue: 'ticketsNavItem',
+        command: { command: 'vibeflow.openGitProviders', title: 'Open Git Providers' },
+      });
     }
     return rows;
   }
