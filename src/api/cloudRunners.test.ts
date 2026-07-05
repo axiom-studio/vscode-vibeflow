@@ -25,6 +25,7 @@ import {
   parseTmuxServerFrame,
   suggestRunnerName,
   summarizeResponseShape,
+  redactSecretsDeep,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -237,6 +238,35 @@ describe('suggestRunnerName', () => {
     expect(suggestRunnerName('  spaced  ', 'k7')).toBe('spaced-k7');
     // The base is used verbatim (no -N walking through reserved names).
     expect(suggestRunnerName('foo-2', 'zz')).toBe('foo-2-zz');
+  });
+});
+
+describe('redactSecretsDeep (#3400)', () => {
+  it('masks credential-named fields at any depth, preserving structure', () => {
+    const input = {
+      name: 'gh', gitUrl: 'https://github.com', authType: 'pat',
+      accessToken: 'ghp_secret', sshPrivateKey: '-----BEGIN KEY-----',
+      nested: { apiKey: 'sk-live-123', Authorization: 'Bearer abc', keep: 42 },
+      list: [{ api_key: 'x', ok: true }],
+    };
+    expect(redactSecretsDeep(input)).toEqual({
+      name: 'gh', gitUrl: 'https://github.com', authType: 'pat',
+      accessToken: '***', sshPrivateKey: '***',
+      nested: { apiKey: '***', Authorization: '***', keep: 42 },
+      list: [{ api_key: '***', ok: true }],
+    });
+  });
+
+  it('never leaks a secret value into the serialized output', () => {
+    const json = JSON.stringify(redactSecretsDeep({ apiToken: 'tok-999', body: { password: 'hunter2' } }));
+    expect(json).not.toContain('tok-999');
+    expect(json).not.toContain('hunter2');
+  });
+
+  it('passes through primitives, arrays and null untouched', () => {
+    expect(redactSecretsDeep('plain')).toBe('plain');
+    expect(redactSecretsDeep(null)).toBeNull();
+    expect(redactSecretsDeep([1, 'a'])).toEqual([1, 'a']);
   });
 });
 
