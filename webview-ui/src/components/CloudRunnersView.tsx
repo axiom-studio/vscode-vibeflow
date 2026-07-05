@@ -1,11 +1,11 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import type {
+  CloudRunnerListRow,
   CloudRunnersClientMessage,
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
-import type { GlobalCloudRunnerView } from '../../../src/api/types';
-import { isRunnerRunning, isRunnerTransitioning, canManageRunner } from '../../../src/api/cloudRunners';
+import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos } from '../../../src/api/cloudRunners';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage) => void };
 
@@ -31,7 +31,7 @@ export function formatCreatedAt(iso: string): string {
 }
 
 interface State {
-  runners: GlobalCloudRunnerView[];
+  runners: CloudRunnerListRow[];
   loading: boolean;
   error: string | undefined;
   generatedAt: string | undefined;
@@ -109,7 +109,9 @@ export function CloudRunnersView() {
                 <th style={th}>Name</th>
                 <th style={th}>Status</th>
                 <th style={th}>Pod Status</th>
-                <th style={th}>Project</th>
+                <th style={th}>User</th>
+                <th style={th}>Repository</th>
+                <th style={th}>Branch</th>
                 <th style={th}>Created</th>
                 <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
@@ -125,7 +127,9 @@ export function CloudRunnersView() {
                     </span>
                   </td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{r.podStatus || '—'}</td>
-                  <td style={td}>{r.projectName || '—'}</td>
+                  <td style={{ ...td, color: 'var(--feed-muted)' }}>{`#${r.userId}`}</td>
+                  <td style={td}>{summarizeRepos(r.repos).repo}</td>
+                  <td style={{ ...td, fontFamily: 'var(--vscode-editor-font-family)' }}>{summarizeRepos(r.repos).branch}</td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{formatCreatedAt(r.createdAt)}</td>
                   <td style={actionsTd}>
                     {isRunnerTransitioning(r.status) ? (

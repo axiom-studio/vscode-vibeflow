@@ -2,17 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { CloudRunnersView, statusColor, formatCreatedAt } from './CloudRunnersView';
 import { getVsCodeApi } from '../vscodeApi';
-import type { GlobalCloudRunnerView } from '../../../src/api/types';
+import type { CloudRunnerListRow } from '../../../src/core/webviewMessages';
 
-function runner(overrides: Partial<GlobalCloudRunnerView> = {}): GlobalCloudRunnerView {
+function runner(overrides: Partial<CloudRunnerListRow> = {}): CloudRunnerListRow {
   return {
     id: 1, name: 'runner-a', status: 'active', podName: 'pod-0', podStatus: 'Running',
     lastStatusAt: '2026-07-04T10:00:00Z', studioRunnerId: 42, userId: 1, projectId: 28,
-    createdAt: '2026-07-04T09:00:00Z', projectName: 'vscode-vibeflow', ...overrides,
+    createdAt: '2026-07-04T09:00:00Z', ...overrides,
   };
 }
 
-function pushData(runners: GlobalCloudRunnerView[]) {
+function pushData(runners: CloudRunnerListRow[]) {
   act(() => {
     window.dispatchEvent(new MessageEvent('message', {
       data: { type: 'cloudRunnersData', payload: { runners, generatedAt: '2026-07-04T12:00:00Z' } },
@@ -63,13 +63,26 @@ describe('CloudRunnersView', () => {
     expect(screen.getByText('Loading runners…')).toBeTruthy();
   });
 
-  it('renders runner rows from a data message', () => {
+  it('renders runner rows with user, repository, and branch details (#2825)', () => {
     render(<CloudRunnersView />);
-    pushData([runner({ id: 1, name: 'alpha', status: 'active', podStatus: 'Running', projectName: 'proj-x' })]);
+    pushData([runner({
+      id: 1, name: 'alpha', status: 'active', podStatus: 'Running', userId: 7,
+      repos: [{ name: 'vscode-vibeflow', isGitRepo: true, branch: 'main' }],
+    })]);
     expect(screen.getByText('alpha')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
     expect(screen.getByText('Running')).toBeTruthy();
-    expect(screen.getByText('proj-x')).toBeTruthy();
+    expect(screen.getByText('#7')).toBeTruthy();
+    expect(screen.getByText('vscode-vibeflow')).toBeTruthy();
+    expect(screen.getByText('main')).toBeTruthy();
+  });
+
+  it('renders dashes for repository/branch when the pod has no repos yet', () => {
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 2, name: 'beta', repos: undefined })]);
+    expect(screen.getByText('beta')).toBeTruthy();
+    // Repo + Branch columns both fall back to an em dash.
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows an empty state when there are no runners', () => {

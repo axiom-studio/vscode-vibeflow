@@ -27,6 +27,7 @@ import {
   summarizeResponseShape,
   redactSecretsDeep,
   isSensitiveBodyPath,
+  summarizeRepos,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -461,5 +462,37 @@ describe('isSensitiveBodyPath (#3401)', () => {
     expect(isSensitiveBodyPath(`${base}/tmux`)).toBe(false);           // ws attach, not input
     expect(isSensitiveBodyPath(`${base}/manifest`)).toBe(false);       // VAULT placeholders only
     expect(isSensitiveBodyPath('/rest/v1/vibeflow/git-providers')).toBe(false);
+  });
+});
+
+/** #2825 — Repository/Branch summary for the project-scoped runners table. */
+describe('summarizeRepos', () => {
+  it('renders dashes when repos are missing or empty', () => {
+    expect(summarizeRepos(undefined)).toEqual({ repo: '—', branch: '—' });
+    expect(summarizeRepos([])).toEqual({ repo: '—', branch: '—' });
+  });
+
+  it('shows the first git repo name and branch', () => {
+    expect(summarizeRepos([{ name: 'vscode-vibeflow', isGitRepo: true, branch: 'main' }]))
+      .toEqual({ repo: 'vscode-vibeflow', branch: 'main' });
+  });
+
+  it('adds a +N suffix when multiple git repos are cloned', () => {
+    expect(summarizeRepos([
+      { name: 'api', isGitRepo: true, branch: 'main' },
+      { name: 'web', isGitRepo: true, branch: 'dev' },
+      { name: 'docs', isGitRepo: true },
+    ])).toEqual({ repo: 'api +2', branch: 'main' });
+  });
+
+  it('skips non-git entries and falls back to the last path segment for the name', () => {
+    expect(summarizeRepos([
+      { name: 'scratch', isGitRepo: false },
+      { path: '/workspace/repos/my-app', isGitRepo: true, branch: 'feature/x' },
+    ])).toEqual({ repo: 'my-app', branch: 'feature/x' });
+  });
+
+  it('dashes the branch when the repo has none reported', () => {
+    expect(summarizeRepos([{ name: 'api', isGitRepo: true }])).toEqual({ repo: 'api', branch: '—' });
   });
 });
