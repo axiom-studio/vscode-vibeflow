@@ -54,9 +54,16 @@ function getChannel(): vscode.LogOutputChannel {
   return channel;
 }
 
-/** Emit a trace line (with level) when Cloud Runners debug logging is enabled. */
-export function cloudRunnerTrace(line: string, level: 'info' | 'error' = 'info'): void {
+/**
+ * Emit a trace line (with level) when Cloud Runners debug logging is enabled.
+ * 'info' = one-line summaries; 'error' = failures; 'trace' = full payload /
+ * header / response detail (#3400) — visible when the channel's log-level
+ * gear is set to Trace.
+ */
+export function cloudRunnerTrace(line: string, level: 'info' | 'error' | 'trace' = 'info'): void {
   if (!isCloudRunnerDebugEnabled()) { return; }
   const ch = getChannel();
-  if (level === 'error') { ch.error(line); } else { ch.info(line); }
+  if (level === 'error') { ch.error(line); }
+  else if (level === 'trace') { ch.trace(line); }
+  else { ch.info(line); }
 }
