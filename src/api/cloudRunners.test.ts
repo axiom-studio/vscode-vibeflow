@@ -26,6 +26,7 @@ import {
   suggestRunnerName,
   summarizeResponseShape,
   redactSecretsDeep,
+  isSensitiveBodyPath,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -431,5 +432,34 @@ describe('tmux frame codec', () => {
   it('treats raw text and non-error JSON as output', () => {
     expect(parseTmuxServerFrame('hello$ ')).toEqual({ kind: 'output', data: 'hello$ ' });
     expect(parseTmuxServerFrame('{"type":"data","x":1}')).toEqual({ kind: 'output', data: '{"type":"data","x":1}' });
+  });
+});
+
+/**
+ * #3401 — free-text content endpoints must be excluded from full-body tracing.
+ * Key-name redaction can't mask a secret TYPED INTO the content (a shell
+ * command carrying `export API_KEY=…`, a password at a tmux prompt, an oauth
+ * device code), so request() omits these bodies entirely; this predicate is
+ * the gate.
+ */
+describe('isSensitiveBodyPath (#3401)', () => {
+  const base = '/rest/v1/vibeflow/projects/7/cloud-runners/12';
+
+  it('matches the three content-carrying endpoints', () => {
+    expect(isSensitiveBodyPath(`${base}/exec`)).toBe(true);
+    expect(isSensitiveBodyPath(`${base}/tmux/input`)).toBe(true);
+    expect(isSensitiveBodyPath(`${base}/oauth/submit`)).toBe(true);
+  });
+
+  it('ignores query strings', () => {
+    expect(isSensitiveBodyPath(`${base}/exec?timeout=5`)).toBe(true);
+  });
+
+  it('does NOT match structured-field endpoints — their secrets are redacted by key name', () => {
+    expect(isSensitiveBodyPath(base)).toBe(false);                     // create/get/delete
+    expect(isSensitiveBodyPath(`${base}/oauth/start`)).toBe(false);    // returns url+code, no typed input
+    expect(isSensitiveBodyPath(`${base}/tmux`)).toBe(false);           // ws attach, not input
+    expect(isSensitiveBodyPath(`${base}/manifest`)).toBe(false);       // VAULT placeholders only
+    expect(isSensitiveBodyPath('/rest/v1/vibeflow/git-providers')).toBe(false);
   });
 });

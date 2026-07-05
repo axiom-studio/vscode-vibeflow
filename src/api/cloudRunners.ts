@@ -232,6 +232,20 @@ export function redactSecretsDeep(value: unknown): unknown {
 }
 
 /**
+ * #3401 — endpoints whose bodies are free-text CONTENT rather than structured
+ * fields: shell commands (`/exec`), terminal keystrokes (`/tmux/input`), and
+ * oauth device codes (`/oauth/submit`). Key-name redaction cannot help here —
+ * a secret typed INTO the content (e.g. `export API_KEY=…`, a password at a
+ * prompt) is indistinguishable from the content itself. The trace must omit
+ * these bodies entirely, request AND response (exec output can echo what was
+ * typed), logging a byte-count line instead.
+ */
+export function isSensitiveBodyPath(path: string): boolean {
+  const clean = path.split('?')[0];
+  return /\/(oauth\/submit|exec|tmux\/input)$/.test(clean);
+}
+
+/**
  * Summarize a response's SHAPE for the debug trace (#3396) — top-level keys with
  * array lengths and value TYPES, never values. Reveals response-shape drift
  * (e.g. `{git_providers[3]}` vs `{providers[3]}`, or `array[3]`) without logging
