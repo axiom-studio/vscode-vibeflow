@@ -38,7 +38,7 @@ import type {
   RunnerRepo,
   RunnerHealth,
 } from './types.js';
-import { cloudRunnersEnabled, unwrapList, summarizeResponseShape, redactSecretsDeep } from './cloudRunners.js';
+import { cloudRunnersEnabled, unwrapList, summarizeResponseShape, redactSecretsDeep, isSensitiveBodyPath } from './cloudRunners.js';
 import { cloudRunnerTrace } from '../util/cloudRunnerLog.js';
 
 /**
@@ -125,16 +125,23 @@ export class VibeFlowClient {
     // full headers/payload/response at TRACE level. Credential VALUES never
     // reach the log — the bearer is masked and secret body fields are
     // redacted via redactSecretsDeep (apiKey/accessToken/sshPrivateKey/…).
+    // Free-text content endpoints (exec/tmux-input/oauth-submit) skip body
+    // logging entirely (#3401) — typed secrets can't be redacted by key name.
     const method = (options?.method ?? 'GET').toUpperCase();
     const trace = path.includes('/cloud-runners') || path.includes('/git-providers');
+    const sensitiveBody = trace && isSensitiveBodyPath(path);
     if (trace) {
       cloudRunnerTrace(`→ ${method} ${path}`);
       cloudRunnerTrace(`  headers: { Content-Type: application/json, Authorization: Bearer *** }`, 'trace');
       if (typeof options?.body === 'string') {
-        try {
-          cloudRunnerTrace(`  body: ${JSON.stringify(redactSecretsDeep(JSON.parse(options.body)))}`, 'trace');
-        } catch {
-          cloudRunnerTrace(`  body: <non-JSON, ${options.body.length} bytes>`, 'trace');
+        if (sensitiveBody) {
+          cloudRunnerTrace(`  body: <content omitted — may contain typed secrets, ${options.body.length} bytes>`, 'trace');
+        } else {
+          try {
+            cloudRunnerTrace(`  body: ${JSON.stringify(redactSecretsDeep(JSON.parse(options.body)))}`, 'trace');
+          } catch {
+            cloudRunnerTrace(`  body: <non-JSON, ${options.body.length} bytes>`, 'trace');
+          }
         }
       }
     }
@@ -168,7 +175,12 @@ export class VibeFlowClient {
     if (trace) {
       const data = await response.json();
       cloudRunnerTrace(`← ${response.status} ${method} ${path}  ${summarizeResponseShape(data)}`);
-      cloudRunnerTrace(`  response: ${JSON.stringify(redactSecretsDeep(data))}`, 'trace');
+      if (sensitiveBody) {
+        // Exec output / tmux echoes can contain what was typed — shape only.
+        cloudRunnerTrace(`  response: <content omitted — may echo typed secrets>`, 'trace');
+      } else {
+        cloudRunnerTrace(`  response: ${JSON.stringify(redactSecretsDeep(data))}`, 'trace');
+      }
       return data as T;
     }
     return response.json() as Promise<T>;
