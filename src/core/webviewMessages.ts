@@ -493,6 +493,20 @@ export type CloudRunnersClientMessage =
   | { type: 'cloudRunnerManage'; payload: { projectId: number; id: number; name: string } };
 
 // ============================================================
+// Git Providers page (#2822) — Browse-nav list of the user's git providers.
+// GitProviderView is secret-free by API design; delete is host-confirmed.
+// ============================================================
+
+export type GitProvidersPageHostMessage =
+  | { type: 'gitProvidersPageData'; payload: { providers: GitProviderView[]; generatedAt: string } }
+  | { type: 'gitProvidersPageError'; payload: { message: string } };
+
+export type GitProvidersPageClientMessage =
+  | { type: 'gitProvidersPageLoad' }
+  | { type: 'gitProvidersPageRefresh' }
+  | { type: 'gitProvidersPageDelete'; payload: { id: number; name: string } };
+
+// ============================================================
 // Cloud Runner Manage wizard (#2817)
 // ============================================================
 
