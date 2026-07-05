@@ -47,6 +47,8 @@ Read this once; the rest of the guide assumes it.
 | [Feature Tour](feature-tour.md) | Once you're set up. A guided lap of every view, panel, and command. |
 | [Workflows and Flow Diagrams](workflows-and-flows.md) | When you want to understand how the pieces fit together. Sequence and state diagrams in Mermaid. |
 | [Chat-First Mode](chat-first-mode.md) | When you've heard "chat-first" and want the deep dive. What it is, when to use it, and how it relates to Cursor's own chat. |
+| [Cloud Runners](cloud-runners.md) | Run agents on cloud-hosted machines instead of your laptop. Create, start/stop, manage, and open a terminal to a runner. |
+| [Git Configuration](git-configuration.md) | The git credentials Cloud Runners use to clone and push. Adding PAT/SSH providers, managing them, diagnostics. |
 | [Settings Reference](settings-reference.md) | Every key, type, default, and gotcha. |
 | [Troubleshooting](troubleshooting.md) | When something broke. Symptom, cause, and fix for the most common problems. |
 | [Glossary](glossary.md) | Every VibeFlow-specific word defined for non-technical readers. |
