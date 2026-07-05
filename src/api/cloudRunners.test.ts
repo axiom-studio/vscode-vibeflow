@@ -28,6 +28,9 @@ import {
   redactSecretsDeep,
   isSensitiveBodyPath,
   summarizeRepos,
+  validateRunnerName,
+  RUNNER_NAME_RULES,
+  RUNNER_NAME_MAX,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -494,5 +497,52 @@ describe('summarizeRepos', () => {
 
   it('dashes the branch when the repo has none reported', () => {
     expect(summarizeRepos([{ name: 'api', isGitRepo: true }])).toEqual({ repo: 'api', branch: '—' });
+  });
+});
+
+/**
+ * #2827 — pod-safe runner names. The pod's DNS name derives from the runner
+ * name, so names must be lowercase-alphanumeric-with-hyphens, letter-first,
+ * alphanumeric-last, within RUNNER_NAME_MAX. The message never mentions k8s.
+ */
+describe('validateRunnerName (#2827)', () => {
+  it('accepts well-formed names', () => {
+    expect(validateRunnerName('vscode-dev')).toBeNull();
+    expect(validateRunnerName('a')).toBeNull();
+    expect(validateRunnerName('runner-2')).toBeNull();
+    expect(validateRunnerName('  padded  ')).toBeNull(); // trimmed before checking
+  });
+
+  it('rejects uppercase, bad edges, and separators other than hyphen', () => {
+    expect(validateRunnerName('MyRunner')).toBe(RUNNER_NAME_RULES);
+    expect(validateRunnerName('1runner')).toBe(RUNNER_NAME_RULES);   // must start with a letter
+    expect(validateRunnerName('-runner')).toBe(RUNNER_NAME_RULES);
+    expect(validateRunnerName('runner-')).toBe(RUNNER_NAME_RULES);   // must end alphanumeric
+    expect(validateRunnerName('my_runner')).toBe(RUNNER_NAME_RULES);
+    expect(validateRunnerName('my runner')).toBe(RUNNER_NAME_RULES);
+  });
+
+  it('enforces the length budget and requires a name', () => {
+    expect(validateRunnerName('a'.repeat(RUNNER_NAME_MAX))).toBeNull();
+    expect(validateRunnerName('a'.repeat(RUNNER_NAME_MAX + 1))).toBe(RUNNER_NAME_RULES);
+    expect(validateRunnerName('')).toContain('Name is required');
+  });
+
+  it('keeps the user-facing message free of infrastructure jargon', () => {
+    expect(RUNNER_NAME_RULES.toLowerCase()).not.toMatch(/k8s|kubernetes|dns|pod|statefulset|deployment/);
+  });
+
+  it('is enforced by validateCreateRunner too', () => {
+    const body: CreateRunnerRequest = { name: 'Bad_Name', agentType: 'claude', authMode: 'api_key' };
+    expect(validateCreateRunner(body)).toBe(RUNNER_NAME_RULES);
+  });
+
+  it('suggestRunnerName output always satisfies the rules, even for max-length bases', () => {
+    const long = 'a'.repeat(RUNNER_NAME_MAX);
+    const suggested = suggestRunnerName(long, 'a3f9');
+    expect(suggested.length).toBeLessThanOrEqual(RUNNER_NAME_MAX);
+    expect(validateRunnerName(suggested)).toBeNull();
+    // A hyphen landing at the clip point is stripped, not doubled.
+    expect(validateRunnerName(suggestRunnerName('abc-def-ghi-jkl-mno-pqr-stu-vwx-yz1-234', 'k7z2'))).toBeNull();
   });
 });
