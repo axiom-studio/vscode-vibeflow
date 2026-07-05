@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
+import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -46,9 +46,12 @@ export async function createCloudRunner(
   projectId: number,
 ): Promise<void> {
   const name = await vscode.window.showInputBox({
-    prompt: 'Cloud runner name',
+    prompt: `Cloud runner name — ${RUNNER_NAME_RULES}`,
     placeHolder: 'vscode-dev',
     ignoreFocusOut: true,
+    // Live inline validation (#2827): the pod's network name derives from
+    // this, so enforce the naming rules before anything is sent.
+    validateInput: value => validateRunnerName(value),
   });
   if (!name?.trim()) { return; }
 
