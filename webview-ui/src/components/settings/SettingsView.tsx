@@ -45,6 +45,7 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'worktree.autoCreate': 'worktreeAutoCreate',
   'worktree.cleanupOnKill': 'worktreeCleanupOnKill',
   'chat.diffView': 'chatDiffView',
+  'cloudRunners.debug': 'cloudRunnersDebug',
 };
 
 type TabIcon = ComponentType<{ size?: number }>;
@@ -213,7 +214,7 @@ export function SettingsView() {
             <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
           {activeTab === 'git' && (
-            <GitConfigTab onCommand={sendCommand} />
+            <GitConfigTab onCommand={sendCommand} cloudRunnersDebug={data.cloudRunnersDebug ?? false} onUpdate={updateSetting} />
           )}
           {activeTab === 'session' && (
             <SessionDefaultsTab data={data} onUpdate={updateSetting} />

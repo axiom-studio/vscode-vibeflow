@@ -42,6 +42,10 @@ export interface SettingsData {
   // Chat rendering preferences (session-defaults concern)
   chatDiffView: 'unified' | 'split';
 
+  // Diagnostics — Cloud Runners API trace toggle (#3397). Optional so older
+  // host snapshots without the field don't break the tabs.
+  cloudRunnersDebug?: boolean;
+
   // Models — per-persona sticky model preferences. `stickyModels`
   // maps persona_key -> model_id; `knownModels` is the full picker
   // catalog grouped by provider key (claude/codex/gemini/cursor).

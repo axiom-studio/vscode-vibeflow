@@ -163,7 +163,7 @@ export class SettingsPanel {
             'session.terminalMode', 'session.headlessBacking',
             'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
             'cli.enabled', 'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
-            'chat.diffView',
+            'chat.diffView', 'cloudRunners.debug',
           ];
 
           if (settingsKeys.includes(key)) {
@@ -554,6 +554,10 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
     sessionHeadlessBacking: config.get<'auto' | 'tmux' | 'vscode'>('session.headlessBacking', 'auto'),
     chatDiffView: config.get<'unified' | 'split'>('chat.diffView', 'unified'),
+    // Diagnostics (#3397): surfaced in the Settings webview because the
+    // package.json declaration only registers on reinstall — the panel toggle
+    // works on a plain rebuild+reload.
+    cloudRunnersDebug: config.get<boolean>('cloudRunners.debug', false),
     // Models tab data — empty objects when stickyModels isn't wired
     // so the tab can still render its empty-state UI.
     stickyModels: deps.stickyModels?.getAll() ?? {},
