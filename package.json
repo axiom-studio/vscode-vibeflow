@@ -222,6 +222,11 @@
         "icon": "$(cloud)"
       },
       {
+        "command": "vibeflow.openGitProviders",
+        "title": "VibeFlow: Open Git Providers",
+        "icon": "$(key)"
+      },
+      {
         "command": "vibeflow.openCompliance",
         "title": "VibeFlow: Open Compliance",
         "icon": "$(shield)"
