@@ -9,7 +9,7 @@
  * Wire contract: the "Cloud Runners External Integration — API Specification"
  * (axiomcloud doc #433) + Workflow (#434).
  */
-import type { FeatureFlags, CreateRunnerRequest, CloudRunnerRepo } from './types.js';
+import type { FeatureFlags, CreateRunnerRequest, CloudRunnerRepo, RunnerRepo } from './types.js';
 
 /**
  * Org feature-flag key that gates every Cloud Runners + git-provider route.
@@ -88,6 +88,21 @@ export function parseRepoUrls(input: string): CloudRunnerRepo[] {
     .map(s => s.trim())
     .filter(Boolean)
     .map(url => ({ url }));
+}
+
+/**
+ * Summarize a runner's cloned repos for the list table (#2825): first git
+ * repo's name (falling back to the last path segment) + its branch, with a
+ * `+N` suffix when more repos are cloned. Missing/empty/non-git-only lists
+ * render as em dashes so unprovisioned pods still get a tidy row.
+ */
+export function summarizeRepos(repos: RunnerRepo[] | undefined): { repo: string; branch: string } {
+  const git = (repos ?? []).filter(r => r.isGitRepo !== false);
+  if (git.length === 0) { return { repo: '—', branch: '—' }; }
+  const first = git[0];
+  const name = first.name?.trim() || first.path?.split('/').filter(Boolean).pop() || '—';
+  const extra = git.length > 1 ? ` +${git.length - 1}` : '';
+  return { repo: `${name}${extra}`, branch: first.branch?.trim() || '—' };
 }
 
 /** Terminal/transient classification of a runner status while polling create. */

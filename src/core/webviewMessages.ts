@@ -12,7 +12,7 @@
  * a message from another panel's protocol.
  */
 
-import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView, GlobalCloudRunnerView } from '../api/types.js';
+import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView, CloudRunnerView, RunnerRepo } from '../api/types.js';
 
 /**
  * Progress payload pushed to the Activity Feed when an agent publishes a
@@ -475,8 +475,17 @@ export type TicketsClientMessage =
 // Cloud Runners Panel (feature #603)
 // ============================================================
 
+/**
+ * A row on the project-scoped Cloud Runners page (#2825): the runner record
+ * plus the repos cloned on its pod (host fan-out to `GET .../repos`; absent
+ * for unprovisioned or unreachable pods).
+ */
+export interface CloudRunnerListRow extends CloudRunnerView {
+  repos?: RunnerRepo[];
+}
+
 export type CloudRunnersHostMessage =
-  | { type: 'cloudRunnersData'; payload: { runners: GlobalCloudRunnerView[]; generatedAt: string } }
+  | { type: 'cloudRunnersData'; payload: { runners: CloudRunnerListRow[]; generatedAt: string } }
   | { type: 'cloudRunnersError'; payload: { message: string } };
 
 export type CloudRunnersClientMessage =
