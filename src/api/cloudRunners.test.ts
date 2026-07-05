@@ -146,6 +146,12 @@ describe('validateCreateRunner', () => {
     expect(validateCreateRunner({ ...base, gitProviderId: 12 })).toBeNull();
   });
 
+  it('accepts every supported agent type — claude, codex, cursor (#2823)', () => {
+    for (const agentType of ['claude', 'codex', 'cursor'] as const) {
+      expect(validateCreateRunner({ ...base, agentType })).toBeNull();
+    }
+  });
+
   it('treats an empty gitRepos array as no repos', () => {
     expect(validateCreateRunner({ ...base, gitRepos: [] })).toBeNull();
   });

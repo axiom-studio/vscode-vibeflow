@@ -762,7 +762,7 @@ export interface CloudRunnerRepo {
  */
 export interface CreateRunnerRequest {
   name: string;
-  agentType: 'claude' | 'codex';
+  agentType: 'claude' | 'codex' | 'cursor';
   authMode: 'api_key' | 'oauth';
   cloudAgentType?: string;
   loginMethod?: string;

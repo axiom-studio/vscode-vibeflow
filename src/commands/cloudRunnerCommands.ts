@@ -7,6 +7,7 @@ import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 const AGENT_TYPES = [
   { label: '$(sparkle) Claude', value: 'claude' as const },
   { label: '$(sparkle) Codex', value: 'codex' as const },
+  { label: '$(sparkle) Cursor', value: 'cursor' as const },
 ];
 
 const AUTH_MODES = [
