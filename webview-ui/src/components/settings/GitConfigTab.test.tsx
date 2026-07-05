@@ -139,6 +139,24 @@ describe('GitConfigTab', () => {
     expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('GH');
   });
 
+  it('renders the Diagnostics toggle and persists cloudRunners.debug via onUpdate (#3397)', () => {
+    const updates: Array<[string, unknown]> = [];
+    render(<GitConfigTab onCommand={vi.fn()} cloudRunnersDebug={false} onUpdate={(k, v) => updates.push([k, v])} />);
+    const toggle = screen.getByLabelText('Cloud Runners debug logging') as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(updates).toContainEqual(['cloudRunners.debug', true]);
+  });
+
+  it('reflects an enabled debug toggle and hides the section without onUpdate (#3397)', () => {
+    const { unmount } = render(<GitConfigTab onCommand={vi.fn()} cloudRunnersDebug={true} onUpdate={vi.fn()} />);
+    expect((screen.getByLabelText('Cloud Runners debug logging') as HTMLInputElement).checked).toBe(true);
+    unmount();
+    // Without the updateSetting plumbing the section is omitted entirely.
+    render(<GitConfigTab onCommand={vi.fn()} />);
+    expect(screen.queryByLabelText('Cloud Runners debug logging')).toBeNull();
+  });
+
   it('confirms success inline and clears the form on a successful add (#3393)', () => {
     render(<GitConfigTab onCommand={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'GH' } });

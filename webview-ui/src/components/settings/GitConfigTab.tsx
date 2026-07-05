@@ -18,6 +18,10 @@ type AuthType = 'pat' | 'ssh';
 
 interface Props {
   onCommand: (cmd: SettingsCommand) => void;
+  /** Diagnostics toggle state (#3397) — `vibeflow.cloudRunners.debug`. */
+  cloudRunnersDebug?: boolean;
+  /** Persist a settings change (routes through updateSetting). */
+  onUpdate?: (key: string, value: unknown) => void;
 }
 
 const DEFAULT_GIT_HOST = 'https://github.com';
@@ -45,7 +49,7 @@ function isValidHost(value: string): boolean {
   }
 }
 
-export function GitConfigTab({ onCommand }: Props) {
+export function GitConfigTab({ onCommand, cloudRunnersDebug = false, onUpdate }: Props) {
   const [providers, setProviders] = useState<GitProviderView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -292,6 +296,29 @@ export function GitConfigTab({ onCommand }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Diagnostics (#3397) — lives here (not only package.json contributes)
+          so it appears after a plain rebuild+reload, no reinstall needed. */}
+      {onUpdate && (
+        <div style={{ padding: '16px 18px', borderRadius: 8, border: '1px solid var(--feed-border)', background: 'var(--vscode-editor-background)' }}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600 }}>Diagnostics</h3>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              aria-label="Cloud Runners debug logging"
+              checked={cloudRunnersDebug}
+              onChange={e => onUpdate('cloudRunners.debug', e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              Log Cloud Runners API calls to the <strong>VibeFlow Cloud Runners</strong> output channel
+              <div style={{ fontSize: 10, color: 'var(--feed-muted)', marginTop: 2 }}>
+                Traces method, path, status, and response shape for cloud-runner and git-provider requests. Never logs request bodies or secrets. Open via View → Output.
+              </div>
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   );
 }
