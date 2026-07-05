@@ -38,7 +38,7 @@ import type {
   RunnerRepo,
   RunnerHealth,
 } from './types.js';
-import { cloudRunnersEnabled, unwrapList, summarizeResponseShape } from './cloudRunners.js';
+import { cloudRunnersEnabled, unwrapList, summarizeResponseShape, redactSecretsDeep } from './cloudRunners.js';
 import { cloudRunnerTrace } from '../util/cloudRunnerLog.js';
 
 /**
@@ -121,11 +121,23 @@ export class VibeFlowClient {
       throw new Error(`Refusing to send bearer over insecure transport — ${check.message ?? 'invalid serverUrl'}`);
     }
 
-    // Opt-in Cloud Runners trace (#3396): method/path/status/response-shape
-    // only — NEVER the request body (it may carry apiKey/accessToken/sshKey).
+    // Opt-in Cloud Runners trace (#3396/#3400): one-line summaries at info,
+    // full headers/payload/response at TRACE level. Credential VALUES never
+    // reach the log — the bearer is masked and secret body fields are
+    // redacted via redactSecretsDeep (apiKey/accessToken/sshPrivateKey/…).
     const method = (options?.method ?? 'GET').toUpperCase();
     const trace = path.includes('/cloud-runners') || path.includes('/git-providers');
-    if (trace) { cloudRunnerTrace(`→ ${method} ${path}`); }
+    if (trace) {
+      cloudRunnerTrace(`→ ${method} ${path}`);
+      cloudRunnerTrace(`  headers: { Content-Type: application/json, Authorization: Bearer *** }`, 'trace');
+      if (typeof options?.body === 'string') {
+        try {
+          cloudRunnerTrace(`  body: ${JSON.stringify(redactSecretsDeep(JSON.parse(options.body)))}`, 'trace');
+        } catch {
+          cloudRunnerTrace(`  body: <non-JSON, ${options.body.length} bytes>`, 'trace');
+        }
+      }
+    }
 
     const response = await fetch(`${liveUrl}${path}`, {
       ...options,
@@ -156,6 +168,7 @@ export class VibeFlowClient {
     if (trace) {
       const data = await response.json();
       cloudRunnerTrace(`← ${response.status} ${method} ${path}  ${summarizeResponseShape(data)}`);
+      cloudRunnerTrace(`  response: ${JSON.stringify(redactSecretsDeep(data))}`, 'trace');
       return data as T;
     }
     return response.json() as Promise<T>;
