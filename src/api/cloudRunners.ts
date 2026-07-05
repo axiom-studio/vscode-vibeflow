@@ -208,6 +208,29 @@ export function suggestRunnerName(name: string, salt: string): string {
   return `${name.trim()}-${salt}`;
 }
 
+// Key names whose values are credentials and must never reach the trace log
+// (#3400): provider keys, PATs, SSH private keys, bearer/authorization values.
+const SECRET_KEY_RE = /token|secret|password|api[_-]?key|authorization|ssh[_-]?private[_-]?key/i;
+
+/**
+ * Deep-copy a JSON value with the VALUES of credential-named fields replaced
+ * by '***' (#3400 trace logging). Field names, structure, and non-secret
+ * values are preserved verbatim so full payloads can be traced safely.
+ */
+export function redactSecretsDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSecretsDeep);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = SECRET_KEY_RE.test(k) ? '***' : redactSecretsDeep(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 /**
  * Summarize a response's SHAPE for the debug trace (#3396) — top-level keys with
  * array lengths and value TYPES, never values. Reveals response-shape drift
