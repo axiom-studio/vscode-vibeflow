@@ -27,9 +27,26 @@ export function isFeatureEnabled(flags: FeatureFlags | undefined | null, name: s
   return flags?.flags?.[name] === true;
 }
 
-/** Convenience: is the Cloud Runners capability enabled for the caller's org? */
-export function cloudRunnersEnabled(flags: FeatureFlags | undefined | null): boolean {
-  return isFeatureEnabled(flags, FEATURE_CLOUD_RUNNERS);
+/**
+ * Build-time master switch for the entire Cloud Runners surface (#2833).
+ * While `false`, the feature is hidden regardless of the org's runtime flag:
+ * no Git Configuration tab in VibeFlow Settings, no Cloud Runners / Git
+ * Providers rows in the Browse nav, no "Cloud Runner" option on the Work
+ * Items "+" picker, and the open-page commands decline. Flip to `true` to
+ * re-enable everything — all code paths stay in place.
+ */
+export const CLOUD_RUNNERS_BUILD_ENABLED = false;
+
+/**
+ * Convenience: is the Cloud Runners capability available? Requires BOTH the
+ * build-time switch and the org's runtime feature flag. `buildFlag` is
+ * parameterized only so tests can exercise the runtime-flag semantics.
+ */
+export function cloudRunnersEnabled(
+  flags: FeatureFlags | undefined | null,
+  buildFlag: boolean = CLOUD_RUNNERS_BUILD_ENABLED,
+): boolean {
+  return buildFlag && isFeatureEnabled(flags, FEATURE_CLOUD_RUNNERS);
 }
 
 /**
