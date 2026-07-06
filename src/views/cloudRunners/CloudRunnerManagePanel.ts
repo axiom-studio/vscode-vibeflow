@@ -165,6 +165,8 @@ export class CloudRunnerManagePanel {
       authenticated: this.state.authenticated,
       configured: this.state.configured,
       authMode: this.state.authMode,
+      // authenticating → auth workflow even if the relay dropped authMode (#437).
+      status: status?.status ?? runner?.status,
     });
     this.state.busy = false;
     this.state.error = undefined;

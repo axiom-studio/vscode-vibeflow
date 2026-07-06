@@ -13,6 +13,7 @@ const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage)
 const STATUS_COLOR: Record<string, string> = {
   pending: 'var(--feed-muted, #8b949e)',
   starting: '#d29922',
+  authenticating: '#d29922', // agent mid-login (#437) — pod up, awaiting sign-in
   active: 'var(--feed-success, #3fb950)',
   stopping: '#db6d28',
   stopped: 'var(--feed-muted, #8b949e)',
