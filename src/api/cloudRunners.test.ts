@@ -3,6 +3,7 @@ import {
   FEATURE_CLOUD_RUNNERS,
   isFeatureEnabled,
   cloudRunnersEnabled,
+  CLOUD_RUNNERS_BUILD_ENABLED,
   unwrapList,
   validateCreateRunner,
   parseRepoUrls,
@@ -71,11 +72,19 @@ describe('isFeatureEnabled', () => {
 });
 
 describe('cloudRunnersEnabled', () => {
-  it('reads the feature_cloud_runners key specifically', () => {
-    expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: true } })).toBe(true);
+  it('reads the feature_cloud_runners key specifically (build switch forced on)', () => {
+    expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: true } }, true)).toBe(true);
+    expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: false } }, true)).toBe(false);
+    expect(cloudRunnersEnabled({ flags: {} }, true)).toBe(false);
+    expect(cloudRunnersEnabled(undefined, true)).toBe(false);
+  });
+
+  it('is fully disabled while the build switch is off, regardless of the org flag (#2833)', () => {
+    expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: true } }, false)).toBe(false);
+    // The default tracks the compiled-in constant — this stays correct when
+    // the switch is later flipped to true.
+    expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: true } })).toBe(CLOUD_RUNNERS_BUILD_ENABLED);
     expect(cloudRunnersEnabled({ flags: { feature_cloud_runners: false } })).toBe(false);
-    expect(cloudRunnersEnabled({ flags: {} })).toBe(false);
-    expect(cloudRunnersEnabled(undefined)).toBe(false);
   });
 });
 

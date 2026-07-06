@@ -9,6 +9,7 @@ import { NotificationsTab } from './NotificationsTab';
 import { AboutTab } from './AboutTab';
 import { CliTab } from './CliTab';
 import { GitConfigTab } from './GitConfigTab';
+import { CLOUD_RUNNERS_BUILD_ENABLED } from '../../../../src/api/cloudRunners';
 import { getVsCodeApi } from '../../vscodeApi';
 import {
   PlugIcon, CpuIcon, SlidersIcon, BrainIcon, GitBranchIcon,
@@ -53,7 +54,8 @@ type TabIcon = ComponentType<{ size?: number }>;
 const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   { id: 'connection',    label: 'Connection',       Icon: PlugIcon },
   { id: 'providers',     label: 'Providers',        Icon: CpuIcon },
-  { id: 'git',           label: 'Git Configuration', Icon: LockIcon },
+  // Git Configuration exists for Cloud Runners — hidden with the build switch (#2833).
+  ...(CLOUD_RUNNERS_BUILD_ENABLED ? [{ id: 'git', label: 'Git Configuration', Icon: LockIcon }] : []),
   { id: 'session',       label: 'Session Defaults', Icon: SlidersIcon },
   { id: 'models',        label: 'Sticky Models',    Icon: BrainIcon },
   { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
