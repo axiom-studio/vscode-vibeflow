@@ -14,6 +14,7 @@ import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.j
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
 import { CloudRunnerManagePanel } from './views/cloudRunners/CloudRunnerManagePanel.js';
 import { GitProvidersPanel } from './views/gitProviders/GitProvidersPanel.js';
+import { CLOUD_RUNNERS_BUILD_ENABLED } from './api/cloudRunners.js';
 import type { TicketsMode } from './core/webviewMessages.js';
 import {
   createSessionStatusBar, createWorkSummaryStatusBar, createProjectStatusBar, createWorkingStatusBar,
@@ -1275,6 +1276,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       TicketsPanel.open(context.extensionUri, client, project.projectId, project.projectName, mode ?? 'todos', pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.openCloudRunners', () => {
+      if (!CLOUD_RUNNERS_BUILD_ENABLED) {
+        vscode.window.showInformationMessage('VibeFlow: Cloud Runners are not available in this build.');
+        return;
+      }
       const project = detector.getCachedProject();
       if (!project) {
         vscode.window.showErrorMessage(
@@ -1291,6 +1296,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       CloudRunnersPanel.open(context.extensionUri, client, project.projectId, project.projectName);
     }),
     vscode.commands.registerCommand('vibeflow.openGitProviders', () => {
+      if (!CLOUD_RUNNERS_BUILD_ENABLED) {
+        vscode.window.showInformationMessage('VibeFlow: Cloud Runners are not available in this build.');
+        return;
+      }
       if (!client.isAuthenticated()) {
         vscode.window.showErrorMessage(
           'VibeFlow: Not logged in. Run "VibeFlow: Setup" first.',
