@@ -27,6 +27,7 @@ import {
   summarizeResponseShape,
   redactSecretsDeep,
   isSensitiveBodyPath,
+  unwrapStatusEnvelope,
   summarizeRepos,
   validateRunnerName,
   RUNNER_NAME_RULES,
@@ -208,9 +209,11 @@ describe('createRunnerErrorMessage', () => {
 });
 
 describe('isRunnerRunning / isRunnerTransitioning', () => {
-  it('treats active and running as running', () => {
+  it('treats active, running, and authenticating as running', () => {
     expect(isRunnerRunning('active')).toBe(true);
     expect(isRunnerRunning('running')).toBe(true);
+    // Mid-login pod is up (#437 §1) — the row offers Stop, not Start.
+    expect(isRunnerRunning('authenticating')).toBe(true);
     for (const s of ['stopped', 'starting', 'stopping', 'pending', 'failed', '']) {
       expect(isRunnerRunning(s)).toBe(false);
     }
@@ -354,6 +357,24 @@ describe('routeInitialStep', () => {
   it('defaults to configure for non-oauth', () => {
     expect(routeInitialStep({ authMode: 'api_key' })).toBe('configure');
     expect(routeInitialStep({})).toBe('configure');
+  });
+
+  it('routes an authenticating runner to the auth workflow even without authMode (#437)', () => {
+    // The provisioned-runner detail relays the Studio view, which may drop
+    // authMode — the LIVE status must be enough to reach the auth step.
+    expect(routeInitialStep({ status: 'authenticating' })).toBe('authenticate');
+    expect(routeInitialStep({ status: 'Authenticate' })).toBe('authenticate');
+    expect(routeInitialStep({ status: 'authenticating', authMode: 'oauth' })).toBe('authenticate');
+  });
+
+  it('authenticated wins over a stale authenticating status (#437 §2 normalization)', () => {
+    expect(routeInitialStep({ authenticated: true, status: 'authenticating' })).toBe('configure');
+    expect(routeInitialStep({ configured: true, status: 'authenticating' })).toBe('configure');
+  });
+
+  it('does not route non-auth statuses to authenticate without oauth', () => {
+    expect(routeInitialStep({ status: 'running' })).toBe('configure');
+    expect(routeInitialStep({ status: 'stopped', authMode: 'api_key' })).toBe('configure');
   });
 });
 
@@ -544,5 +565,30 @@ describe('validateRunnerName (#2827)', () => {
     expect(validateRunnerName(suggested)).toBeNull();
     // A hyphen landing at the clip point is stripped, not doubled.
     expect(validateRunnerName(suggestRunnerName('abc-def-ghi-jkl-mno-pqr-stu-vwx-yz1-234', 'k7z2'))).toBeNull();
+  });
+});
+
+/**
+ * #2832 — doc #437 §2: /status relays the Studio envelope
+ * {code, status, result, errors}; the live fields live in `result`.
+ */
+describe('unwrapStatusEnvelope (#2832)', () => {
+  it('unwraps the envelope and reads result', () => {
+    const body = {
+      code: 200, status: 'ok', errors: [],
+      result: { status: 'authenticating', authenticated: false, podStatus: 'Running' },
+    };
+    expect(unwrapStatusEnvelope(body)).toEqual({ status: 'authenticating', authenticated: false, podStatus: 'Running' });
+  });
+
+  it('passes a bare (pre-unwrapped) status body through unchanged', () => {
+    const bare = { status: 'running', authenticated: true, configured: true };
+    expect(unwrapStatusEnvelope(bare)).toEqual(bare);
+  });
+
+  it('yields an empty object for an envelope with a missing or invalid result', () => {
+    expect(unwrapStatusEnvelope({ code: 200, status: 'ok', result: null })).toEqual({});
+    expect(unwrapStatusEnvelope({ code: 502, status: 'error', result: 'boom' })).toEqual({});
+    expect(unwrapStatusEnvelope(null)).toEqual({});
   });
 });

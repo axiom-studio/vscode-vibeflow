@@ -38,7 +38,7 @@ import type {
   RunnerRepo,
   RunnerHealth,
 } from './types.js';
-import { cloudRunnersEnabled, unwrapList, summarizeResponseShape, redactSecretsDeep, isSensitiveBodyPath } from './cloudRunners.js';
+import { cloudRunnersEnabled, unwrapList, unwrapStatusEnvelope, summarizeResponseShape, redactSecretsDeep, isSensitiveBodyPath } from './cloudRunners.js';
 import { cloudRunnerTrace } from '../util/cloudRunnerLog.js';
 
 /**
@@ -1206,9 +1206,12 @@ export class VibeFlowClient {
    * treat that as transient and keep polling.
    */
   async getRunnerStatus(projectId: number, id: number): Promise<RunnerStatus> {
-    return this.request<RunnerStatus>(
+    const data = await this.request<unknown>(
       `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/status`,
     );
+    // Studio relays a {code, status, result, errors} envelope — the live
+    // fields (authenticated/configured/podStatus) live in `result` (#437 §2).
+    return unwrapStatusEnvelope<RunnerStatus>(data);
   }
 
   // --- Manage-workflow passthrough (feature #603, spec #435/#436 §4) ---

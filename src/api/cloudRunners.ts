@@ -165,11 +165,28 @@ export function createRunnerErrorMessage(status: number | undefined, serverText:
 }
 
 /**
+ * Unwrap the Studio status envelope (doc #437 §2): `GET .../{id}/status`
+ * relays `{code, status, result, errors}` where the live runner status lives
+ * in `result`. Tolerant to both shapes — a body without a `result` object is
+ * returned as-is, so nothing breaks if the server pre-unwraps.
+ */
+export function unwrapStatusEnvelope<T extends object>(data: unknown): T {
+  if (data && typeof data === 'object' && 'result' in data) {
+    const result = (data as { result?: unknown }).result;
+    if (result && typeof result === 'object') { return result as T; }
+    return {} as T; // envelope with a missing/invalid result — nothing usable
+  }
+  return (data ?? {}) as T;
+}
+
+/**
  * A runner is "running" (the page shows a Stop action) when its lifecycle
- * status is `active` or `running` (#603 management, spec #436 §2).
+ * status is `active` or `running` (#603 management, spec #436 §2), or when
+ * the agent is mid-login (`authenticating`, doc #437 §1) — the pod is up,
+ * so Stop applies and Start does not.
  */
 export function isRunnerRunning(status: string): boolean {
-  return status === 'active' || status === 'running';
+  return status === 'active' || status === 'running' || status === 'authenticating';
 }
 
 /**
@@ -319,12 +336,20 @@ export const VIBEFLOW_PERSONAS = [
 export type ManageStep = 'authenticate' | 'configure' | 'launch';
 
 /**
- * Route the wizard's initial step on open (#436 §4.0): an already
- * authenticated/configured runner lands on Configure; an unauthenticated
- * oauth runner starts at Authenticate; everything else at Configure.
+ * Route the wizard's initial step on open (#436 §4.0, refined by #437):
+ * `authenticated`/`configured` always win and land on Configure — the doc's
+ * §2 normalization rule (auth done regardless of the raw status string).
+ * Otherwise a runner whose LIVE status says it is mid-login
+ * (`authenticating`/`authenticate`) starts at Authenticate even when the
+ * relayed detail dropped `authMode` (#433 §7.4 relays the Studio view, which
+ * may omit it) — this is the state the row's Manage button most needs to
+ * serve. An unauthenticated oauth runner also starts at Authenticate;
+ * everything else at Configure.
  */
-export function routeInitialStep(opts: { authenticated?: boolean; configured?: boolean; authMode?: string }): ManageStep {
+export function routeInitialStep(opts: { authenticated?: boolean; configured?: boolean; authMode?: string; status?: string }): ManageStep {
   if (opts.authenticated || opts.configured) { return 'configure'; }
+  const live = (opts.status ?? '').toLowerCase();
+  if (live === 'authenticating' || live === 'authenticate') { return 'authenticate'; }
   if (opts.authMode === 'oauth') { return 'authenticate'; }
   return 'configure';
 }
