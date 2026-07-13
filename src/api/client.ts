@@ -172,18 +172,21 @@ export class VibeFlowClient {
       throw err;
     }
 
+    // A 204 or any empty success body (e.g. git-provider DELETE) is valid —
+    // response.json() rejects on it, which made every successful provider
+    // delete surface a failure toast (#3632). Parse only when non-empty.
+    const raw = await response.text();
+    const data: unknown = raw ? JSON.parse(raw) : undefined;
     if (trace) {
-      const data = await response.json();
-      cloudRunnerTrace(`← ${response.status} ${method} ${path}  ${summarizeResponseShape(data)}`);
+      cloudRunnerTrace(`← ${response.status} ${method} ${path}  ${raw ? summarizeResponseShape(data) : '<empty body>'}`);
       if (sensitiveBody) {
         // Exec output / tmux echoes can contain what was typed — shape only.
         cloudRunnerTrace(`  response: <content omitted — may echo typed secrets>`, 'trace');
-      } else {
+      } else if (raw) {
         cloudRunnerTrace(`  response: ${JSON.stringify(redactSecretsDeep(data))}`, 'trace');
       }
-      return data as T;
     }
-    return response.json() as Promise<T>;
+    return data as T;
   }
 
   // --- Projects ---
