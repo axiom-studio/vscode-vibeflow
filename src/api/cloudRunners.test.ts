@@ -202,6 +202,16 @@ describe('runnerPollState', () => {
     expect(runnerPollState('stopping')).toBe('pending');
     expect(runnerPollState('')).toBe('pending');
   });
+
+  it("accepts cortex's live vocabulary (#3630): running = success, error = failure", () => {
+    // Provisioned detail GETs relay cortex, which emits running/error — never
+    // 'active'/'failed' (those are axiomcloud's local-row statuses).
+    expect(runnerPollState('running')).toBe('active');
+    expect(runnerPollState('error')).toBe('failed');
+    expect(runnerPollState('authenticating')).toBe('pending');
+    // The raw envelope status text must never read as terminal.
+    expect(runnerPollState('OK')).toBe('pending');
+  });
 });
 
 describe('createRunnerErrorMessage', () => {
@@ -650,5 +660,39 @@ describe('unwrapStatusEnvelope (#2832)', () => {
     expect(unwrapStatusEnvelope({ code: 200, status: 'ok', result: null })).toEqual({});
     expect(unwrapStatusEnvelope({ code: 502, status: 'error', result: 'boom' })).toEqual({});
     expect(unwrapStatusEnvelope(null)).toEqual({});
+  });
+
+  // #3630 — the same envelope wraps three more relayed endpoints. Shapes below
+  // mirror cortex's real structs (RunnerResponse, OAuthStartResponse,
+  // RunnerHealthStatus via common.WriteJsonResp).
+  it('unwraps the provisioned runner-detail envelope, exposing the agent identity fields', () => {
+    const body = {
+      code: 200, status: 'OK',
+      result: { id: 7, name: 'r1', status: 'running', agentType: 'codex', authMode: 'oauth', loginMethod: 'device_auth' },
+    };
+    const runner = unwrapStatusEnvelope<{ status: string; agentType: string; authMode: string; loginMethod: string }>(body);
+    expect(runner.agentType).toBe('codex');
+    expect(runner.authMode).toBe('oauth');
+    expect(runner.loginMethod).toBe('device_auth');
+    expect(runner.status).toBe('running'); // NOT the envelope's "OK"
+  });
+
+  it('passes a bare pending-runner detail (axiomcloud local view, no envelope) through unchanged', () => {
+    const bare = { id: 7, name: 'r1', status: 'pending', podName: '', studioRunnerId: 0 };
+    expect(unwrapStatusEnvelope(bare)).toEqual(bare);
+  });
+
+  it('unwraps the oauth/start envelope so the URL and device code reach the Authenticate step', () => {
+    const body = { code: 200, status: 'OK', result: { stage: 'waiting_for_code', url: 'https://auth.example/device', code: 'WXYZ-1234' } };
+    const start = unwrapStatusEnvelope<{ url: string; code: string }>(body);
+    expect(start.url).toBe('https://auth.example/device');
+    expect(start.code).toBe('WXYZ-1234'); // NOT the envelope's numeric 200
+  });
+
+  it('unwraps the health envelope so the launch poll can observe phase and errors', () => {
+    const body = { code: 200, status: 'OK', result: { phase: 'error', errors: ['session crashed'] } };
+    const health = unwrapStatusEnvelope<{ phase: string; errors: string[] }>(body);
+    expect(health.phase).toBe('error');
+    expect(health.errors).toEqual(['session crashed']);
   });
 });
