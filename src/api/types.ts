@@ -734,9 +734,11 @@ export interface CloudRunnerView {
   userId: number;
   projectId: number;
   createdAt: string;
-  // The detail endpoint (`GET .../{id}`) additionally returns the agent identity
-  // used by the Manage wizard (routing + manifest). Optional — the list rows
-  // don't populate them.
+  // The detail endpoint (`GET .../{id}`) additionally returns the agent
+  // identity used by the Manage wizard (routing + manifest). Optional — list
+  // rows and PENDING detail responses (axiomcloud's bare local view) don't
+  // populate them; provisioned detail responses arrive inside cortex's
+  // {code,status,result} envelope, which `getCloudRunner` unwraps (#3630).
   agentType?: string;
   authMode?: string;
   loginMethod?: string;

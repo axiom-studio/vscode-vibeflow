@@ -1169,9 +1169,14 @@ export class VibeFlowClient {
   }
 
   async getCloudRunner(projectId: number, id: number): Promise<CloudRunnerView> {
-    return this.request<CloudRunnerView>(
+    const data = await this.request<unknown>(
       `/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}`,
     );
+    // Dual-shaped route (#3630): a PENDING runner returns axiomcloud's bare
+    // local view; a provisioned one relays cortex's {code,status,result}
+    // envelope verbatim — the runner (incl. agentType/authMode/loginMethod)
+    // lives in `result`. unwrapStatusEnvelope tolerates both shapes.
+    return unwrapStatusEnvelope<CloudRunnerView>(data);
   }
 
   async deleteCloudRunner(projectId: number, id: number): Promise<void> {
@@ -1223,7 +1228,11 @@ export class VibeFlowClient {
   }
 
   async getRunnerOAuthStart(projectId: number, id: number): Promise<RunnerOAuthStart> {
-    return this.request<RunnerOAuthStart>(`${this.runnerBase(projectId, id)}/oauth/start`);
+    const data = await this.request<unknown>(`${this.runnerBase(projectId, id)}/oauth/start`);
+    // cortex wraps the start payload as {code,status,result:{url,code,...}}
+    // and axiomcloud relays it verbatim — without unwrapping, the OAuth URL /
+    // device code never reach the Authenticate step (#3630).
+    return unwrapStatusEnvelope<RunnerOAuthStart>(data);
   }
 
   async submitRunnerOAuth(projectId: number, id: number, code: string): Promise<void> {
@@ -1265,7 +1274,9 @@ export class VibeFlowClient {
   }
 
   async getRunnerHealth(projectId: number, id: number): Promise<RunnerHealth> {
-    return this.request<RunnerHealth>(`${this.runnerBase(projectId, id)}/health`);
+    const data = await this.request<unknown>(`${this.runnerBase(projectId, id)}/health`);
+    // Same Studio envelope as /status — phase/errors live in `result` (#3630).
+    return unwrapStatusEnvelope<RunnerHealth>(data);
   }
 
   async execOnRunner(projectId: number, id: number, command: string): Promise<unknown> {
