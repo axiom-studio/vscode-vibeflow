@@ -33,6 +33,7 @@ import {
   validateRunnerName,
   RUNNER_NAME_RULES,
   RUNNER_NAME_MAX,
+  LOGIN_METHODS,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -437,6 +438,33 @@ describe('buildRunnerManifest', () => {
     expect(m.vibeflow.apiToken).toBe('${VAULT:api_key}');
     expect(m.vibeflow.serverUrl).toBe('${VAULT:base_url}');
     expect(m.mcpServers[0].headers.Authorization).toBe('Bearer ${VAULT:api_key}');
+  });
+
+  it('carries a provided loginMethod into agent config (Console-billing Claude, device-auth Codex)', () => {
+    const console_ = buildRunnerManifest({ ...cfg, loginMethod: 'console' }) as unknown as { agent: { loginMethod: string } };
+    expect(console_.agent.loginMethod).toBe('console');
+    const codex = buildRunnerManifest({ ...cfg, agentType: 'codex', loginMethod: 'device_auth' }) as unknown as { agent: { loginMethod: string } };
+    expect(codex.agent.loginMethod).toBe('device_auth');
+  });
+
+  it("falls back to 'claude' when the runner detail carried no loginMethod (web parity: detail.loginMethod || 'claude')", () => {
+    const m = buildRunnerManifest(cfg) as unknown as { agent: { loginMethod: string } };
+    expect(m.agent.loginMethod).toBe('claude');
+  });
+});
+
+describe('LOGIN_METHODS', () => {
+  it('covers every creatable agent type with at least one method (the OAuth step depends on it)', () => {
+    const agentTypes: CreateRunnerRequest['agentType'][] = ['claude', 'codex', 'cursor'];
+    for (const t of agentTypes) {
+      expect(LOGIN_METHODS[t].length).toBeGreaterThan(0);
+    }
+  });
+
+  it("matches cortex's auth-strategy values (web CreateCloudRunnerModal parity)", () => {
+    expect(LOGIN_METHODS.claude.map(m => m.value)).toEqual(['claude', 'console', 'third_party']);
+    expect(LOGIN_METHODS.codex.map(m => m.value)).toEqual(['device_auth']);
+    expect(LOGIN_METHODS.cursor.map(m => m.value)).toEqual(['cursor']);
   });
 });
 

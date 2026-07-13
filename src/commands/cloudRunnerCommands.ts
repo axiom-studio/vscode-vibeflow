@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
+import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, LOGIN_METHODS, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -82,6 +82,21 @@ export async function createCloudRunner(
     });
     if (!apiKey) { return; } // cancelled or empty — abort
     body.apiKey = apiKey;
+  } else {
+    // OAuth: pick the per-agent login method (spec #433 §7.3). Codex and Cursor
+    // have exactly one method, so it is applied without an extra prompt; Claude
+    // offers subscription vs Console vs third-party billing.
+    const methods = LOGIN_METHODS[agentType.value];
+    let loginMethod = methods[0].value;
+    if (methods.length > 1) {
+      const pick = await vscode.window.showQuickPick(
+        methods.map(m => ({ label: m.label, value: m.value })),
+        { placeHolder: 'How will this agent sign in?', title: 'Create Cloud Runner' },
+      );
+      if (!pick) { return; }
+      loginMethod = pick.value;
+    }
+    body.loginMethod = loginMethod;
   }
 
   // Optional git provider + repos. A runner may only request repos when it has
