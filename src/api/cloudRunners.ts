@@ -171,12 +171,14 @@ export type RunnerPollState = 'active' | 'failed' | 'pending';
 
 /**
  * Classify a runner's lifecycle status for the create-and-wait poll loop.
- * `active` = ready (stop, success); `failed` = terminal error (stop, surface);
- * everything else (pending/starting/…) = keep polling.
+ * Success = `active` (axiomcloud local rows) or `running` (cortex live view —
+ * the detail GET relays cortex's vocabulary for provisioned runners, which
+ * never emits `active`; #3630). Terminal failure = `failed` (local) or
+ * `error` (cortex). Everything else (pending/starting/…) = keep polling.
  */
 export function runnerPollState(status: string): RunnerPollState {
-  if (status === 'active') { return 'active'; }
-  if (status === 'failed') { return 'failed'; }
+  if (status === 'active' || status === 'running') { return 'active'; }
+  if (status === 'failed' || status === 'error') { return 'failed'; }
   return 'pending';
 }
 
