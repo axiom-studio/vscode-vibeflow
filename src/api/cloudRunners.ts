@@ -452,14 +452,22 @@ export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> 
   };
 }
 
-// --- Pod terminal (tmux) transport + framing (#2818, spec #436 §4.4) ---
+// --- Pod terminal transport + framing (#2818, reworked in #3588) ---
+//
+// The axiomcloud backend replaced the tmux bridge documented in spec #433 §8/§9
+// with a raw-PTY SockJS bridge (axiomcloud handlers/cloud_runners_passthrough.go):
+// POST `terminal/session` returns a session id, then GET `terminal/ws` bridges
+// the client to Studio's pod-exec PTY socket. The inner messages are cortex's
+// TerminalMessage protocol with capitalized fields (Op/SessionID/Data/Cols/Rows),
+// matching the working web client (CloudRunnerTerminal.jsx).
 
 /**
- * Derive the tmux WebSocket URL for a runner from the REST base URL: `https:`→
- * `wss:` / `http:`→`ws:` (mirrors `buildUIWebSocketUrl`). Any other protocol is
- * rejected so a Bearer token is never sent over an insecure transport.
+ * Derive the terminal WebSocket URL for a runner from the REST base URL:
+ * `https:`→`wss:` / `http:`→`ws:` (mirrors `buildUIWebSocketUrl`). Any other
+ * protocol is rejected so a Bearer token is never sent over an insecure
+ * transport, and query/hash are stripped so the token never rides the URL.
  */
-export function deriveTmuxWsUrl(baseUrl: string, projectId: number, id: number): string {
+export function deriveTerminalWsUrl(baseUrl: string, projectId: number, id: number): string {
   const trimmed = baseUrl.trim();
   if (!trimmed) { throw new Error('serverUrl is empty'); }
   const base = new URL(trimmed.endsWith('/') ? trimmed : `${trimmed}/`);
@@ -467,36 +475,59 @@ export function deriveTmuxWsUrl(baseUrl: string, projectId: number, id: number):
   else if (base.protocol === 'http:') { base.protocol = 'ws:'; }
   else { throw new Error(`serverUrl protocol ${base.protocol} does not support WebSocket`); }
   const prefix = base.pathname.replace(/\/+$/, '');
-  base.pathname = `${prefix}/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/tmux/ws`.replace(/\/{2,}/g, '/');
+  base.pathname = `${prefix}/rest/v1/vibeflow/projects/${projectId}/cloud-runners/${id}/terminal/ws`.replace(/\/{2,}/g, '/');
   base.search = '';
   base.hash = '';
   return base.toString();
 }
 
-/** Client→server keystroke frame. */
-export function encodeTmuxInput(data: string): string {
-  return JSON.stringify({ type: 'input', data });
+/**
+ * Extract the session id from the `POST .../terminal/session` response. The
+ * relay may deliver the Studio `{code,status,result}` envelope or a bare body,
+ * and the field is spelled `sessionId` or `SessionID` depending on the layer
+ * (web parity: extractTerminalSessionID). Empty string when absent.
+ */
+export function extractTerminalSessionId(response: unknown): string {
+  const r = response as {
+    result?: { sessionId?: string; SessionID?: string };
+    sessionId?: string;
+    SessionID?: string;
+  } | null | undefined;
+  return r?.result?.sessionId || r?.result?.SessionID || r?.sessionId || r?.SessionID || '';
 }
 
-/** Client→server terminal-resize frame. */
-export function encodeTmuxResize(cols: number, rows: number): string {
-  return JSON.stringify({ type: 'resize', cols, rows });
+/** Client→server session-bind frame — MUST be the first frame after connect. */
+export function encodeTerminalBind(sessionId: string): string {
+  return JSON.stringify({ Op: 'bind', SessionID: sessionId });
+}
+
+/** Client→server keystroke frame. */
+export function encodeTerminalStdin(data: string): string {
+  return JSON.stringify({ Op: 'stdin', SessionID: '', Data: data });
+}
+
+/** Client→server PTY-resize frame. */
+export function encodeTerminalResize(cols: number, rows: number): string {
+  return JSON.stringify({ Op: 'resize', Cols: cols, Rows: rows });
 }
 
 /**
- * Classify a server→client tmux frame: a `{type:"error",message}` control frame
- * (the server sends one then closes) vs raw terminal output. Non-JSON and any
- * non-error JSON is treated as output bytes.
+ * Classify a server→client terminal message: `{Op:"stdout",Data}` is terminal
+ * output; `{Op:"error",Data}` is a status message (the bridge sends one when
+ * the Studio dial fails, then closes). Anything else — other Ops, non-JSON —
+ * is ignored, exactly like the web client.
  */
-export function parseTmuxServerFrame(text: string): { kind: 'error'; message: string } | { kind: 'output'; data: string } {
+export function parseTerminalServerMessage(text: string): { kind: 'stdout'; data: string } | { kind: 'error'; message: string } | { kind: 'ignore' } {
   try {
-    const obj = JSON.parse(text) as unknown;
-    if (obj && typeof obj === 'object' && (obj as { type?: unknown }).type === 'error') {
-      const message = (obj as { message?: unknown }).message;
-      return { kind: 'error', message: typeof message === 'string' ? message : 'terminal error' };
+    const obj = JSON.parse(text) as { Op?: unknown; Data?: unknown } | null;
+    if (obj && typeof obj === 'object') {
+      if (obj.Op === 'stdout' && typeof obj.Data === 'string') { return { kind: 'stdout', data: obj.Data }; }
+      if (obj.Op === 'error') {
+        return { kind: 'error', message: typeof obj.Data === 'string' ? obj.Data : 'terminal error' };
+      }
     }
   } catch {
-    // Not JSON — raw terminal output.
+    // Not JSON — ignore (web parity).
   }
-  return { kind: 'output', data: text };
+  return { kind: 'ignore' };
 }
