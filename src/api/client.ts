@@ -1274,20 +1274,14 @@ export class VibeFlowClient {
     });
   }
 
-  async getRunnerTmuxOutput(projectId: number, id: number): Promise<string> {
-    const data = await this.request<{ output?: string }>(`${this.runnerBase(projectId, id)}/tmux/output`);
-    return data.output ?? '';
-  }
-
-  async sendRunnerTmuxInput(projectId: number, id: number, data: string): Promise<void> {
-    await this.request(`${this.runnerBase(projectId, id)}/tmux/input`, {
-      method: 'POST', body: JSON.stringify({ data }),
-    });
-  }
-
-  async resizeRunnerTmux(projectId: number, id: number, cols: number, rows: number): Promise<void> {
-    await this.request(`${this.runnerBase(projectId, id)}/tmux/resize`, {
-      method: 'POST', body: JSON.stringify({ cols, rows }),
+  /**
+   * Create a pod terminal session (`POST .../terminal/session`) — the returned
+   * session id is bound over the terminal WebSocket as its first frame (#3588).
+   * (The former tmux/* endpoints from spec #433 §8 no longer exist server-side.)
+   */
+  async createRunnerTerminalSession(projectId: number, id: number): Promise<unknown> {
+    return this.request(`${this.runnerBase(projectId, id)}/terminal/session`, {
+      method: 'POST', body: JSON.stringify({}),
     });
   }
 }
