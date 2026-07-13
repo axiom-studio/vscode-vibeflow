@@ -343,6 +343,7 @@ class BearerUIWebSocket implements UIWebSocketConnection {
   private request: http.ClientRequest | undefined;
   private socket: Socket | undefined;
   private buffer = Buffer.alloc(0);
+  private assembly: WsMessageAssembly | undefined;
   private closed = false;
 
   constructor(
@@ -435,7 +436,12 @@ class BearerUIWebSocket implements UIWebSocketConnection {
       frame = readFrame(this.buffer);
       while (frame) {
         this.buffer = this.buffer.subarray(frame.bytesRead);
-        this.handleFrame(frame);
+        // Assemble fragmented messages before dispatch (#3631) — the server
+        // fragments anything over its write buffer, so per-frame dispatch
+        // silently dropped multi-frame terminal output.
+        const folded = foldFrame(this.assembly, frame);
+        this.assembly = folded.state;
+        if (folded.complete) { this.handleMessage(folded.complete.opcode, folded.complete.payload); }
         frame = readFrame(this.buffer);
       }
     } catch (err) {
@@ -443,17 +449,17 @@ class BearerUIWebSocket implements UIWebSocketConnection {
     }
   }
 
-  private handleFrame(frame: WebSocketFrame): void {
-    if (frame.opcode === 0x1) {
-      this.handlers.onMessage(frame.payload.toString('utf8'));
+  private handleMessage(opcode: number, payload: Buffer): void {
+    if (opcode === 0x1) {
+      this.handlers.onMessage(payload.toString('utf8'));
       return;
     }
-    if (frame.opcode === 0x8) {
+    if (opcode === 0x8) {
       this.closeFromRemote('server closed socket');
       return;
     }
-    if (frame.opcode === 0x9) {
-      this.sendFrame(0xA, frame.payload);
+    if (opcode === 0x9) {
+      this.sendFrame(0xA, payload);
     }
   }
 
@@ -480,14 +486,16 @@ class BearerUIWebSocket implements UIWebSocketConnection {
   }
 }
 
-interface WebSocketFrame {
+export interface WebSocketFrame {
+  fin: boolean;
   opcode: number;
   payload: Buffer;
   bytesRead: number;
 }
 
-function readFrame(buffer: Buffer): WebSocketFrame | undefined {
+export function readFrame(buffer: Buffer): WebSocketFrame | undefined {
   if (buffer.length < 2) { return undefined; }
+  const fin = (buffer[0] & 0x80) !== 0;
   const opcode = buffer[0] & 0x0f;
   const masked = (buffer[1] & 0x80) !== 0;
   let payloadLength = buffer[1] & 0x7f;
@@ -525,7 +533,40 @@ function readFrame(buffer: Buffer): WebSocketFrame | undefined {
     payload = unmasked;
   }
 
-  return { opcode, payload, bytesRead: offset + payloadLength };
+  return { fin, opcode, payload, bytesRead: offset + payloadLength };
+}
+
+/** Cross-frame assembly state for a fragmented message (RFC 6455 §5.4). */
+export interface WsMessageAssembly {
+  opcode: number;
+  parts: Buffer[];
+}
+
+/**
+ * Fold a parsed frame into the fragmentation state (#3631 — the server side
+ * fragments any message over its 1024-byte write buffer, so ignoring the FIN
+ * bit silently loses terminal output). A data frame with FIN=0 opens a
+ * fragmented message; continuation frames (opcode 0x0) extend it; the FIN
+ * frame completes it. Control frames (0x8-0xA) are never fragmented and may
+ * interleave with a fragmented message, so they complete immediately without
+ * touching the assembly state.
+ */
+export function foldFrame(
+  state: WsMessageAssembly | undefined,
+  frame: WebSocketFrame,
+): { state?: WsMessageAssembly; complete?: { opcode: number; payload: Buffer } } {
+  if ((frame.opcode & 0x8) !== 0) {
+    return { state, complete: { opcode: frame.opcode, payload: frame.payload } };
+  }
+  if (frame.opcode === 0x0) {
+    if (!state) { return {}; } // stray continuation — drop
+    const parts = [...state.parts, frame.payload];
+    if (frame.fin) { return { complete: { opcode: state.opcode, payload: Buffer.concat(parts) } }; }
+    return { state: { opcode: state.opcode, parts } };
+  }
+  // Fresh data frame (0x1 text / 0x2 binary) — replaces any dangling assembly.
+  if (frame.fin) { return { complete: { opcode: frame.opcode, payload: frame.payload } }; }
+  return { state: { opcode: frame.opcode, parts: [frame.payload] } };
 }
 
 function buildClientFrameHeader(opcode: number, payload: Buffer): { header: Buffer; maskedPayload: Buffer } {
