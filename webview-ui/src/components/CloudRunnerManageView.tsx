@@ -134,6 +134,13 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   const [newBranch, setNewBranch] = useState(false);
   const [llmGateway, setLlmGateway] = useState(false);
   const [skipPermissions, setSkipPermissions] = useState(true);
+  // "+ Clone repository" inline form (web CloudRunnerDetail parity). The host
+  // injects the provider's git credentials BEFORE the clone, which is also the
+  // recovery path for push access on a relaunched pod (pod creds are ephemeral).
+  const [showCloneForm, setShowCloneForm] = useState(false);
+  const [cloneUrl, setCloneUrl] = useState('');
+  const [cloneBranch, setCloneBranch] = useState('main');
+  const [cloneProviderId, setCloneProviderId] = useState('');
 
   useEffect(() => {
     if (!project && state.defaultProject) { setProject(state.defaultProject); }
@@ -145,12 +152,56 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
     setPersonas(cur => cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p]);
   }
 
+  function submitClone() {
+    vscode.postMessage({
+      type: 'manageClone',
+      payload: {
+        gitProviderId: cloneProviderId ? Number(cloneProviderId) : undefined,
+        url: cloneUrl.trim(),
+        branch: cloneBranch.trim() || 'main',
+      },
+    });
+    // The host pushes busy → refreshed repos (or an error into the banner).
+    setCloneUrl('');
+    setShowCloneForm(false);
+  }
+
   const ready = canLaunch(workingDir, project, personas);
 
   return (
     <div style={{ maxWidth: 560 }}>
       <div style={field}>
-        <span style={label}>Working directory</span>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <span style={label}>Working directory</span>
+          <button
+            style={{ ...ghostBtn, padding: '2px 8px', fontSize: 11 }}
+            onClick={() => setShowCloneForm(v => !v)}
+          >{showCloneForm ? 'Cancel' : '+ Clone repository'}</button>
+        </div>
+        {showCloneForm && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 10, margin: '6px 0', border: '1px solid var(--feed-border)', borderRadius: 4 }}>
+            <div style={field}>
+              <span style={label}>Repository URL</span>
+              <input style={input} value={cloneUrl} onChange={e => setCloneUrl(e.target.value)} placeholder="https://github.com/org/repo.git" />
+            </div>
+            <div style={field}>
+              <span style={label}>Branch</span>
+              <input style={input} value={cloneBranch} onChange={e => setCloneBranch(e.target.value)} />
+            </div>
+            <div style={field}>
+              <span style={label}>Git provider</span>
+              <select style={input} value={cloneProviderId} onChange={e => setCloneProviderId(e.target.value)}>
+                <option value="">None (public repos only)</option>
+                {state.gitProviders.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+              </select>
+            </div>
+            <button
+              style={{ ...btn, alignSelf: 'flex-start', opacity: state.busy || !cloneUrl.trim() ? 0.5 : 1 }}
+              disabled={state.busy || !cloneUrl.trim()}
+              onClick={submitClone}
+            >{state.busy ? 'Cloning…' : 'Clone'}</button>
+          </div>
+        )}
         {state.repos.length > 0 ? (
           <select style={input} value={workingDir} onChange={e => setWorkingDir(e.target.value)}>
             <option value="">Select a repo…</option>
