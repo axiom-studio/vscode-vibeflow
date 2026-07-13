@@ -187,6 +187,15 @@ describe('parseRepoUrls', () => {
     ]);
   });
 
+  it('applies an explicit branch to every entry, omitting the field otherwise (#2883)', () => {
+    expect(parseRepoUrls('https://x/1, https://x/2', 'master')).toEqual([
+      { url: 'https://x/1', branch: 'master' },
+      { url: 'https://x/2', branch: 'master' },
+    ]);
+    // No branch → {url} only (wire-compatible with the previous shape).
+    expect(parseRepoUrls('https://x/1')[0]).toEqual({ url: 'https://x/1' });
+  });
+
   it('returns an empty list for empty or whitespace-only input', () => {
     expect(parseRepoUrls('')).toEqual([]);
     expect(parseRepoUrls('   ,  \n , ')).toEqual([]);
