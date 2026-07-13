@@ -121,6 +121,22 @@ export function validateCreateRunner(body: CreateRunnerRequest): string | null {
 }
 
 /**
+ * Per-agent OAuth login methods (spec #433 §7.3 `loginMethod`), mirroring the
+ * web CreateCloudRunnerModal LOGIN_METHODS verbatim — the values are cortex's
+ * auth-strategy set. Sent in the create body only when `authMode === 'oauth'`;
+ * cortex ignores the cursor value (browser login via `cursor-agent login`).
+ */
+export const LOGIN_METHODS: Record<CreateRunnerRequest['agentType'], ReadonlyArray<{ value: string; label: string }>> = {
+  claude: [
+    { value: 'claude', label: 'Claude subscription (Pro, Max, Team, Enterprise)' },
+    { value: 'console', label: 'Anthropic Console (API usage billing)' },
+    { value: 'third_party', label: '3rd-party platform (Bedrock, Vertex, Foundry)' },
+  ],
+  codex: [{ value: 'device_auth', label: 'Device Authentication (ChatGPT login)' }],
+  cursor: [{ value: 'cursor', label: 'Cursor account (browser login)' }],
+};
+
+/**
  * Parse a free-text list of repo URLs (comma- or newline-separated) into the
  * `gitRepos` shape. Blank entries are dropped; an empty/whitespace input
  * yields an empty list (no repos requested).
