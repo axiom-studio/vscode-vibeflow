@@ -141,14 +141,16 @@ export const LOGIN_METHODS: Record<CreateRunnerRequest['agentType'], ReadonlyArr
 /**
  * Parse a free-text list of repo URLs (comma- or newline-separated) into the
  * `gitRepos` shape. Blank entries are dropped; an empty/whitespace input
- * yields an empty list (no repos requested).
+ * yields an empty list (no repos requested). When `branch` is given it is
+ * applied to every entry (#2883) — the chart clones `--branch <branch|main>`
+ * and swallows failures, so non-main default branches need it explicit.
  */
-export function parseRepoUrls(input: string): CloudRunnerRepo[] {
+export function parseRepoUrls(input: string, branch?: string): CloudRunnerRepo[] {
   return input
     .split(/[\n,]+/)
     .map(s => s.trim())
     .filter(Boolean)
-    .map(url => ({ url }));
+    .map(url => (branch ? { url, branch } : { url }));
 }
 
 /**

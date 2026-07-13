@@ -752,9 +752,15 @@ export interface GlobalCloudRunnerView extends CloudRunnerView {
   projectName: string;
 }
 
-/** A repository to clone onto a runner at create time. */
+/**
+ * A repository to clone onto a runner at create time. `branch` matters: the
+ * runner chart clones with `--branch <branch|main>` and SWALLOWS clone
+ * failures, so omitting it on a repo whose default branch is not `main`
+ * fails silently server-side (#2883; web parity: `{url, branch}`).
+ */
 export interface CloudRunnerRepo {
   url: string;
+  branch?: string;
 }
 
 /**

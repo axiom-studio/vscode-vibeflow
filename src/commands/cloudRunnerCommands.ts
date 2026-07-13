@@ -124,8 +124,18 @@ export async function createCloudRunner(
         ignoreFocusOut: true,
       });
       if (reposInput === undefined) { return; }
-      const repos = parseRepoUrls(reposInput);
-      if (repos.length > 0) { body.gitRepos = repos; }
+      if (parseRepoUrls(reposInput).length > 0) {
+        // Explicit branch (#2883): the pod clones `--branch <branch|main>`
+        // and swallows failures, so a repo whose default branch is not main
+        // would silently end up missing from /workspace/repos.
+        const branch = await vscode.window.showInputBox({
+          prompt: 'Git branch to clone (applies to the listed repos)',
+          value: 'main',
+          ignoreFocusOut: true,
+        });
+        if (branch === undefined) { return; }
+        body.gitRepos = parseRepoUrls(reposInput, branch.trim() || 'main');
+      }
     }
   }
 
