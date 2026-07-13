@@ -89,4 +89,41 @@ describe('CloudRunnerManageView', () => {
     expect(spy).toHaveBeenCalledWith({ type: 'manageOpenTerminal' });
     spy.mockRestore();
   });
+
+  it('reveals the clone form and posts manageClone with the provider id (credential re-injection path)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure', gitProviders: [{ id: 7, name: 'gh-pat' }] }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Clone repository' }));
+    fireEvent.change(screen.getByPlaceholderText('https://github.com/org/repo.git'), { target: { value: 'https://github.com/acme/app.git' } });
+    fireEvent.change(screen.getByDisplayValue('None (public repos only)'), { target: { value: '7' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    expect(spy).toHaveBeenCalledWith({
+      type: 'manageClone',
+      payload: { gitProviderId: 7, url: 'https://github.com/acme/app.git', branch: 'main' },
+    });
+    spy.mockRestore();
+  });
+
+  it('clones without a provider for public repos (gitProviderId omitted)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Clone repository' }));
+    fireEvent.change(screen.getByPlaceholderText('https://github.com/org/repo.git'), { target: { value: 'https://github.com/acme/pub.git' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    expect(spy).toHaveBeenCalledWith({
+      type: 'manageClone',
+      payload: { gitProviderId: undefined, url: 'https://github.com/acme/pub.git', branch: 'main' },
+    });
+    spy.mockRestore();
+  });
+
+  it('keeps Clone disabled without a repository URL', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Clone repository' }));
+    const clone = screen.getByRole('button', { name: 'Clone' }) as HTMLButtonElement;
+    expect(clone.disabled).toBe(true);
+  });
 });
