@@ -32,10 +32,12 @@ export function isFeatureEnabled(flags: FeatureFlags | undefined | null, name: s
  * While `false`, the feature is hidden regardless of the org's runtime flag:
  * no Git Configuration tab in VibeFlow Settings, no Cloud Runners / Git
  * Providers rows in the Browse nav, no "Cloud Runner" option on the Work
- * Items "+" picker, and the open-page commands decline. Flip to `true` to
- * re-enable everything — all code paths stay in place.
+ * Items "+" picker, and the open-page commands decline. Enabled in #2868
+ * after the E2E blockers landed (#3588 terminal protocol, #2881 loginMethod,
+ * #2882 credential re-injection); org rollout stays gated by the runtime
+ * `feature_cloud_runners` flag below.
  */
-export const CLOUD_RUNNERS_BUILD_ENABLED = false;
+export const CLOUD_RUNNERS_BUILD_ENABLED = true;
 
 /**
  * Convenience: is the Cloud Runners capability available? Requires BOTH the
