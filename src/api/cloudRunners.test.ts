@@ -20,10 +20,12 @@ import {
   firstPresent,
   buildRunnerManifest,
   VIBEFLOW_PERSONAS,
-  deriveTmuxWsUrl,
-  encodeTmuxInput,
-  encodeTmuxResize,
-  parseTmuxServerFrame,
+  deriveTerminalWsUrl,
+  extractTerminalSessionId,
+  encodeTerminalBind,
+  encodeTerminalStdin,
+  encodeTerminalResize,
+  parseTerminalServerMessage,
   suggestRunnerName,
   summarizeResponseShape,
   redactSecretsDeep,
@@ -468,32 +470,53 @@ describe('LOGIN_METHODS', () => {
   });
 });
 
-describe('deriveTmuxWsUrl', () => {
-  it('upgrades https→wss and builds the tmux path', () => {
-    expect(deriveTmuxWsUrl('https://cloud.axiomstudio.ai', 28, 5))
-      .toBe('wss://cloud.axiomstudio.ai/rest/v1/vibeflow/projects/28/cloud-runners/5/tmux/ws');
+describe('deriveTerminalWsUrl', () => {
+  it('upgrades https→wss and builds the terminal/ws path (the route axiomcloud registers)', () => {
+    expect(deriveTerminalWsUrl('https://cloud.axiomstudio.ai', 28, 5))
+      .toBe('wss://cloud.axiomstudio.ai/rest/v1/vibeflow/projects/28/cloud-runners/5/terminal/ws');
   });
   it('upgrades http→ws for localhost and strips query/hash', () => {
-    expect(deriveTmuxWsUrl('http://localhost:8080/?x=1#f', 1, 2))
-      .toBe('ws://localhost:8080/rest/v1/vibeflow/projects/1/cloud-runners/2/tmux/ws');
+    expect(deriveTerminalWsUrl('http://localhost:8080/?x=1#f', 1, 2))
+      .toBe('ws://localhost:8080/rest/v1/vibeflow/projects/1/cloud-runners/2/terminal/ws');
   });
   it('rejects empty or non-http(s) base URLs (no bearer over insecure transport)', () => {
-    expect(() => deriveTmuxWsUrl('', 1, 1)).toThrow();
-    expect(() => deriveTmuxWsUrl('ftp://x', 1, 1)).toThrow();
+    expect(() => deriveTerminalWsUrl('', 1, 1)).toThrow();
+    expect(() => deriveTerminalWsUrl('ftp://x', 1, 1)).toThrow();
   });
 });
 
-describe('tmux frame codec', () => {
-  it('encodes input and resize frames', () => {
-    expect(JSON.parse(encodeTmuxInput('ls\n'))).toEqual({ type: 'input', data: 'ls\n' });
-    expect(JSON.parse(encodeTmuxResize(120, 40))).toEqual({ type: 'resize', cols: 120, rows: 40 });
+describe('extractTerminalSessionId', () => {
+  it('reads every spelling the relay can deliver (enveloped and bare, both casings)', () => {
+    expect(extractTerminalSessionId({ result: { sessionId: 'a1' } })).toBe('a1');
+    expect(extractTerminalSessionId({ result: { SessionID: 'b2' } })).toBe('b2');
+    expect(extractTerminalSessionId({ sessionId: 'c3' })).toBe('c3');
+    expect(extractTerminalSessionId({ SessionID: 'd4' })).toBe('d4');
   });
-  it('parses an error control frame', () => {
-    expect(parseTmuxServerFrame('{"type":"error","message":"pod gone"}')).toEqual({ kind: 'error', message: 'pod gone' });
+  it('returns empty when the id is absent or the response is malformed', () => {
+    expect(extractTerminalSessionId({})).toBe('');
+    expect(extractTerminalSessionId(null)).toBe('');
+    expect(extractTerminalSessionId(undefined)).toBe('');
+    expect(extractTerminalSessionId({ result: {} })).toBe('');
   });
-  it('treats raw text and non-error JSON as output', () => {
-    expect(parseTmuxServerFrame('hello$ ')).toEqual({ kind: 'output', data: 'hello$ ' });
-    expect(parseTmuxServerFrame('{"type":"data","x":1}')).toEqual({ kind: 'output', data: '{"type":"data","x":1}' });
+});
+
+describe('terminal message codec (cortex TerminalMessage protocol)', () => {
+  it('encodes bind, stdin and resize frames with the capitalized wire fields', () => {
+    expect(JSON.parse(encodeTerminalBind('sess-1'))).toEqual({ Op: 'bind', SessionID: 'sess-1' });
+    expect(JSON.parse(encodeTerminalStdin('ls\n'))).toEqual({ Op: 'stdin', SessionID: '', Data: 'ls\n' });
+    expect(JSON.parse(encodeTerminalResize(120, 40))).toEqual({ Op: 'resize', Cols: 120, Rows: 40 });
+  });
+  it('classifies stdout as terminal output', () => {
+    expect(parseTerminalServerMessage('{"Op":"stdout","Data":"hello$ "}')).toEqual({ kind: 'stdout', data: 'hello$ ' });
+  });
+  it('classifies the bridge dial-failure error frame', () => {
+    expect(parseTerminalServerMessage('{"Op":"error","Data":"pod gone"}')).toEqual({ kind: 'error', message: 'pod gone' });
+    expect(parseTerminalServerMessage('{"Op":"error"}')).toEqual({ kind: 'error', message: 'terminal error' });
+  });
+  it('ignores other Ops and non-JSON frames (web parity)', () => {
+    expect(parseTerminalServerMessage('{"Op":"stdin","Data":"x"}')).toEqual({ kind: 'ignore' });
+    expect(parseTerminalServerMessage('raw text')).toEqual({ kind: 'ignore' });
+    expect(parseTerminalServerMessage('null')).toEqual({ kind: 'ignore' });
   });
 });
 
