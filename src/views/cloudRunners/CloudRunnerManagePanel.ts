@@ -42,6 +42,12 @@ export class CloudRunnerManagePanel {
   private disposed = false;
   private statusPolling = false;
   private state: CloudRunnerManageState;
+  /**
+   * OAuth login method from the runner detail (spec #433 §7.3) — carried into
+   * the launch manifest like the web's `detail.loginMethod`. Host-side only;
+   * the Configure UI never re-asks it.
+   */
+  private runnerLoginMethod = '';
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -156,6 +162,7 @@ export class CloudRunnerManagePanel {
 
     this.state.agentType = runner?.agentType ?? '';
     this.state.authMode = runner?.authMode ?? '';
+    this.runnerLoginMethod = runner?.loginMethod ?? '';
     this.state.authenticated = status?.authenticated ?? false;
     this.state.configured = status?.configured ?? false;
     this.state.podStatus = status?.podStatus ?? runner?.podStatus ?? '';
@@ -268,6 +275,7 @@ export class CloudRunnerManagePanel {
     const manifest = buildRunnerManifest({
       agentType: this.state.agentType || 'claude',
       authMode: this.state.authMode || 'oauth',
+      loginMethod: this.runnerLoginMethod || undefined,
       project: cfg.project,
       personas: cfg.personas,
       sessionType: cfg.sessionType,
