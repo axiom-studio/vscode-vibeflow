@@ -530,6 +530,12 @@ export interface CloudRunnerManageState {
   runnerName: string;
   agentType: string;
   authMode: string;
+  /**
+   * Configure-form defaults recovered from the runner's saved manifest when
+   * the runner is already configured (#2885) — the webview initializes its
+   * form state from this so a relaunch doesn't start from blank defaults.
+   */
+  savedConfig?: import('../api/cloudRunners.js').SavedRunnerConfig;
   authenticated: boolean;
   configured: boolean;
   podStatus: string;
