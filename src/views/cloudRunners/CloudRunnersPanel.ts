@@ -107,6 +107,12 @@ export class CloudRunnersPanel {
       case 'cloudRunnersRefresh':
         await this.load();
         return;
+      case 'cloudRunnersCreate':
+        // The create flow lives in the vibeflow.createCloudRunner command
+        // (#2894) — running it here would cycle the panel↔command import.
+        await vscode.commands.executeCommand('vibeflow.createCloudRunner');
+        await this.load();
+        return;
       case 'cloudRunnerStart':
       case 'cloudRunnerStop': {
         const { projectId, id } = msg.payload;

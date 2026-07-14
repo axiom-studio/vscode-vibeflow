@@ -222,6 +222,11 @@
         "icon": "$(cloud)"
       },
       {
+        "command": "vibeflow.createCloudRunner",
+        "title": "VibeFlow: Create Cloud Runner",
+        "icon": "$(add)"
+      },
+      {
         "command": "vibeflow.openGitProviders",
         "title": "VibeFlow: Open Git Providers",
         "icon": "$(key)"

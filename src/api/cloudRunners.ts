@@ -102,6 +102,27 @@ export function validateRunnerName(name: string): string | null {
 }
 
 /**
+ * Human-readable review lines for a create-runner body (#2894) — the
+ * before-deploy summary the web wizard shows on its Review step. Secret-free:
+ * apiKey is reported as present/absent only, never its value.
+ */
+export function createRunnerReviewLines(body: CreateRunnerRequest): string[] {
+  const lines = [
+    `Name: ${body.name}`,
+    `Agent: ${body.agentType}`,
+    `Auth: ${body.authMode === 'api_key' ? 'API key' : 'OAuth'}`,
+  ];
+  if (body.authMode === 'api_key') { lines.push(`API key: ${body.apiKey ? 'provided' : 'missing'}`); }
+  if (body.loginMethod) { lines.push(`Login method: ${body.loginMethod}`); }
+  if (body.gitProviderId) { lines.push(`Git provider: #${body.gitProviderId}`); }
+  if (body.gitRepos && body.gitRepos.length > 0) {
+    const branch = body.gitRepos[0].branch;
+    lines.push(`Repos: ${body.gitRepos.map(r => r.url).join(', ')}${branch ? ` (branch ${branch})` : ''}`);
+  }
+  return lines;
+}
+
+/**
  * Client-side guard mirroring the server rule (`createRunnerRequest`
  * validation in handlers/cloud_runners.go): a runner may not request
  * `gitRepos` without a `gitProviderId` — there is no clone without push

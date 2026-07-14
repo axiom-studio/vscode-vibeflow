@@ -49,6 +49,7 @@ import {
   runnerHealthIcon,
   runnerPrimaryAction,
   bulkEligibility,
+  createRunnerReviewLines,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -526,6 +527,29 @@ describe('buildRunnerManifest', () => {
     expect(withModel.vibeflow.runMode).toBe('direct');
     const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
     expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('createRunnerReviewLines (#2894)', () => {
+  it('summarizes an OAuth runner with a git provider and repos — never the apiKey value', () => {
+    const lines = createRunnerReviewLines({
+      name: 'dev-box', agentType: 'claude', authMode: 'oauth', loginMethod: 'console',
+      gitProviderId: 4, gitRepos: [{ url: 'https://github.com/o/r.git', branch: 'develop' }],
+    });
+    expect(lines).toContain('Name: dev-box');
+    expect(lines).toContain('Agent: claude');
+    expect(lines).toContain('Auth: OAuth');
+    expect(lines).toContain('Login method: console');
+    expect(lines).toContain('Git provider: #4');
+    expect(lines.some(l => l.startsWith('Repos:') && l.includes('branch develop'))).toBe(true);
+  });
+
+  it('reports API-key presence without leaking the value, and omits absent fields', () => {
+    const withKey = createRunnerReviewLines({ name: 'a', agentType: 'codex', authMode: 'api_key', apiKey: 'sk-supersecret' });
+    expect(withKey).toContain('API key: provided');
+    expect(withKey.join('\n')).not.toContain('sk-supersecret');
+    expect(withKey.some(l => l.startsWith('Git provider'))).toBe(false);
+    expect(createRunnerReviewLines({ name: 'b', agentType: 'cursor', authMode: 'api_key' })).toContain('API key: missing');
   });
 });
 

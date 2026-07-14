@@ -142,8 +142,12 @@ export function CloudRunnersView() {
             </span>
           )}
           <button
-            onClick={refresh}
+            onClick={() => vscode.postMessage({ type: 'cloudRunnersCreate' })}
             style={{ padding: '5px 14px', fontSize: 12, background: 'var(--feed-button-bg)', color: 'var(--feed-button-fg)', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+          >New Runner</button>
+          <button
+            onClick={refresh}
+            style={{ padding: '5px 14px', fontSize: 12, background: 'transparent', color: 'var(--feed-fg)', border: '1px solid var(--feed-border)', borderRadius: 4, cursor: 'pointer' }}
           >Refresh</button>
         </div>
       </div>
