@@ -599,18 +599,19 @@ describe('runnerHealthIcon (#2890)', () => {
 });
 
 describe('gitRepoUrlAuthError (#2888)', () => {
-  it('requires SSH-style URLs for SSH providers and https for PAT/OAuth providers', () => {
-    expect(gitRepoUrlAuthError('https://github.com/o/r.git', 'SSH')).toContain('SSH repository URL');
+  it('requires SSH-style URLs for SSH providers and https for PAT/OAuth providers, foregrounding the repo URL', () => {
+    // The message leads with the repo-URL requirement (#2904), not the provider.
+    expect(gitRepoUrlAuthError('https://github.com/o/r.git', 'SSH')).toContain('repository URL must be an SSH URL');
     expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'SSH')).toBe('');
     expect(gitRepoUrlAuthError('ssh://git@github.com/o/r.git', 'SSH')).toBe('');
-    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'ACCESS_TOKEN')).toContain('HTTPS repository URL');
+    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'ACCESS_TOKEN')).toContain('repository URL must be an HTTPS URL');
     expect(gitRepoUrlAuthError('https://github.com/o/r.git', 'ACCESS_TOKEN')).toBe('');
-    expect(gitRepoUrlAuthError('http://github.com/o/r.git', 'OAUTH')).toContain('HTTPS repository URL');
+    expect(gitRepoUrlAuthError('http://github.com/o/r.git', 'OAUTH')).toContain('repository URL must be an HTTPS URL');
   });
 
   it('tolerates lowercase auth modes and passes when there is no provider or URL', () => {
-    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'pat')).toContain('HTTPS repository URL');
-    expect(gitRepoUrlAuthError('https://x/o/r', 'ssh')).toContain('SSH repository URL');
+    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'pat')).toContain('repository URL must be an HTTPS URL');
+    expect(gitRepoUrlAuthError('https://x/o/r', 'ssh')).toContain('repository URL must be an SSH URL');
     expect(gitRepoUrlAuthError('', 'SSH')).toBe('');
     expect(gitRepoUrlAuthError('https://x/o/r', undefined)).toBe('');
   });
