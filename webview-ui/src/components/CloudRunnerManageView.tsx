@@ -14,6 +14,7 @@ import {
   defaultModelForAgent,
   isPresetModel,
   modelOptionsForAgent,
+  llmGatewaySupportedForAgent,
 } from '../../../src/api/cloudRunners';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnerManageClientMessage) => void };
@@ -144,6 +145,7 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   const [sessionType, setSessionType] = useState<'vibeflow' | 'vanilla'>(saved?.sessionType ?? 'vibeflow');
   const [branch, setBranch] = useState(saved?.branch ?? 'main');
   const [worktree, setWorktree] = useState(saved?.worktree ?? false);
+  const [worktreeName, setWorktreeName] = useState(saved?.worktreeName ?? '');
   const [newBranch, setNewBranch] = useState(saved?.newBranch ?? false);
   const [llmGateway, setLlmGateway] = useState(saved?.llmGateway ?? false);
   const [skipPermissions, setSkipPermissions] = useState(saved?.skipPermissions ?? true);
@@ -197,6 +199,7 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   }
 
   const modelOptions = modelOptionsForAgent(state.agentType, modelMode === 'preset' ? model : undefined);
+  const gatewaySupported = llmGatewaySupportedForAgent(state.agentType);
   const ready = canLaunch(workingDir, project, personas) && (modelMode !== 'custom' || model.trim() !== '');
 
   return (
@@ -308,9 +311,24 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14, fontSize: 12 }}>
         <label><input type="checkbox" checked={worktree} onChange={e => setWorktree(e.target.checked)} /> Create git worktree</label>
+        {worktree && (
+          <input
+            style={{ ...input, marginLeft: 20 }}
+            value={worktreeName}
+            onChange={e => setWorktreeName(e.target.value)}
+            placeholder="Worktree name (optional — auto-generated when blank)"
+          />
+        )}
         <label><input type="checkbox" checked={newBranch} onChange={e => setNewBranch(e.target.checked)} /> Create new branch</label>
         <label><input type="checkbox" checked={skipPermissions} onChange={e => setSkipPermissions(e.target.checked)} /> Skip permission prompts (autonomous)</label>
-        <label><input type="checkbox" checked={llmGateway} onChange={e => setLlmGateway(e.target.checked)} /> Route LLM through Axiom Cloud Gateway</label>
+        <label style={gatewaySupported ? undefined : { opacity: 0.5 }}>
+          <input
+            type="checkbox"
+            checked={llmGateway && gatewaySupported}
+            disabled={!gatewaySupported}
+            onChange={e => setLlmGateway(e.target.checked)}
+          /> Route LLM through Axiom Cloud Gateway{gatewaySupported ? '' : ' (not applicable — Cursor uses its own account)'}
+        </label>
       </div>
 
       <button
@@ -318,7 +336,7 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
         disabled={!ready || state.busy}
         onClick={() => vscode.postMessage({
           type: 'manageLaunch',
-          payload: { workingDir, project, personas, sessionType, model: model.trim(), branch, worktree, newBranch, llmGateway, skipPermissions },
+          payload: { workingDir, project, personas, sessionType, model: model.trim(), branch, worktree, worktreeName: worktreeName.trim(), newBranch, llmGateway: llmGateway && gatewaySupported, skipPermissions },
         })}
       >Launch</button>
     </div>
