@@ -5,7 +5,7 @@ import type {
   CloudRunnersClientMessage,
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
-import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos, runnerHealthIcon, runnerPrimaryAction } from '../../../src/api/cloudRunners';
+import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos, runnerHealthIcon, runnerPrimaryAction, bulkEligibility } from '../../../src/api/cloudRunners';
 
 /** Glyph per health kind (#2890) — text glyphs so no icon lib enters the CSP. */
 const HEALTH_GLYPH: Record<string, { glyph: string; color: string }> = {
@@ -66,12 +66,21 @@ const actionBtn: CSSProperties = {
 
 export function CloudRunnersView() {
   const [state, setState] = useState<State>({ runners: [], loading: true, error: undefined, generatedAt: undefined });
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     function handle(event: MessageEvent<CloudRunnersHostMessage>) {
       const msg = event.data;
       if (msg?.type === 'cloudRunnersData') {
-        setState({ runners: msg.payload.runners ?? [], loading: false, error: undefined, generatedAt: msg.payload.generatedAt });
+        const runners = msg.payload.runners ?? [];
+        setState({ runners, loading: false, error: undefined, generatedAt: msg.payload.generatedAt });
+        // Prune selection to runners that still exist (#2893).
+        setSelected(prev => {
+          const live = new Set(runners.map(r => r.id));
+          const next = new Set<number>();
+          prev.forEach(id => { if (live.has(id)) { next.add(id); } });
+          return next;
+        });
       } else if (msg?.type === 'cloudRunnersError') {
         setState(s => ({ ...s, loading: false, error: msg.payload.message }));
       }
@@ -86,6 +95,33 @@ export function CloudRunnersView() {
     vscode.postMessage({ type: 'cloudRunnersRefresh' });
   }
 
+  function toggleRow(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(prev => prev.size === state.runners.length ? new Set() : new Set(state.runners.map(r => r.id)));
+  }
+
+  const selectedRunners = state.runners.filter(r => selected.has(r.id));
+  const eligibility = bulkEligibility(selectedRunners.map(r => r.status));
+
+  function bulk(type: 'cloudRunnerBulkStart' | 'cloudRunnerBulkStop' | 'cloudRunnerBulkDelete') {
+    if (type === 'cloudRunnerBulkDelete') {
+      vscode.postMessage({ type, payload: { runners: selectedRunners.map(r => ({ projectId: r.projectId, id: r.id, name: r.name })) } });
+      return;
+    }
+    const running = type === 'cloudRunnerBulkStop';
+    const runners = selectedRunners
+      .filter(r => !isRunnerTransitioning(r.status) && isRunnerRunning(r.status) === running)
+      .map(r => ({ projectId: r.projectId, id: r.id }));
+    vscode.postMessage({ type, payload: { runners } });
+  }
+
   return (
     <div style={{
       fontFamily: 'var(--vscode-font-family)', color: 'var(--feed-fg)', background: 'var(--feed-bg)',
@@ -96,10 +132,20 @@ export function CloudRunnersView() {
         padding: '14px 24px', borderBottom: '1px solid var(--feed-border)', flexShrink: 0,
       }}>
         <span style={{ fontSize: 16, fontWeight: 700 }}>Cloud Runners</span>
-        <button
-          onClick={refresh}
-          style={{ padding: '5px 14px', fontSize: 12, background: 'var(--feed-button-bg)', color: 'var(--feed-button-fg)', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-        >Refresh</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {selected.size > 0 && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <span style={{ color: 'var(--feed-muted)' }}>{selected.size} selected</span>
+              <button style={actionBtn} disabled={eligibility.startable === 0} onClick={() => bulk('cloudRunnerBulkStart')}>Start {eligibility.startable}</button>
+              <button style={actionBtn} disabled={eligibility.stoppable === 0} onClick={() => bulk('cloudRunnerBulkStop')}>Stop {eligibility.stoppable}</button>
+              <button style={{ ...actionBtn, color: 'var(--feed-error)' }} onClick={() => bulk('cloudRunnerBulkDelete')}>Delete {selected.size}</button>
+            </span>
+          )}
+          <button
+            onClick={refresh}
+            style={{ padding: '5px 14px', fontSize: 12, background: 'var(--feed-button-bg)', color: 'var(--feed-button-fg)', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+          >Refresh</button>
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
@@ -114,6 +160,14 @@ export function CloudRunnersView() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ position: 'sticky', top: 0, background: 'var(--feed-bg)', zIndex: 1 }}>
+                <th style={{ ...th, width: 28 }}>
+                  <input
+                    type="checkbox"
+                    aria-label="Select all runners"
+                    checked={selected.size > 0 && selected.size === state.runners.length}
+                    onChange={toggleAll}
+                  />
+                </th>
                 <th style={th}>Name</th>
                 <th style={th}>Status</th>
                 <th style={th}>Pod Status</th>
@@ -127,6 +181,14 @@ export function CloudRunnersView() {
             <tbody>
               {state.runners.map(r => (
                 <tr key={r.id}>
+                  <td style={{ ...td, width: 28 }}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.name}`}
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)}
+                    />
+                  </td>
                   <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
                   <td style={td}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

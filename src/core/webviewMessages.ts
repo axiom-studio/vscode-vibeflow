@@ -499,7 +499,13 @@ export type CloudRunnersClientMessage =
   | { type: 'cloudRunnerDelete'; payload: { projectId: number; id: number; name: string } }
   // Open the Manage wizard for a runner (#2817). The list host forwards this to
   // the vibeflow.openCloudRunnerManage command.
-  | { type: 'cloudRunnerManage'; payload: { projectId: number; id: number; name: string } };
+  | { type: 'cloudRunnerManage'; payload: { projectId: number; id: number; name: string } }
+  // Bulk lifecycle actions (#2893) — the toolbar fans these out over the
+  // single-runner client methods with Promise.allSettled and a summary toast.
+  // Each entry carries the LOCAL projectId + id (+ name for the delete confirm).
+  | { type: 'cloudRunnerBulkStart'; payload: { runners: { projectId: number; id: number }[] } }
+  | { type: 'cloudRunnerBulkStop'; payload: { runners: { projectId: number; id: number }[] } }
+  | { type: 'cloudRunnerBulkDelete'; payload: { runners: { projectId: number; id: number; name: string }[] } };
 
 // ============================================================
 // Git Providers page (#2822) — Browse-nav list of the user's git providers.

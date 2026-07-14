@@ -77,6 +77,38 @@ describe('CloudRunnersView', () => {
     expect(screen.getByText('main')).toBeTruthy();
   });
 
+  it('selects runners and fans out a bulk stop over the eligible rows (#2893)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([
+      runner({ id: 1, name: 'a', status: 'active' }),
+      runner({ id: 2, name: 'b', status: 'stopped' }),
+    ]);
+    fireEvent.click(screen.getByLabelText('Select a'));
+    fireEvent.click(screen.getByLabelText('Select b'));
+    expect(screen.getByText('2 selected')).toBeTruthy();
+    // Stop is eligible for the running runner only.
+    fireEvent.click(screen.getByRole('button', { name: 'Stop 1' }));
+    expect(spy).toHaveBeenCalledWith({
+      type: 'cloudRunnerBulkStop',
+      payload: { runners: [{ projectId: 28, id: 1 }] },
+    });
+    spy.mockRestore();
+  });
+
+  it('bulk-delete sends every selected runner with its name (#2893)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 1, name: 'a', status: 'active' }), runner({ id: 2, name: 'b', status: 'stopped' })]);
+    fireEvent.click(screen.getByLabelText('Select all runners'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 2' }));
+    expect(spy).toHaveBeenCalledWith({
+      type: 'cloudRunnerBulkDelete',
+      payload: { runners: [{ projectId: 28, id: 1, name: 'a' }, { projectId: 28, id: 2, name: 'b' }] },
+    });
+    spy.mockRestore();
+  });
+
   it('renders the owner email when the server provides it, falling back to #userId (#2889)', () => {
     render(<CloudRunnersView />);
     pushData([

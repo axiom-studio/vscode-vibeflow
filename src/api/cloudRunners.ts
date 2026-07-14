@@ -334,6 +334,21 @@ function isErrorTuple(status: string, health: string): boolean {
 }
 
 /**
+ * Bulk-action eligibility for a selection (#2893): a runner can be started
+ * when it is not already running/transitioning, stopped when it IS running,
+ * and deleted always. Returns the counts driving the toolbar's Start N/Stop N.
+ */
+export function bulkEligibility(statuses: readonly string[]): { startable: number; stoppable: number } {
+  let startable = 0;
+  let stoppable = 0;
+  for (const s of statuses) {
+    if (isRunnerTransitioning(s)) { continue; }
+    if (isRunnerRunning(s)) { stoppable += 1; } else { startable += 1; }
+  }
+  return { startable, stoppable };
+}
+
+/**
  * Status-cell primary action from the (status, podStatus) tuple (#2891, web
  * runnerPrimaryAction parity): one-click 'Authenticate' for a healthy pod
  * awaiting login, 'Manage Agents' for running/error rows, disabled 'Stopped'
