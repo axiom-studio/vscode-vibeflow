@@ -53,7 +53,11 @@ export function CloudRunnerManageView() {
     return () => window.removeEventListener('message', handle);
   }, []);
 
-  if (!state) {
+  // Hold until the initial hydrate completes (#2885/#2886). The host's first
+  // push carries constructor defaults (agentType '', no savedConfig) — mounting
+  // a step on it latches blanks into the form's state initializers, and they
+  // never re-run when the real data arrives on the next push.
+  if (!state || !state.hydrated) {
     return <div style={wrap}><p style={{ fontSize: 12, color: 'var(--feed-muted)' }}>Loading…</p></div>;
   }
 
@@ -158,8 +162,9 @@ function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
 
 function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   // Defaults come from the saved manifest when the runner is already
-  // configured (#2885) — hydrate pushes savedConfig before this step mounts,
-  // so a relaunch starts from the previous configuration, not blanks.
+  // configured (#2885), and the model preset from the loaded agentType (#2886).
+  // Both are read once, at mount — safe only because the view holds "Loading…"
+  // until state.hydrated, so this step cannot mount before the data lands.
   const saved = state.savedConfig;
   const [workingDir, setWorkingDir] = useState(saved?.workingDir ?? '');
   const [project, setProject] = useState(state.defaultProject);
