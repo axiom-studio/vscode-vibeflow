@@ -289,6 +289,7 @@ export class CloudRunnerManagePanel {
       workingDir: cfg.workingDir,
       branch: cfg.branch,
       worktree: cfg.worktree,
+      worktreeName: cfg.worktreeName?.trim() || undefined,
       newBranch: cfg.newBranch,
       llmGateway: cfg.llmGateway,
       skipPermissions: cfg.skipPermissions,

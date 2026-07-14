@@ -564,6 +564,8 @@ export interface ManageLaunchConfig {
   model?: string;
   branch: string;
   worktree: boolean;
+  /** Optional worktree name (#2888); empty/absent → server auto-generates. */
+  worktreeName?: string;
   newBranch: boolean;
   llmGateway: boolean;
   skipPermissions: boolean;

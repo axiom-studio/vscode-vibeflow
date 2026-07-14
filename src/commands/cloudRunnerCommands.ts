@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, LOGIN_METHODS, parseRepoUrls, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
+import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, LOGIN_METHODS, parseRepoUrls, gitRepoUrlAuthError, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -103,7 +103,7 @@ export async function createCloudRunner(
   // a provider (validated below and server-side).
   const providers = await client.listGitProviders().catch(() => []);
   if (providers.length > 0) {
-    const none = { label: '$(circle-slash) No git provider', providerId: undefined as number | undefined };
+    const none = { label: '$(circle-slash) No git provider', providerId: undefined as number | undefined, authMode: undefined as string | undefined };
     const pick = await vscode.window.showQuickPick(
       [
         none,
@@ -111,6 +111,7 @@ export async function createCloudRunner(
           label: `$(key) ${p.name}`,
           description: `${p.gitUrl} · ${p.authMode}`,
           providerId: p.id as number | undefined,
+          authMode: p.authMode as string | undefined,
         })),
       ],
       { placeHolder: 'Git provider for cloning repos (optional)', title: 'Create Cloud Runner' },
@@ -135,6 +136,15 @@ export async function createCloudRunner(
         });
         if (branch === undefined) { return; }
         body.gitRepos = parseRepoUrls(reposInput, branch.trim() || 'main');
+        // Scheme-vs-provider check (#2888): the server rejects mismatches one
+        // step later with a raw error — catch it here with the web's message.
+        for (const repo of body.gitRepos) {
+          const schemeErr = gitRepoUrlAuthError(repo.url, pick.authMode);
+          if (schemeErr) {
+            vscode.window.showErrorMessage(`VibeFlow: ${schemeErr}`);
+            return;
+          }
+        }
       }
     }
   }

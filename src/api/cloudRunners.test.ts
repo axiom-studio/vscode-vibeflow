@@ -44,6 +44,8 @@ import {
   defaultModelForAgent,
   modelOptionsForAgent,
   isPresetModel,
+  gitRepoUrlAuthError,
+  llmGatewaySupportedForAgent,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -521,6 +523,48 @@ describe('buildRunnerManifest', () => {
     expect(withModel.vibeflow.runMode).toBe('direct');
     const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
     expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('gitRepoUrlAuthError (#2888)', () => {
+  it('requires SSH-style URLs for SSH providers and https for PAT/OAuth providers', () => {
+    expect(gitRepoUrlAuthError('https://github.com/o/r.git', 'SSH')).toContain('SSH repository URL');
+    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'SSH')).toBe('');
+    expect(gitRepoUrlAuthError('ssh://git@github.com/o/r.git', 'SSH')).toBe('');
+    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'ACCESS_TOKEN')).toContain('HTTPS repository URL');
+    expect(gitRepoUrlAuthError('https://github.com/o/r.git', 'ACCESS_TOKEN')).toBe('');
+    expect(gitRepoUrlAuthError('http://github.com/o/r.git', 'OAUTH')).toContain('HTTPS repository URL');
+  });
+
+  it('tolerates lowercase auth modes and passes when there is no provider or URL', () => {
+    expect(gitRepoUrlAuthError('git@github.com:o/r.git', 'pat')).toContain('HTTPS repository URL');
+    expect(gitRepoUrlAuthError('https://x/o/r', 'ssh')).toContain('SSH repository URL');
+    expect(gitRepoUrlAuthError('', 'SSH')).toBe('');
+    expect(gitRepoUrlAuthError('https://x/o/r', undefined)).toBe('');
+  });
+});
+
+describe('launch manifest deltas (#2888)', () => {
+  const cfg: LaunchConfig = {
+    agentType: 'claude', authMode: 'oauth', project: 'p', personas: ['developer'],
+    sessionType: 'vibeflow', workingDir: '/w', branch: 'main', worktree: true,
+    newBranch: false, llmGateway: true, skipPermissions: true,
+  };
+
+  it('emits vibeflow.worktreeName only when provided', () => {
+    const withName = buildRunnerManifest({ ...cfg, worktreeName: 'wt-fix' }) as unknown as { vibeflow: { worktreeName?: string } };
+    expect(withName.vibeflow.worktreeName).toBe('wt-fix');
+    const without = buildRunnerManifest(cfg) as unknown as { vibeflow: Record<string, unknown> };
+    expect('worktreeName' in without.vibeflow).toBe(false);
+  });
+
+  it('forces llmGateway off for cursor runners (gateway cannot proxy them)', () => {
+    const cursor = buildRunnerManifest({ ...cfg, agentType: 'cursor' }) as unknown as { vibeflow: { llmGateway: boolean } };
+    expect(cursor.vibeflow.llmGateway).toBe(false);
+    const claude = buildRunnerManifest(cfg) as unknown as { vibeflow: { llmGateway: boolean } };
+    expect(claude.vibeflow.llmGateway).toBe(true);
+    expect(llmGatewaySupportedForAgent('cursor')).toBe(false);
+    expect(llmGatewaySupportedForAgent('codex')).toBe(true);
   });
 });
 
