@@ -77,6 +77,15 @@ describe('CloudRunnersView', () => {
     expect(screen.getByText('main')).toBeTruthy();
   });
 
+  it('posts cloudRunnersCreate from the New Runner header button (#2894)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 1, name: 'a' })]);
+    fireEvent.click(screen.getByRole('button', { name: 'New Runner' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnersCreate' });
+    spy.mockRestore();
+  });
+
   it('selects runners and fans out a bulk stop over the eligible rows (#2893)', () => {
     const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
     render(<CloudRunnersView />);

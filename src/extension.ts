@@ -12,6 +12,7 @@ import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvid
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
+import { createCloudRunner } from './commands/cloudRunnerCommands.js';
 import { CloudRunnerManagePanel } from './views/cloudRunners/CloudRunnerManagePanel.js';
 import { GitProvidersPanel } from './views/gitProviders/GitProvidersPanel.js';
 import { CLOUD_RUNNERS_BUILD_ENABLED } from './api/cloudRunners.js';
@@ -1294,6 +1295,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       CloudRunnersPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
+    }),
+    // The Cloud Runners page's "New Runner" button routes here (#2894) — same
+    // create flow as the Work Items "+" picker, project resolved from context.
+    vscode.commands.registerCommand('vibeflow.createCloudRunner', async () => {
+      if (!CLOUD_RUNNERS_BUILD_ENABLED) {
+        vscode.window.showInformationMessage('VibeFlow: Cloud Runners are not available in this build.');
+        return;
+      }
+      const project = detector.getCachedProject();
+      if (!project) {
+        vscode.window.showErrorMessage('VibeFlow: No project detected. Run "VibeFlow: Setup" first.');
+        return;
+      }
+      if (!client.isAuthenticated()) {
+        vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
+        return;
+      }
+      await createCloudRunner(client, project.projectId);
     }),
     vscode.commands.registerCommand('vibeflow.openGitProviders', () => {
       if (!CLOUD_RUNNERS_BUILD_ENABLED) {

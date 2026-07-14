@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { VibeFlowClient } from '../api/client.js';
 import type { CreateRunnerRequest } from '../api/types.js';
-import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, LOGIN_METHODS, parseRepoUrls, gitRepoUrlAuthError, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
+import { validateCreateRunner, validateRunnerName, RUNNER_NAME_RULES, LOGIN_METHODS, parseRepoUrls, gitRepoUrlAuthError, createRunnerReviewLines, runnerPollState, createRunnerErrorMessage, suggestRunnerName } from '../api/cloudRunners.js';
 import { CloudRunnersPanel } from '../views/cloudRunners/CloudRunnersPanel.js';
 
 const AGENT_TYPES = [
@@ -154,6 +154,21 @@ export async function createCloudRunner(
     vscode.window.showErrorMessage(`VibeFlow: ${validationError}`);
     return;
   }
+
+  // Review-before-deploy (#2894): show the assembled config and require an
+  // explicit confirm. The runner deploys to the operator-configured cluster.
+  const review = await vscode.window.showQuickPick(
+    [
+      { label: '$(rocket) Create runner', confirm: true },
+      { label: '$(x) Cancel', confirm: false },
+    ],
+    {
+      title: 'Review & Deploy',
+      placeHolder: createRunnerReviewLines(body).join('  ·  '),
+      ignoreFocusOut: true,
+    },
+  );
+  if (!review?.confirm) { return; }
 
   // Create OUTSIDE the progress notification so a 409 name-retry prompt
   // doesn't fight it (#3388). 403/502/503 map to specific messages.
