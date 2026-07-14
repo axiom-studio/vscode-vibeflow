@@ -77,6 +77,17 @@ describe('CloudRunnersView', () => {
     expect(screen.getByText('main')).toBeTruthy();
   });
 
+  it('renders the owner email when the server provides it, falling back to #userId (#2889)', () => {
+    render(<CloudRunnersView />);
+    pushData([
+      runner({ id: 1, name: 'alpha', userId: 7, ownerEmail: 'vish@axiomstudio.ai' }),
+      runner({ id: 2, name: 'beta', userId: 9 }),
+    ]);
+    expect(screen.getByText('vish@axiomstudio.ai')).toBeTruthy();
+    expect(screen.queryByText('#7')).toBeNull();
+    expect(screen.getByText('#9')).toBeTruthy();
+  });
+
   it('renders dashes for repository/branch when the pod has no repos yet', () => {
     render(<CloudRunnersView />);
     pushData([runner({ id: 2, name: 'beta', repos: undefined })]);

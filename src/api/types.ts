@@ -732,6 +732,8 @@ export interface CloudRunnerView {
   lastStatusAt: string;
   studioRunnerId: number;
   userId: number;
+  /** Owner's email, resolved server-side for the runner tables (#2889). */
+  ownerEmail?: string;
   projectId: number;
   createdAt: string;
   // The detail endpoint (`GET .../{id}`) additionally returns the agent
