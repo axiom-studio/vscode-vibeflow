@@ -404,6 +404,55 @@ export function firstPresent(...vals: Array<string | undefined>): string {
   return '';
 }
 
+/**
+ * The Configure-form defaults recovered from a runner's saved launch manifest
+ * (#2885) — what the web's applyManifest pre-fills. All values non-secret.
+ */
+export interface SavedRunnerConfig {
+  personas: string[];
+  sessionType?: 'vibeflow' | 'vanilla';
+  branch?: string;
+  worktree?: boolean;
+  worktreeName?: string;
+  newBranch?: boolean;
+  llmGateway?: boolean;
+  skipPermissions?: boolean;
+  workingDir?: string;
+  model?: string;
+}
+
+/**
+ * Map a saved RunnerSession manifest to Configure-form defaults (#2885),
+ * mirroring the web's applyManifest field-for-field. Tolerant: a non-object
+ * manifest yields undefined; unknown personas are dropped; absent fields stay
+ * undefined so the form keeps its own defaults.
+ */
+export function manifestToSavedConfig(manifest: unknown): SavedRunnerConfig | undefined {
+  if (!manifest || typeof manifest !== 'object') { return undefined; }
+  const m = manifest as { vibeflow?: Record<string, unknown>; agent?: Record<string, unknown>; repos?: unknown };
+  const vf = (m.vibeflow && typeof m.vibeflow === 'object' ? m.vibeflow : {}) as Record<string, unknown>;
+  const agent = (m.agent && typeof m.agent === 'object' ? m.agent : {}) as Record<string, unknown>;
+  const repo = Array.isArray(m.repos) ? (m.repos[0] as { path?: unknown } | undefined) : undefined;
+
+  const known = new Set<string>(VIBEFLOW_PERSONAS);
+  const personas = Array.isArray(vf.personas)
+    ? (vf.personas as unknown[]).filter((p): p is string => typeof p === 'string' && known.has(p))
+    : [];
+
+  return {
+    personas,
+    sessionType: vf.sessionType === 'vanilla' ? 'vanilla' : vf.sessionType === 'vibeflow' ? 'vibeflow' : undefined,
+    branch: typeof vf.branch === 'string' && vf.branch ? vf.branch : undefined,
+    worktree: typeof vf.worktree === 'boolean' ? vf.worktree : undefined,
+    worktreeName: typeof vf.worktreeName === 'string' && vf.worktreeName ? vf.worktreeName : undefined,
+    newBranch: typeof vf.newBranch === 'boolean' ? vf.newBranch : undefined,
+    llmGateway: typeof vf.llmGateway === 'boolean' ? vf.llmGateway : undefined,
+    skipPermissions: typeof agent.skipPermissions === 'boolean' ? agent.skipPermissions : undefined,
+    workingDir: repo && typeof repo.path === 'string' && repo.path ? repo.path : undefined,
+    model: typeof agent.model === 'string' && agent.model ? agent.model : undefined,
+  };
+}
+
 /** Inputs for {@link buildRunnerManifest}. All values are non-secret config. */
 export interface LaunchConfig {
   agentType: string;
