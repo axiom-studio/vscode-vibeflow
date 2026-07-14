@@ -46,6 +46,7 @@ import {
   isPresetModel,
   gitRepoUrlAuthError,
   llmGatewaySupportedForAgent,
+  runnerHealthIcon,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -523,6 +524,24 @@ describe('buildRunnerManifest', () => {
     expect(withModel.vibeflow.runMode).toBe('direct');
     const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
     expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('runnerHealthIcon (#2890)', () => {
+  it('classifies the (status, podStatus) tuple like the web', () => {
+    expect(runnerHealthIcon('stopped', '')).toEqual({ kind: 'none', title: '' });
+    expect(runnerHealthIcon('stopping', 'Healthy')).toEqual({ kind: 'none', title: '' });
+    expect(runnerHealthIcon('failed', 'Healthy').kind).toBe('error');
+    expect(runnerHealthIcon('running', 'Degraded').kind).toBe('error');
+    expect(runnerHealthIcon('running', 'Missing').kind).toBe('error');
+    expect(runnerHealthIcon('running', 'Healthy')).toEqual({ kind: 'healthy', title: 'Healthy' });
+    expect(runnerHealthIcon('pending', '').kind).toBe('busy');
+    expect(runnerHealthIcon('authenticating', 'Progressing').kind).toBe('busy');
+  });
+
+  it('carries the stored strings in the error/busy tooltips', () => {
+    expect(runnerHealthIcon('running', 'Degraded').title).toBe('Status: running · Health: Degraded');
+    expect(runnerHealthIcon(undefined, undefined).title).toBe('Provisioning — Status: pending · Health: starting');
   });
 });
 
