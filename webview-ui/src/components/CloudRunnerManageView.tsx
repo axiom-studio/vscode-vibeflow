@@ -6,7 +6,9 @@ import type {
   CloudRunnerManageState,
 } from '../../../src/core/webviewMessages';
 import {
-  VIBEFLOW_PERSONAS,
+  WORKSPACE_PERSONAS,
+  ADVISORY_PERSONAS,
+  togglePersonaSelection,
   canLaunch,
   CUSTOM_MODEL_VALUE,
   defaultModelForAgent,
@@ -165,7 +167,9 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   }, [state.defaultProject, state.repos]);
 
   function togglePersona(p: string) {
-    setPersonas(cur => cur.includes(p) ? cur.filter(x => x !== p) : [...cur, p]);
+    // Workspace personas behave like a radio (one replaces another); advisory
+    // personas toggle (#2887).
+    setPersonas(cur => togglePersonaSelection(cur, p));
   }
 
   function submitClone() {
@@ -248,9 +252,21 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
       </div>
 
       <div style={field}>
-        <span style={label}>Personas</span>
+        <span style={label}>Workspace agent — choose one</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {VIBEFLOW_PERSONAS.map(p => (
+          {WORKSPACE_PERSONAS.map(p => (
+            <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <input type="radio" name="workspace-persona" checked={personas.includes(p)} onChange={() => togglePersona(p)} />
+              {p}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div style={field}>
+        <span style={label}>Advisory &amp; review — select any</span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {ADVISORY_PERSONAS.map(p => (
             <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
               <input type="checkbox" checked={personas.includes(p)} onChange={() => togglePersona(p)} />
               {p}

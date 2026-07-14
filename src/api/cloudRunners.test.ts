@@ -37,6 +37,9 @@ import {
   RUNNER_NAME_MAX,
   LOGIN_METHODS,
   manifestToSavedConfig,
+  WORKSPACE_PERSONAS,
+  ADVISORY_PERSONAS,
+  togglePersonaSelection,
   MODEL_OPTIONS_BY_AGENT,
   defaultModelForAgent,
   modelOptionsForAgent,
@@ -374,11 +377,45 @@ describe('authCompletesAutomatically', () => {
 });
 
 describe('canLaunch', () => {
-  it('requires a working dir, a project, and ≥1 persona', () => {
+  it('requires a working dir, a project, and exactly one workspace persona (#2887)', () => {
     expect(canLaunch('/w', 'proj', ['developer'])).toBe(true);
+    expect(canLaunch('/w', 'proj', ['principal_engineer', 'qa_lead'])).toBe(true);
     expect(canLaunch('', 'proj', ['developer'])).toBe(false);
     expect(canLaunch('/w', '  ', ['developer'])).toBe(false);
     expect(canLaunch('/w', 'proj', [])).toBe(false);
+    // Advisory-only sessions write no code — blocked.
+    expect(canLaunch('/w', 'proj', ['qa_lead', 'security_lead'])).toBe(false);
+    // Two workspace agents would fight over the branch lock — blocked.
+    expect(canLaunch('/w', 'proj', ['developer', 'architect'])).toBe(false);
+  });
+});
+
+describe('persona grouping (#2887)', () => {
+  it('partitions the 9 personas into 3 workspace + 6 advisory', () => {
+    expect([...WORKSPACE_PERSONAS]).toEqual(['developer', 'principal_engineer', 'architect']);
+    expect(ADVISORY_PERSONAS).toHaveLength(6);
+    expect(ADVISORY_PERSONAS).not.toContain('developer');
+  });
+
+  it('workspace picks replace each other (radio semantics), advisory picks toggle', () => {
+    let sel: string[] = [];
+    sel = togglePersonaSelection(sel, 'developer');
+    expect(sel).toEqual(['developer']);
+    sel = togglePersonaSelection(sel, 'qa_lead');
+    expect(sel).toEqual(['developer', 'qa_lead']);
+    sel = togglePersonaSelection(sel, 'architect'); // replaces developer
+    expect(sel).toEqual(['architect', 'qa_lead']);
+    sel = togglePersonaSelection(sel, 'qa_lead'); // toggles off
+    expect(sel).toEqual(['architect']);
+    // Re-picking the current workspace persona is a no-op (radio can't untick).
+    expect(togglePersonaSelection(sel, 'architect')).toEqual(['architect']);
+  });
+
+  it('manifestToSavedConfig keeps only the first workspace persona from a stale manifest', () => {
+    const cfg = manifestToSavedConfig({
+      vibeflow: { personas: ['developer', 'architect', 'qa_lead', 'principal_engineer'] },
+    });
+    expect(cfg?.personas).toEqual(['developer', 'qa_lead']);
   });
 });
 
