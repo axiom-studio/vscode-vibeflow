@@ -37,6 +37,10 @@ import {
   RUNNER_NAME_MAX,
   LOGIN_METHODS,
   manifestToSavedConfig,
+  MODEL_OPTIONS_BY_AGENT,
+  defaultModelForAgent,
+  modelOptionsForAgent,
+  isPresetModel,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -472,6 +476,38 @@ describe('buildRunnerManifest', () => {
   it("falls back to 'claude' when the runner detail carried no loginMethod (web parity: detail.loginMethod || 'claude')", () => {
     const m = buildRunnerManifest(cfg) as unknown as { agent: { loginMethod: string } };
     expect(m.agent.loginMethod).toBe('claude');
+  });
+
+  it('emits agent.model only when a model is chosen, and always launches runMode direct (#2886)', () => {
+    const withModel = buildRunnerManifest({ ...cfg, model: 'claude-opus-4.8' }) as unknown as { agent: { model?: string }; vibeflow: { runMode: string } };
+    expect(withModel.agent.model).toBe('claude-opus-4.8');
+    expect(withModel.vibeflow.runMode).toBe('direct');
+    const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
+    expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('model presets (#2886)', () => {
+  it('covers every agent with a non-empty preset list and a valid default', () => {
+    for (const agent of ['claude', 'codex', 'cursor']) {
+      const options = MODEL_OPTIONS_BY_AGENT[agent];
+      expect(options.length).toBeGreaterThan(0);
+      expect(options.some(o => o.value === defaultModelForAgent(agent))).toBe(true);
+    }
+    expect(defaultModelForAgent(undefined)).toBe('claude-sonnet-5'); // unknown → claude default
+  });
+
+  it('injects a saved non-preset model as the first option (web parity)', () => {
+    const options = modelOptionsForAgent('claude', 'my-org/custom-model');
+    expect(options[0]).toEqual({ value: 'my-org/custom-model', label: 'my-org/custom-model' });
+    // A preset current model does not duplicate.
+    expect(modelOptionsForAgent('claude', 'claude-sonnet-5')).toEqual(MODEL_OPTIONS_BY_AGENT.claude);
+  });
+
+  it('classifies preset vs custom models per agent', () => {
+    expect(isPresetModel('codex', 'gpt-5.5')).toBe(true);
+    expect(isPresetModel('codex', 'claude-sonnet-5')).toBe(false);
+    expect(isPresetModel(undefined, 'claude-sonnet-5')).toBe(true); // defaults to claude list
   });
 });
 

@@ -405,6 +405,65 @@ export function firstPresent(...vals: Array<string | undefined>): string {
 }
 
 /**
+ * Per-agent model presets (#2886) — mirrors the web CloudRunnerDetail
+ * MODEL_OPTIONS_BY_AGENT verbatim. The manifest's `agent.model` is what the
+ * pod agent actually runs; absent → the server/agent default.
+ */
+export const MODEL_OPTIONS_BY_AGENT: Record<string, ReadonlyArray<{ value: string; label: string }>> = {
+  claude: [
+    { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { value: 'claude-fable-5', label: 'Claude Fable 5' },
+    { value: 'claude-opus-4.8-fast', label: 'Claude Opus 4.8 Fast' },
+    { value: 'claude-opus-4.8', label: 'Claude Opus 4.8' },
+    { value: 'claude-sonnet-4.6', label: 'Claude Sonnet 4.6' },
+    { value: 'claude-opus-4.6', label: 'Claude Opus 4.6' },
+  ],
+  codex: [
+    { value: 'gpt-5.5', label: 'GPT-5.5' },
+    { value: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' },
+    { value: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+    { value: 'gpt-5.2-codex', label: 'GPT-5.2 Codex' },
+    { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max' },
+    { value: 'gpt-5-codex', label: 'GPT-5 Codex' },
+    { value: 'gpt-5', label: 'GPT-5' },
+    { value: 'o4-mini', label: 'o4 Mini' },
+  ],
+  cursor: [
+    { value: 'composer-2.5-fast', label: 'Composer 2.5 Fast' },
+    { value: 'gpt-5', label: 'GPT-5' },
+    { value: 'sonnet-4-thinking', label: 'Sonnet 4 Thinking' },
+    { value: 'auto', label: 'Auto' },
+  ],
+};
+
+/** Sentinel select value for the free-text custom model id (#2886). */
+export const CUSTOM_MODEL_VALUE = '__custom_model__';
+
+/** The web's per-agent default model (CloudRunnerDetail defaultModelForAgent). */
+export function defaultModelForAgent(agentType: string | undefined): string {
+  if (agentType === 'codex') { return 'gpt-5.5'; }
+  if (agentType === 'cursor') { return 'composer-2.5-fast'; }
+  return 'claude-sonnet-5';
+}
+
+/**
+ * Preset options for an agent, with the current (e.g. manifest-saved) model
+ * injected as the first option when it isn't a preset — so a custom model
+ * saved earlier still renders as the selected value (web parity).
+ */
+export function modelOptionsForAgent(agentType: string | undefined, currentModel?: string): ReadonlyArray<{ value: string; label: string }> {
+  const options = MODEL_OPTIONS_BY_AGENT[agentType || 'claude'] || MODEL_OPTIONS_BY_AGENT.claude;
+  if (!currentModel || options.some(o => o.value === currentModel)) { return options; }
+  return [{ value: currentModel, label: currentModel }, ...options];
+}
+
+/** Is `model` one of the agent's presets? Drives the preset-vs-custom mode. */
+export function isPresetModel(agentType: string | undefined, model: string): boolean {
+  const options = MODEL_OPTIONS_BY_AGENT[agentType || 'claude'] || MODEL_OPTIONS_BY_AGENT.claude;
+  return options.some(o => o.value === model);
+}
+
+/**
  * The Configure-form defaults recovered from a runner's saved launch manifest
  * (#2885) — what the web's applyManifest pre-fills. All values non-secret.
  */
@@ -458,6 +517,8 @@ export interface LaunchConfig {
   agentType: string;
   authMode: string;
   loginMethod?: string;
+  /** Model id the pod agent runs (#2886); absent → server/agent default. */
+  model?: string;
   project: string;
   personas: readonly string[];
   sessionType: 'vibeflow' | 'vanilla';
@@ -483,6 +544,7 @@ export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> 
       type: cfg.agentType,
       authMode: cfg.authMode,
       loginMethod: cfg.loginMethod ?? 'claude',
+      ...(cfg.model ? { model: cfg.model } : {}),
       skipPermissions: cfg.skipPermissions,
     },
     vibeflow: {
@@ -496,6 +558,9 @@ export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> 
       worktree: cfg.worktree,
       newBranch: cfg.newBranch,
       llmGateway: cfg.llmGateway,
+      // The web always launches with runMode 'direct' — keep the manifests
+      // byte-compatible for the cortex reconcilers (#2886).
+      runMode: 'direct',
     },
     mcpServers: [{
       name: 'vibeflow',
