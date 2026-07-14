@@ -89,6 +89,16 @@ export function CloudRunnerManageView() {
 
 function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
   const [code, setCode] = useState('');
+  // '' | 'url' | 'code' — which value was just copied (for the "Copied ✓" flash).
+  const [copied, setCopied] = useState<'' | 'url' | 'code'>('');
+
+  async function copy(text: string, which: 'url' | 'code') {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(which);
+      setTimeout(() => setCopied(''), 1500);
+    } catch { /* clipboard unavailable in this host — no-op */ }
+  }
 
   if (!state.podReady) {
     return <p style={{ fontSize: 12, color: 'var(--feed-muted)' }}>Pod is starting ({state.podStatus || 'pending'})…</p>;
@@ -108,13 +118,25 @@ function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
   return (
     <div>
       <div style={field}>
-        <span style={label}>Authentication URL</span>
-        <a href={state.oauthUrl} style={{ fontSize: 12, color: 'var(--feed-link, #4daafc)', wordBreak: 'break-all' }}>{state.oauthUrl} ↗</a>
+        <span style={label}>Sign in</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {/* Clean button instead of the raw URL dump (web parity) — the full
+              URL stays on the href and is available via Copy link. */}
+          <a href={state.oauthUrl} style={{ ...btn, textDecoration: 'none', display: 'inline-block' }}>Open sign-in page ↗</a>
+          <button style={ghostBtn} onClick={() => copy(state.oauthUrl ?? '', 'url')}>
+            {copied === 'url' ? 'Copied ✓' : 'Copy link'}
+          </button>
+        </div>
       </div>
       {state.oauthCode && (
         <div style={field}>
           <span style={label}>Device code</span>
-          <code style={{ fontSize: 13, padding: '4px 8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: 4, alignSelf: 'flex-start' }}>{state.oauthCode}</code>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <code style={{ fontSize: 13, padding: '4px 8px', background: 'var(--vscode-textCodeBlock-background)', borderRadius: 4 }}>{state.oauthCode}</code>
+            <button style={ghostBtn} onClick={() => copy(state.oauthCode ?? '', 'code')}>
+              {copied === 'code' ? 'Copied ✓' : 'Copy'}
+            </button>
+          </div>
         </div>
       )}
       {state.needsPasteBack ? (
