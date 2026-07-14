@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
+import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
+import { backgroundIntervalMs } from '../../core/pollingConfig.js';
 import {
   assertNever,
   type CloudRunnerListRow,
@@ -32,16 +34,19 @@ export class CloudRunnersPanel {
   private readonly panel: vscode.WebviewPanel;
   private lastFetchAt = 0;
   private disposed = false;
+  private pollSub: Disposer | undefined;
+  private settling = false; // a post-action settle-poll owns the refresh cadence
 
   private constructor(
     panel: vscode.WebviewPanel,
     private readonly client: VibeFlowClient,
     private readonly projectId: number,
+    private readonly coordinator: PollingCoordinator,
   ) {
     this.panel = panel;
   }
 
-  static open(extensionUri: vscode.Uri, client: VibeFlowClient, projectId: number, projectName: string): void {
+  static open(extensionUri: vscode.Uri, client: VibeFlowClient, projectId: number, projectName: string, coordinator: PollingCoordinator): void {
     if (CloudRunnersPanel.instance) {
       CloudRunnersPanel.instance.panel.reveal();
       return;
@@ -60,7 +65,7 @@ export class CloudRunnersPanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new CloudRunnersPanel(panel, client, projectId);
+    const instance = new CloudRunnersPanel(panel, client, projectId, coordinator);
     CloudRunnersPanel.instance = instance;
     instance.attach();
   }
@@ -78,8 +83,18 @@ export class CloudRunnersPanel {
       if (Date.now() - this.lastFetchAt < 1000) { return; }
       void this.load();
     });
+    // Ambient auto-refresh (#2892) — the shared coordinator pauses on window
+    // blur and dedups in-flight fetches, so a runner changing state on its own
+    // (reconciler, another client) shows up without a manual refresh. Silent:
+    // background poll failures must not raise error banners. Skipped while a
+    // post-action settle-poll already owns the cadence.
+    this.pollSub = this.coordinator.subscribe(backgroundIntervalMs(), () => {
+      if (this.panel.visible && !this.settling) { void this.load(true); }
+    }, 'cloud-runners');
     this.panel.onDidDispose(() => {
       this.disposed = true;
+      this.pollSub?.dispose();
+      this.pollSub = undefined;
       if (CloudRunnersPanel.instance === this) {
         CloudRunnersPanel.instance = undefined;
       }
@@ -157,23 +172,32 @@ export class CloudRunnersPanel {
    * runner is no longer transitioning, on timeout, or if the panel is disposed.
    */
   private async pollUntilSettled(projectId: number, id: number): Promise<void> {
-    for (let i = 0; i < SETTLE_POLL_MAX && !this.disposed; i++) {
-      await delay(SETTLE_POLL_MS);
-      if (this.disposed) { return; }
-      let settled = false;
-      try {
-        const s = await this.client.getRunnerStatus(projectId, id);
-        settled = !!s.status && !isRunnerTransitioning(s.status);
-      } catch {
-        // Transient (e.g. 409 not-provisioned-yet) — keep polling.
+    this.settling = true; // suppress ambient polling while we own the cadence
+    try {
+      for (let i = 0; i < SETTLE_POLL_MAX && !this.disposed; i++) {
+        await delay(SETTLE_POLL_MS);
+        if (this.disposed) { return; }
+        let settled = false;
+        try {
+          const s = await this.client.getRunnerStatus(projectId, id);
+          settled = !!s.status && !isRunnerTransitioning(s.status);
+        } catch {
+          // Transient (e.g. 409 not-provisioned-yet) — keep polling.
+        }
+        if (this.disposed) { return; }
+        await this.load();
+        if (settled) { return; }
       }
-      if (this.disposed) { return; }
-      await this.load();
-      if (settled) { return; }
+    } finally {
+      this.settling = false;
     }
   }
 
-  private async load(): Promise<void> {
+  /**
+   * Reload the table. `silent` (ambient poll) suppresses the error banner so a
+   * transient background failure doesn't disrupt the user (#2892).
+   */
+  private async load(silent = false): Promise<void> {
     this.lastFetchAt = Date.now();
     try {
       const runners = await this.client.listProjectCloudRunners(this.projectId);
@@ -191,6 +215,7 @@ export class CloudRunnersPanel {
       }));
       this.post({ type: 'cloudRunnersData', payload: { runners: rows, generatedAt: new Date().toISOString() } });
     } catch (err) {
+      if (silent) { return; } // background poll — don't surface a banner
       this.post({ type: 'cloudRunnersError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
   }
