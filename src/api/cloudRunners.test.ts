@@ -47,6 +47,7 @@ import {
   gitRepoUrlAuthError,
   llmGatewaySupportedForAgent,
   runnerHealthIcon,
+  runnerPrimaryAction,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -524,6 +525,21 @@ describe('buildRunnerManifest', () => {
     expect(withModel.vibeflow.runMode).toBe('direct');
     const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
     expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('runnerPrimaryAction (#2891)', () => {
+  it('derives the one-click action from the (status, podStatus) tuple like the web', () => {
+    expect(runnerPrimaryAction('stopped', '')).toEqual({ label: 'Stopped', disabled: true });
+    expect(runnerPrimaryAction('stopping', 'Healthy')).toEqual({ label: 'Stopped', disabled: true });
+    expect(runnerPrimaryAction('failed', '')).toEqual({ label: 'Manage Agents', disabled: false });
+    expect(runnerPrimaryAction('running', 'Degraded')).toEqual({ label: 'Manage Agents', disabled: false });
+    expect(runnerPrimaryAction('authenticating', 'Healthy')).toEqual({ label: 'Authenticate', disabled: false });
+    expect(runnerPrimaryAction('running', 'Healthy')).toEqual({ label: 'Manage Agents', disabled: false });
+    expect(runnerPrimaryAction('active', 'Healthy')).toEqual({ label: 'Manage Agents', disabled: false });
+    // Healthy pod required for the one-click paths — otherwise still coming up.
+    expect(runnerPrimaryAction('authenticating', 'Progressing')).toEqual({ label: 'Initializing', disabled: true });
+    expect(runnerPrimaryAction('pending', '')).toEqual({ label: 'Initializing', disabled: true });
   });
 });
 
