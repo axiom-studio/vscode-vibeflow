@@ -1293,7 +1293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
         return;
       }
-      CloudRunnersPanel.open(context.extensionUri, client, project.projectId, project.projectName);
+      CloudRunnersPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
     }),
     vscode.commands.registerCommand('vibeflow.openGitProviders', () => {
       if (!CLOUD_RUNNERS_BUILD_ENABLED) {
