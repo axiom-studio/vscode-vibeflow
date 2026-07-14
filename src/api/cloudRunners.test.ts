@@ -36,6 +36,7 @@ import {
   RUNNER_NAME_RULES,
   RUNNER_NAME_MAX,
   LOGIN_METHODS,
+  manifestToSavedConfig,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -471,6 +472,41 @@ describe('buildRunnerManifest', () => {
   it("falls back to 'claude' when the runner detail carried no loginMethod (web parity: detail.loginMethod || 'claude')", () => {
     const m = buildRunnerManifest(cfg) as unknown as { agent: { loginMethod: string } };
     expect(m.agent.loginMethod).toBe('claude');
+  });
+});
+
+describe('manifestToSavedConfig (#2885)', () => {
+  it('recovers every Configure default from a full saved manifest', () => {
+    const cfg = manifestToSavedConfig({
+      agent: { type: 'claude', model: 'claude-opus-4.8', skipPermissions: false },
+      vibeflow: {
+        personas: ['principal_engineer', 'qa_lead', 'not-a-persona'],
+        sessionType: 'vanilla', branch: 'develop', worktree: true,
+        worktreeName: 'wt-1', newBranch: true, llmGateway: true,
+      },
+      repos: [{ path: '/workspace/repos/app', branch: 'develop', trusted: true }],
+    });
+    expect(cfg).toEqual({
+      personas: ['principal_engineer', 'qa_lead'], // unknown persona dropped
+      sessionType: 'vanilla', branch: 'develop', worktree: true,
+      worktreeName: 'wt-1', newBranch: true, llmGateway: true,
+      skipPermissions: false, workingDir: '/workspace/repos/app', model: 'claude-opus-4.8',
+    });
+  });
+
+  it('leaves absent fields undefined so the form keeps its own defaults', () => {
+    const cfg = manifestToSavedConfig({ vibeflow: { personas: ['developer'] } });
+    expect(cfg?.personas).toEqual(['developer']);
+    expect(cfg?.branch).toBeUndefined();
+    expect(cfg?.sessionType).toBeUndefined();
+    expect(cfg?.model).toBeUndefined();
+    expect(cfg?.workingDir).toBeUndefined();
+  });
+
+  it('tolerates garbage: non-object manifests yield undefined, a missing vibeflow block yields empty personas', () => {
+    expect(manifestToSavedConfig(undefined)).toBeUndefined();
+    expect(manifestToSavedConfig('boom')).toBeUndefined();
+    expect(manifestToSavedConfig({ agent: { skipPermissions: true } })?.personas).toEqual([]);
   });
 });
 

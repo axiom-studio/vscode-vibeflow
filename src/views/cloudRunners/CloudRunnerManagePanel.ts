@@ -15,6 +15,7 @@ import {
   authCompletesAutomatically,
   buildRunnerManifest,
   runnerActionErrorMessage,
+  manifestToSavedConfig,
 } from '../../api/cloudRunners.js';
 import { openRunnerTerminal } from './CloudRunnerTerminal.js';
 
@@ -154,11 +155,16 @@ export class CloudRunnerManagePanel {
   private async hydrate(): Promise<void> {
     this.state.busy = true;
     this.push();
-    const [runner, status] = await Promise.all([
+    const [runner, status, manifest] = await Promise.all([
       this.client.getCloudRunner(this.projectId, this.runnerId).catch(() => undefined),
       this.client.getRunnerStatus(this.projectId, this.runnerId).catch(() => undefined),
+      this.client.getRunnerManifest(this.projectId, this.runnerId).catch(() => undefined),
     ]);
     if (this.disposed) { return; }
+
+    // Pre-fill Configure from the saved manifest only when the runner is
+    // already configured (web parity, #2885) — a fresh runner keeps defaults.
+    this.state.savedConfig = status?.configured ? manifestToSavedConfig(manifest) : undefined;
 
     this.state.agentType = runner?.agentType ?? '';
     this.state.authMode = runner?.authMode ?? '';

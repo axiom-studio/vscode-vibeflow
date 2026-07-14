@@ -125,15 +125,19 @@ function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
 }
 
 function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
-  const [workingDir, setWorkingDir] = useState('');
+  // Defaults come from the saved manifest when the runner is already
+  // configured (#2885) — hydrate pushes savedConfig before this step mounts,
+  // so a relaunch starts from the previous configuration, not blanks.
+  const saved = state.savedConfig;
+  const [workingDir, setWorkingDir] = useState(saved?.workingDir ?? '');
   const [project, setProject] = useState(state.defaultProject);
-  const [personas, setPersonas] = useState<string[]>([]);
-  const [sessionType, setSessionType] = useState<'vibeflow' | 'vanilla'>('vibeflow');
-  const [branch, setBranch] = useState('main');
-  const [worktree, setWorktree] = useState(false);
-  const [newBranch, setNewBranch] = useState(false);
-  const [llmGateway, setLlmGateway] = useState(false);
-  const [skipPermissions, setSkipPermissions] = useState(true);
+  const [personas, setPersonas] = useState<string[]>(saved?.personas ?? []);
+  const [sessionType, setSessionType] = useState<'vibeflow' | 'vanilla'>(saved?.sessionType ?? 'vibeflow');
+  const [branch, setBranch] = useState(saved?.branch ?? 'main');
+  const [worktree, setWorktree] = useState(saved?.worktree ?? false);
+  const [newBranch, setNewBranch] = useState(saved?.newBranch ?? false);
+  const [llmGateway, setLlmGateway] = useState(saved?.llmGateway ?? false);
+  const [skipPermissions, setSkipPermissions] = useState(saved?.skipPermissions ?? true);
   // "+ Clone repository" inline form (web CloudRunnerDetail parity). The host
   // injects the provider's git credentials BEFORE the clone, which is also the
   // recovery path for push access on a relaunched pod (pod creds are ephemeral).

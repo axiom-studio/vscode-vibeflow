@@ -1245,7 +1245,9 @@ export class VibeFlowClient {
   }
 
   async getRunnerManifest(projectId: number, id: number): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>(`${this.runnerBase(projectId, id)}/manifest`);
+    const data = await this.request<unknown>(`${this.runnerBase(projectId, id)}/manifest`);
+    // Relayed endpoint — the manifest arrives inside cortex's envelope (#3630 rule).
+    return unwrapStatusEnvelope<Record<string, unknown>>(data);
   }
 
   async putRunnerManifest(projectId: number, id: number, manifest: Record<string, unknown>): Promise<void> {
