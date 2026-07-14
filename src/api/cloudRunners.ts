@@ -170,10 +170,10 @@ export function gitRepoUrlAuthError(repoUrl: string, authMode: string | undefine
   if (!value || !authMode) { return ''; }
   const mode = authMode.toUpperCase();
   if (mode === 'SSH' && !isSshGitUrl(value)) {
-    return 'SSH key providers require an SSH repository URL, for example git@github.com:org/repo.git.';
+    return 'The repository URL must be an SSH URL (for example git@github.com:org/repo.git) because the selected git provider authenticates with an SSH key.';
   }
   if ((mode === 'ACCESS_TOKEN' || mode === 'PAT' || mode === 'OAUTH') && !isHttpsGitUrl(value)) {
-    return 'PAT/OAuth providers require an HTTPS repository URL, for example https://github.com/org/repo.git.';
+    return 'The repository URL must be an HTTPS URL (for example https://github.com/org/repo.git) because the selected git provider authenticates with a token (PAT/OAuth).';
   }
   return '';
 }
