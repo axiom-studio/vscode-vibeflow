@@ -48,6 +48,7 @@ import {
   llmGatewaySupportedForAgent,
   runnerHealthIcon,
   runnerPrimaryAction,
+  bulkEligibility,
   type LaunchConfig,
 } from './cloudRunners.js';
 import type { FeatureFlags, CreateRunnerRequest } from './types.js';
@@ -525,6 +526,18 @@ describe('buildRunnerManifest', () => {
     expect(withModel.vibeflow.runMode).toBe('direct');
     const withoutModel = buildRunnerManifest(cfg) as unknown as { agent: Record<string, unknown> };
     expect('model' in withoutModel.agent).toBe(false); // server default applies
+  });
+});
+
+describe('bulkEligibility (#2893)', () => {
+  it('counts startable (not running) and stoppable (running) rows, skipping transitioning', () => {
+    expect(bulkEligibility(['stopped', 'running', 'active', 'starting', 'stopping', 'failed'])).toEqual({
+      startable: 2, // stopped + failed
+      stoppable: 2, // running + active
+      // starting/stopping skipped
+    });
+    expect(bulkEligibility([])).toEqual({ startable: 0, stoppable: 0 });
+    expect(bulkEligibility(['authenticating'])).toEqual({ startable: 0, stoppable: 1 }); // pod up
   });
 });
 

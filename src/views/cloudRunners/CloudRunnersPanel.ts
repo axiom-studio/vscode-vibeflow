@@ -154,9 +154,65 @@ export class CloudRunnersPanel {
         );
         return;
       }
+      case 'cloudRunnerBulkStart':
+      case 'cloudRunnerBulkStop': {
+        const runners = msg.payload.runners;
+        if (runners.length === 0) { return; }
+        const start = msg.type === 'cloudRunnerBulkStart';
+        const verb = start ? 'start' : 'stop';
+        const results = await Promise.allSettled(runners.map(r =>
+          start ? this.client.startCloudRunner(r.projectId, r.id) : this.client.stopCloudRunner(r.projectId, r.id),
+        ));
+        this.reportBulk(verb, results);
+        await this.load();
+        // Track the reconciler for each runner that accepted the action.
+        runners.forEach((r, i) => { if (results[i].status === 'fulfilled') { void this.pollUntilSettled(r.projectId, r.id); } });
+        return;
+      }
+      case 'cloudRunnerBulkDelete': {
+        const runners = msg.payload.runners;
+        if (runners.length === 0) { return; }
+        const names = runners.map(r => r.name).join(', ');
+        const confirm = await vscode.window.showWarningMessage(
+          `Delete ${runners.length} runner${runners.length === 1 ? '' : 's'} (${names})? This removes the Studio runners.`,
+          { modal: true },
+          'Delete',
+        );
+        if (confirm !== 'Delete') { return; }
+        const results = await Promise.allSettled(runners.map(async r => {
+          try {
+            await this.client.deleteCloudRunner(r.projectId, r.id);
+          } catch (err) {
+            // A 404 means it's already gone — treat as success.
+            if ((err as { status?: number }).status === 404) { return; }
+            throw err;
+          }
+        }));
+        this.reportBulk('delete', results);
+        await this.load();
+        return;
+      }
       default:
         assertNever(msg);
     }
+  }
+
+  /** Summarize a bulk fan-out: "N started · M failed" toast (#2893). */
+  private reportBulk(verb: string, results: PromiseSettledResult<unknown>[]): void {
+    const ok = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - ok;
+    const past = verb === 'stop' ? 'stopped' : `${verb}d`; // start→started, delete→deleted, stop→stopped
+    if (failed === 0) {
+      vscode.window.showInformationMessage(`VibeFlow: ${ok} runner${ok === 1 ? '' : 's'} ${past}.`);
+      return;
+    }
+    // Surface one representative error via the shared mapper.
+    const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    const status = (firstErr?.reason as { status?: number } | undefined)?.status;
+    const text = firstErr?.reason instanceof Error ? firstErr.reason.message : String(firstErr?.reason ?? '');
+    vscode.window.showWarningMessage(
+      `VibeFlow: ${ok} ${past}, ${failed} failed — ${runnerActionErrorMessage(status, text)}`,
+    );
   }
 
   /** Surface a start/stop/delete failure as a toast (keeps the table intact). */
