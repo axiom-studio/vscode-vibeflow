@@ -491,6 +491,8 @@ export type CloudRunnersHostMessage =
 export type CloudRunnersClientMessage =
   | { type: 'cloudRunnersLoad' }
   | { type: 'cloudRunnersRefresh' }
+  // "New Runner" header button (#2894) — the host runs the create flow.
+  | { type: 'cloudRunnersCreate' }
   // Per-runner lifecycle actions (#2816). Carry the LOCAL projectId + runner
   // id (delete also the name for the confirm dialog). Owner/admin enforced
   // server-side; the host maps 403/409/502/503 + transient-pod errors.
