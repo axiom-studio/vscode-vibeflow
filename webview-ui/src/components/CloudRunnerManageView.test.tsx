@@ -52,6 +52,23 @@ describe('CloudRunnerManageView', () => {
     spy.mockRestore();
   });
 
+  it('shows a clean sign-in link (not the raw URL) and copies URL + device code (#2905)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'authenticate', podReady: true, oauthUrl: 'https://auth.example/x?state=abc', oauthCode: 'WXYZ', needsPasteBack: true }));
+
+    // The full URL is on the link href, not dumped as visible text.
+    const link = screen.getByRole('link', { name: 'Open sign-in page ↗' }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('https://auth.example/x?state=abc');
+    expect(screen.queryByText('https://auth.example/x?state=abc')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledWith('https://auth.example/x?state=abc');
+    expect(writeText).toHaveBeenCalledWith('WXYZ');
+  });
+
   it('disables Launch until a working dir, project and persona are set', () => {
     render(<CloudRunnerManageView />);
     pushState(baseState({ step: 'configure' }));
