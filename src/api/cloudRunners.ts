@@ -324,6 +324,33 @@ export function authCompletesAutomatically(agentType: string | undefined): boole
 }
 
 /**
+ * Pod-health values that mean "something is wrong" (web RUNNER_ERROR_HEALTH):
+ * helm Health.Status degraded/missing/unknown.
+ */
+export const RUNNER_ERROR_HEALTH = ['degraded', 'missing', 'unknown'] as const;
+
+function isErrorTuple(status: string, health: string): boolean {
+  return status === 'failed' || (RUNNER_ERROR_HEALTH as readonly string[]).includes(health);
+}
+
+/**
+ * Health-cell classification from the (status, podStatus) tuple (#2890, web
+ * runnerHealthIcon parity): 'none' for stopped rows (a spinner would misread
+ * as activity), 'error' with a tooltip carrying the stored strings, 'healthy',
+ * or 'busy' while provisioning/progressing.
+ */
+export function runnerHealthIcon(status: string | undefined, podStatus: string | undefined): { kind: 'none' | 'error' | 'healthy' | 'busy'; title: string } {
+  const s = (status || '').toLowerCase();
+  const h = (podStatus || '').toLowerCase();
+  if (s === 'stopped' || s === 'stopping') { return { kind: 'none', title: '' }; }
+  if (isErrorTuple(s, h)) {
+    return { kind: 'error', title: `Status: ${status || '—'} · Health: ${podStatus || '—'}` };
+  }
+  if (h === 'healthy') { return { kind: 'healthy', title: 'Healthy' }; }
+  return { kind: 'busy', title: `Provisioning — Status: ${status || 'pending'} · Health: ${podStatus || 'starting'}` };
+}
+
+/**
  * The "Route LLM through Axiom Cloud Gateway" option applies only to agents
  * whose model calls the platform proxies — Cursor routes LLM requests through
  * the user's own Cursor account, so the option is not applicable (#2888, web
