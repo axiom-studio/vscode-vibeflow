@@ -5,7 +5,14 @@ import type {
   CloudRunnersClientMessage,
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
-import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos } from '../../../src/api/cloudRunners';
+import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos, runnerHealthIcon } from '../../../src/api/cloudRunners';
+
+/** Glyph per health kind (#2890) — text glyphs so no icon lib enters the CSP. */
+const HEALTH_GLYPH: Record<string, { glyph: string; color: string }> = {
+  healthy: { glyph: '✓', color: 'var(--feed-success, #3fb950)' },
+  error: { glyph: '⚠', color: 'var(--feed-error, #f85149)' },
+  busy: { glyph: '◌', color: '#d29922' },
+};
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage) => void };
 
@@ -127,7 +134,18 @@ export function CloudRunnersView() {
                       {r.status}
                     </span>
                   </td>
-                  <td style={{ ...td, color: 'var(--feed-muted)' }}>{r.podStatus || '—'}</td>
+                  <td style={{ ...td, color: 'var(--feed-muted)' }}>
+                    {(() => {
+                      const health = runnerHealthIcon(r.status, r.podStatus);
+                      const g = HEALTH_GLYPH[health.kind];
+                      return (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title={health.title || undefined} aria-label={health.title || undefined}>
+                          {g && <span style={{ color: g.color }}>{g.glyph}</span>}
+                          {r.podStatus || '—'}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }} title={r.ownerEmail || undefined}>{r.ownerEmail || `#${r.userId}`}</td>
                   <td style={td}>{summarizeRepos(r.repos).repo}</td>
                   <td style={{ ...td, fontFamily: 'var(--vscode-editor-font-family)' }}>{summarizeRepos(r.repos).branch}</td>
