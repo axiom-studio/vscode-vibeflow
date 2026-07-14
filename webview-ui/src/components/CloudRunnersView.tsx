@@ -128,7 +128,7 @@ export function CloudRunnersView() {
                     </span>
                   </td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{r.podStatus || '—'}</td>
-                  <td style={{ ...td, color: 'var(--feed-muted)' }}>{`#${r.userId}`}</td>
+                  <td style={{ ...td, color: 'var(--feed-muted)' }} title={r.ownerEmail || undefined}>{r.ownerEmail || `#${r.userId}`}</td>
                   <td style={td}>{summarizeRepos(r.repos).repo}</td>
                   <td style={{ ...td, fontFamily: 'var(--vscode-editor-font-family)' }}>{summarizeRepos(r.repos).branch}</td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>{formatCreatedAt(r.createdAt)}</td>
