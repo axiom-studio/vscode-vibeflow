@@ -73,6 +73,7 @@ export class CloudRunnerManagePanel {
       defaultProject: '',
       launching: false,
       busy: true,
+      hydrated: false,
     };
   }
 
@@ -183,6 +184,9 @@ export class CloudRunnerManagePanel {
     });
     this.state.busy = false;
     this.state.error = undefined;
+    // Only now may the webview mount a step: agentType and savedConfig are set,
+    // so the steps' state initializers see the real values (#2885/#2886).
+    this.state.hydrated = true;
     this.push();
 
     if (this.state.step === 'authenticate') { void this.pollStatus(); }
