@@ -282,6 +282,7 @@ export class CloudRunnerManagePanel {
       agentType: this.state.agentType || 'claude',
       authMode: this.state.authMode || 'oauth',
       loginMethod: this.runnerLoginMethod || undefined,
+      model: cfg.model || undefined,
       project: cfg.project,
       personas: cfg.personas,
       sessionType: cfg.sessionType,

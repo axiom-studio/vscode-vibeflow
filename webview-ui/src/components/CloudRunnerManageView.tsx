@@ -5,7 +5,14 @@ import type {
   CloudRunnerManageHostMessage,
   CloudRunnerManageState,
 } from '../../../src/core/webviewMessages';
-import { VIBEFLOW_PERSONAS, canLaunch } from '../../../src/api/cloudRunners';
+import {
+  VIBEFLOW_PERSONAS,
+  canLaunch,
+  CUSTOM_MODEL_VALUE,
+  defaultModelForAgent,
+  isPresetModel,
+  modelOptionsForAgent,
+} from '../../../src/api/cloudRunners';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnerManageClientMessage) => void };
 
@@ -138,6 +145,11 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   const [newBranch, setNewBranch] = useState(saved?.newBranch ?? false);
   const [llmGateway, setLlmGateway] = useState(saved?.llmGateway ?? false);
   const [skipPermissions, setSkipPermissions] = useState(saved?.skipPermissions ?? true);
+  // Model (#2886): per-agent presets + custom id, saved-manifest aware.
+  const [model, setModel] = useState(saved?.model ?? defaultModelForAgent(state.agentType));
+  const [modelMode, setModelMode] = useState<'preset' | 'custom'>(
+    saved?.model && !isPresetModel(state.agentType, saved.model) ? 'custom' : 'preset',
+  );
   // "+ Clone repository" inline form (web CloudRunnerDetail parity). The host
   // injects the provider's git credentials BEFORE the clone, which is also the
   // recovery path for push access on a relaunched pod (pod creds are ephemeral).
@@ -170,7 +182,18 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
     setShowCloneForm(false);
   }
 
-  const ready = canLaunch(workingDir, project, personas);
+  function handleModelSelect(value: string) {
+    if (value === CUSTOM_MODEL_VALUE) {
+      setModelMode('custom');
+      setModel(isPresetModel(state.agentType, model) ? '' : model);
+      return;
+    }
+    setModelMode('preset');
+    setModel(value);
+  }
+
+  const modelOptions = modelOptionsForAgent(state.agentType, modelMode === 'preset' ? model : undefined);
+  const ready = canLaunch(workingDir, project, personas) && (modelMode !== 'custom' || model.trim() !== '');
 
   return (
     <div style={{ maxWidth: 560 }}>
@@ -245,6 +268,24 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
       </div>
 
       <div style={field}>
+        <span style={label}>Model</span>
+        <select
+          style={input}
+          value={modelMode === 'custom' ? CUSTOM_MODEL_VALUE : model}
+          onChange={e => handleModelSelect(e.target.value)}
+        >
+          {modelOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          <option value={CUSTOM_MODEL_VALUE}>Custom model id</option>
+        </select>
+      </div>
+      {modelMode === 'custom' && (
+        <div style={field}>
+          <span style={label}>Custom model id</span>
+          <input style={input} value={model} onChange={e => setModel(e.target.value)} placeholder="provider/model-id" />
+        </div>
+      )}
+
+      <div style={field}>
         <span style={label}>Git branch</span>
         <input style={input} value={branch} onChange={e => setBranch(e.target.value)} />
       </div>
@@ -261,7 +302,7 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
         disabled={!ready || state.busy}
         onClick={() => vscode.postMessage({
           type: 'manageLaunch',
-          payload: { workingDir, project, personas, sessionType, branch, worktree, newBranch, llmGateway, skipPermissions },
+          payload: { workingDir, project, personas, sessionType, model: model.trim(), branch, worktree, newBranch, llmGateway, skipPermissions },
         })}
       >Launch</button>
     </div>

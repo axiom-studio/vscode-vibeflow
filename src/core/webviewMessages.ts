@@ -560,6 +560,8 @@ export interface ManageLaunchConfig {
   project: string;
   personas: string[];
   sessionType: 'vibeflow' | 'vanilla';
+  /** Model id for the pod agent (#2886); empty/absent → server default. */
+  model?: string;
   branch: string;
   worktree: boolean;
   newBranch: boolean;
