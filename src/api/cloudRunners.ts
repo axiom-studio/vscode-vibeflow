@@ -122,6 +122,41 @@ export function validateCreateRunner(body: CreateRunnerRequest): string | null {
   return null;
 }
 
+/** Is `repoUrl` an https(-scheme) git URL? (web isHttpsGitUrl parity) */
+export function isHttpsGitUrl(repoUrl: string): boolean {
+  return repoUrl.trim().toLowerCase().startsWith('https://');
+}
+
+/** Is `repoUrl` SSH-style (`ssh://` or `git@host:path`)? (web isSshGitUrl parity) */
+export function isSshGitUrl(repoUrl: string): boolean {
+  const value = repoUrl.trim();
+  if (value.toLowerCase().startsWith('ssh://')) { return true; }
+  if (value.includes('://')) { return false; }
+  const at = value.indexOf('@');
+  const colon = value.indexOf(':');
+  return at > 0 && colon > at + 1 && colon < value.length - 1;
+}
+
+/**
+ * Validate a repo URL against the picked provider's auth mode (#2888, web
+ * gitRepoUrlAuthError parity): SSH-key providers need an SSH-style URL;
+ * PAT/OAuth providers need https. The list endpoint delivers cortex-style
+ * authMode names (SSH/ACCESS_TOKEN/OAUTH) — lowercase spellings tolerated.
+ * Returns a user-facing message, or '' when acceptable / no provider.
+ */
+export function gitRepoUrlAuthError(repoUrl: string, authMode: string | undefined): string {
+  const value = repoUrl.trim();
+  if (!value || !authMode) { return ''; }
+  const mode = authMode.toUpperCase();
+  if (mode === 'SSH' && !isSshGitUrl(value)) {
+    return 'SSH key providers require an SSH repository URL, for example git@github.com:org/repo.git.';
+  }
+  if ((mode === 'ACCESS_TOKEN' || mode === 'PAT' || mode === 'OAUTH') && !isHttpsGitUrl(value)) {
+    return 'PAT/OAuth providers require an HTTPS repository URL, for example https://github.com/org/repo.git.';
+  }
+  return '';
+}
+
 /**
  * Per-agent OAuth login methods (spec #433 §7.3 `loginMethod`), mirroring the
  * web CreateCloudRunnerModal LOGIN_METHODS verbatim — the values are cortex's
@@ -286,6 +321,16 @@ export function isPodReady(podStatus: string | undefined): boolean {
  */
 export function authCompletesAutomatically(agentType: string | undefined): boolean {
   return agentType === 'codex' || agentType === 'cursor';
+}
+
+/**
+ * The "Route LLM through Axiom Cloud Gateway" option applies only to agents
+ * whose model calls the platform proxies — Cursor routes LLM requests through
+ * the user's own Cursor account, so the option is not applicable (#2888, web
+ * llmGatewaySupportedForAgent parity).
+ */
+export function llmGatewaySupportedForAgent(agentType: string | undefined): boolean {
+  return agentType !== 'cursor';
 }
 
 /**
@@ -563,6 +608,8 @@ export interface LaunchConfig {
   workingDir: string;
   branch: string;
   worktree: boolean;
+  /** Optional worktree name (#2888); absent → server auto-generates one. */
+  worktreeName?: string;
   newBranch: boolean;
   llmGateway: boolean;
   skipPermissions: boolean;
@@ -594,8 +641,10 @@ export function buildRunnerManifest(cfg: LaunchConfig): Record<string, unknown> 
       sessionType: cfg.sessionType,
       branch: cfg.branch,
       worktree: cfg.worktree,
+      ...(cfg.worktreeName ? { worktreeName: cfg.worktreeName } : {}),
       newBranch: cfg.newBranch,
-      llmGateway: cfg.llmGateway,
+      // Force-off for agents the gateway can't proxy (#2888 — cursor).
+      llmGateway: cfg.llmGateway && llmGatewaySupportedForAgent(cfg.agentType),
       // The web always launches with runMode 'direct' — keep the manifests
       // byte-compatible for the cortex reconcilers (#2886).
       runMode: 'direct',
