@@ -560,6 +560,17 @@ export interface CloudRunnerManageState {
   launching: boolean;
   error?: string;
   busy: boolean;
+  /**
+   * One-way latch flipped at the end of the initial hydrate (#2885/#2886).
+   * `hydrate()` pushes `busy: true` with the constructor defaults BEFORE its
+   * REST calls resolve; rendering a wizard step on that first push mounts it
+   * with `agentType: ''` and no `savedConfig`, and the steps' `useState`
+   * initializers can never re-run once the real data lands on push #2. The
+   * webview therefore holds "Loading…" until this is true. Unlike `busy` (which
+   * toggles again for clone/launch) this never goes back to false, so a later
+   * operation can't unmount a step and discard what the user typed.
+   */
+  hydrated: boolean;
 }
 
 /** The Configure-form fields the webview submits; the host builds the manifest. */

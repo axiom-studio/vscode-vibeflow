@@ -9,7 +9,7 @@ function baseState(over: Partial<CloudRunnerManageState> = {}): CloudRunnerManag
     step: 'configure', runnerName: 'runner-a', agentType: 'claude', authMode: 'oauth',
     authenticated: false, configured: false, podStatus: '', podReady: false,
     needsPasteBack: true, repos: [], agentProjects: [], gitProviders: [],
-    defaultProject: '', launching: false, busy: false, ...over,
+    defaultProject: '', launching: false, busy: false, hydrated: true, ...over,
   };
 }
 
@@ -17,6 +17,18 @@ function pushState(s: CloudRunnerManageState) {
   act(() => {
     window.dispatchEvent(new MessageEvent('message', { data: { type: 'manageState', payload: s } }));
   });
+}
+
+/**
+ * The host's REAL hydrate sequence (#2885/#2886): `hydrate()` pushes `busy: true`
+ * with the constructor defaults (agentType '', no savedConfig) BEFORE its REST
+ * calls resolve, and only then pushes the loaded state. Tests that push the
+ * loaded state alone can't see mount-ordering bugs — this helper reproduces the
+ * sequence a real user hits.
+ */
+function hydrateSequence(loaded: Partial<CloudRunnerManageState>) {
+  pushState(baseState({ step: 'configure', agentType: '', savedConfig: undefined, busy: true, hydrated: false }));
+  pushState(baseState({ step: 'configure', ...loaded }));
 }
 
 describe('CloudRunnerManageView', () => {
@@ -89,6 +101,43 @@ describe('CloudRunnerManageView', () => {
       type: 'manageLaunch',
       payload: expect.objectContaining({ workingDir: '/workspace/repos/app', project: 'proj-x', personas: ['principal_engineer'] }),
     }));
+    spy.mockRestore();
+  });
+
+  it('holds Loading… on the busy-first hydrate push instead of mounting a step (#2885)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure', agentType: '', savedConfig: undefined, busy: true, hydrated: false }));
+    // Mounting Configure here is what latched blanks into its state initializers.
+    expect(screen.queryByRole('button', { name: 'Launch' })).toBeNull();
+    expect(screen.getByText('Loading…')).toBeTruthy();
+  });
+
+  it('pre-fills Configure from the saved manifest across the host two-push hydrate (#2885)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnerManageView />);
+    hydrateSequence({
+      agentType: 'claude',
+      defaultProject: 'proj-x',
+      repos: [{ path: '/workspace/repos/app', branch: 'develop' }],
+      savedConfig: {
+        personas: ['developer'], sessionType: 'vanilla', branch: 'develop',
+        worktree: true, worktreeName: 'wt-1', newBranch: true, llmGateway: true,
+        skipPermissions: false, workingDir: '/workspace/repos/app', model: 'claude-opus-4.8',
+      },
+    });
+    // An UNTOUCHED form must already be valid and must relaunch the saved config
+    // verbatim — no field may fall back to a blank/default.
+    const launch = screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement;
+    expect(launch.disabled).toBe(false);
+    fireEvent.click(launch);
+    expect(spy).toHaveBeenCalledWith({
+      type: 'manageLaunch',
+      payload: {
+        workingDir: '/workspace/repos/app', project: 'proj-x', personas: ['developer'],
+        sessionType: 'vanilla', model: 'claude-opus-4.8', branch: 'develop',
+        worktree: true, worktreeName: 'wt-1', newBranch: true, llmGateway: true, skipPermissions: false,
+      },
+    });
     spy.mockRestore();
   });
 
