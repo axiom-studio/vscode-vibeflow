@@ -288,9 +288,13 @@ export function authCompletesAutomatically(agentType: string | undefined): boole
   return agentType === 'codex' || agentType === 'cursor';
 }
 
-/** Launch is enabled only with a working directory, a project, and ≥1 persona. */
+/**
+ * Launch is enabled only with a working directory, a project, and a valid
+ * persona set: exactly ONE workspace persona (#2887) plus any advisors.
+ */
 export function canLaunch(workingDir: string, project: string, personas: readonly string[]): boolean {
-  return workingDir.trim().length > 0 && project.trim().length > 0 && personas.length > 0;
+  const workspaceCount = personas.filter(p => (WORKSPACE_PERSONAS as readonly string[]).includes(p)).length;
+  return workingDir.trim().length > 0 && project.trim().length > 0 && workspaceCount === 1;
 }
 
 /**
@@ -370,6 +374,31 @@ export const VIBEFLOW_PERSONAS = [
   'developer', 'principal_engineer', 'architect', 'ux_designer', 'qa_lead',
   'security_lead', 'product_manager', 'project_manager', 'customer',
 ] as const;
+
+/**
+ * Workspace (code-writing) personas — a session needs exactly ONE (two would
+ * fight over the branch lock; zero writes no code). Mirrors the web's
+ * WORKSPACE_PERSONA_VALUES and src/sessions/personas.ts CODE_AGENT_PERSONAS.
+ */
+export const WORKSPACE_PERSONAS = ['developer', 'principal_engineer', 'architect'] as const;
+
+/** Advisory/review personas — any number may join a session. */
+export const ADVISORY_PERSONAS: readonly string[] =
+  VIBEFLOW_PERSONAS.filter(p => !(WORKSPACE_PERSONAS as readonly string[]).includes(p));
+
+/**
+ * Grouped persona-picker toggle (#2887, web togglePersonaSelection parity):
+ * picking a workspace persona REPLACES any other workspace persona (radio
+ * semantics, workspace-first ordering); advisory personas toggle normally.
+ */
+export function togglePersonaSelection(selected: readonly string[], value: string): string[] {
+  const workspace = WORKSPACE_PERSONAS as readonly string[];
+  if (workspace.includes(value)) {
+    if (selected.includes(value)) { return [...selected]; }
+    return [value, ...selected.filter(p => !workspace.includes(p))];
+  }
+  return selected.includes(value) ? selected.filter(p => p !== value) : [...selected, value];
+}
 
 /** The Manage wizard's steps (Authenticate is oauth-only). */
 export type ManageStep = 'authenticate' | 'configure' | 'launch';
@@ -494,9 +523,18 @@ export function manifestToSavedConfig(manifest: unknown): SavedRunnerConfig | un
   const repo = Array.isArray(m.repos) ? (m.repos[0] as { path?: unknown } | undefined) : undefined;
 
   const known = new Set<string>(VIBEFLOW_PERSONAS);
-  const personas = Array.isArray(vf.personas)
-    ? (vf.personas as unknown[]).filter((p): p is string => typeof p === 'string' && known.has(p))
-    : [];
+  const workspace = WORKSPACE_PERSONAS as readonly string[];
+  let workspaceSeen = false;
+  const personas = (Array.isArray(vf.personas) ? (vf.personas as unknown[]) : [])
+    .filter((p): p is string => typeof p === 'string' && known.has(p))
+    // Keep only the FIRST workspace persona (#2887) — a stale multi-workspace
+    // manifest must not re-seed an invalid selection (web parity).
+    .filter(p => {
+      if (!workspace.includes(p)) { return true; }
+      if (workspaceSeen) { return false; }
+      workspaceSeen = true;
+      return true;
+    });
 
   return {
     personas,
