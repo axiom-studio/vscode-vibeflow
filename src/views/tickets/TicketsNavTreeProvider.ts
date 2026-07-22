@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { VibeFlowClient } from '../../api/client.js';
 import type { WorkItemsTreeProvider } from '../workItems/WorkItemsTreeProvider.js';
 import type { SimpleNode } from '../surface/surfaceNodes.js';
 import { toTreeItem } from '../surface/surfaceNodes.js';
@@ -18,9 +19,11 @@ const TERMINAL = new Set(['done', 'archived', 'rejected']);
 /**
  * Sidebar "Browse" nav — each row opens a cloud-style ticket TABLE panel
  * (TicketsPanel) in its own editor tab, and shows a live count as its
- * description. Counts are derived from WorkItemsTreeProvider's already-fetched
- * todos/issues/features (no extra network calls); the nav re-renders on that
- * provider's refresh event.
+ * description. The six built-in counts are derived from WorkItemsTreeProvider's
+ * already-fetched todos/issues/features (no extra network calls); the nav
+ * re-renders on that provider's refresh event. The flag-gated Cloud Runners row
+ * is the one exception — runners aren't in that provider, so its count comes
+ * from a list call made on the same refresh event (see refreshCloudRunnerCount).
  */
 export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNode>, vscode.Disposable {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<SimpleNode | undefined | void>();
@@ -35,8 +38,31 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
    */
   private cloudRunnersEnabled = false;
 
+  private client: VibeFlowClient | undefined;
+  private projectId: number | undefined;
+  /**
+   * Runner count for the Cloud Runners row's description. `undefined` until the
+   * first fetch lands, so the row renders bare rather than flashing a wrong "0".
+   */
+  private cloudRunnerCount: number | undefined;
+
   constructor(private readonly workItems: WorkItemsTreeProvider) {
-    this.sub = this.workItems.onDidRefresh(() => this._onDidChangeTreeData.fire());
+    // The work-items provider polls on the shared PollingCoordinator's
+    // background tier and fires this after every fetch. Riding it gives the
+    // runner count the same cadence — and the coordinator's focus-pause —
+    // without a second subscription.
+    this.sub = this.workItems.onDidRefresh(() => {
+      void this.refreshCloudRunnerCount();
+      this._onDidChangeTreeData.fire();
+    });
+  }
+
+  /** Bind the project whose runners the Cloud Runners row counts. */
+  connect(client: VibeFlowClient, projectId: number): void {
+    this.client = client;
+    this.projectId = projectId;
+    this.cloudRunnerCount = undefined; // a previous project's count is not ours
+    void this.refreshCloudRunnerCount();
   }
 
   /** Toggle visibility of the Cloud Runners browse row; re-renders on change. */
@@ -44,6 +70,28 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
     if (this.cloudRunnersEnabled === enabled) { return; }
     this.cloudRunnersEnabled = enabled;
     this._onDidChangeTreeData.fire();
+    // The flag resolves after connect(), so fetch now rather than leaving the
+    // row uncounted until the next background tick.
+    if (enabled) { void this.refreshCloudRunnerCount(); }
+  }
+
+  /**
+   * Refresh the Cloud Runners count. Gated on the org flag because the list is
+   * not cheap upstream — axiomcloud enriches every row with a per-runner live
+   * status call to cortex — so it must never run for orgs that can't see the
+   * row, and never on render. Failure-tolerant: a transient background error
+   * keeps the last known count instead of blanking the row.
+   */
+  private async refreshCloudRunnerCount(): Promise<void> {
+    if (!this.cloudRunnersEnabled || !this.client || this.projectId === undefined) { return; }
+    try {
+      const runners = await this.client.listProjectCloudRunners(this.projectId);
+      if (this.cloudRunnerCount === runners.length) { return; }
+      this.cloudRunnerCount = runners.length;
+      this._onDidChangeTreeData.fire();
+    } catch {
+      // Background refresh — keep the previous count and try again next tick.
+    }
   }
 
   getTreeItem(node: SimpleNode): vscode.TreeItem {
@@ -66,6 +114,7 @@ export class TicketsNavTreeProvider implements vscode.TreeDataProvider<SimpleNod
       rows.push({
         id: 'tickets-nav-cloud-runners',
         label: 'Cloud Runners',
+        description: this.cloudRunnerCount === undefined ? undefined : String(this.cloudRunnerCount),
         iconId: 'cloud',
         collapsibleState: vscode.TreeItemCollapsibleState.None,
         contextValue: 'ticketsNavItem',
