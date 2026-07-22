@@ -376,6 +376,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Feature-flag gate for the "Cloud Runners" browse row (feature #603).
     // The flag is org-resolved server-side; fetch it once per connect and show
     // the row only when enabled. Any failure leaves the row hidden.
+    // connect() first, so the row's runner count can load as soon as the flag
+    // resolves rather than waiting for the next background tick.
+    ticketsNavProvider.connect(client, project.projectId);
     void client.isCloudRunnersEnabled()
       .then(enabled => ticketsNavProvider.setCloudRunnersEnabled(enabled))
       .catch(() => ticketsNavProvider.setCloudRunnersEnabled(false));
