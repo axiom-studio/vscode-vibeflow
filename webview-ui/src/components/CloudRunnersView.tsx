@@ -1,4 +1,4 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { getVsCodeApi } from '../vscodeApi';
 import type {
   CloudRunnerListRow,
@@ -14,7 +14,11 @@ const HEALTH_GLYPH: Record<string, { glyph: string; color: string }> = {
   busy: { glyph: '◌', color: '#d29922' },
 };
 
-const vscode = getVsCodeApi() as { postMessage: (msg: CloudRunnersClientMessage) => void };
+const vscode = getVsCodeApi() as {
+  postMessage: (msg: CloudRunnersClientMessage) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
+};
 
 /** Runner lifecycle status → dot color. Unknown statuses fall back to muted. */
 const STATUS_COLOR: Record<string, string> = {
@@ -65,6 +69,23 @@ const actionBtn: CSSProperties = {
   background: 'transparent', color: 'var(--feed-fg)', border: '1px solid var(--feed-border)',
 };
 
+// User-resizable columns (#3107). Order MUST match the <td> cells in the body
+// row below — the <colgroup> drives both header and body widths under
+// table-layout: fixed. 'select' (checkbox) and 'actions' (buttons) stay fixed.
+const MIN_COL_W = 60;
+const COL_WIDTHS_STATE_KEY = 'cloudRunnerColWidths';
+const COLUMNS: { id: string; label: string; width: number; resizable: boolean; align?: 'right' }[] = [
+  { id: 'select', label: '', width: 30, resizable: false },
+  { id: 'name', label: 'Name', width: 160, resizable: true },
+  { id: 'status', label: 'Status', width: 120, resizable: true },
+  { id: 'podStatus', label: 'Pod Status', width: 120, resizable: true },
+  { id: 'user', label: 'User', width: 150, resizable: true },
+  { id: 'repository', label: 'Repository', width: 160, resizable: true },
+  { id: 'branch', label: 'Branch', width: 110, resizable: true },
+  { id: 'created', label: 'Created', width: 170, resizable: true },
+  { id: 'actions', label: 'Actions', width: 220, resizable: false, align: 'right' },
+];
+
 export function CloudRunnersView() {
   const [state, setState] = useState<State>({ runners: [], loading: true, error: undefined, generatedAt: undefined });
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -90,6 +111,48 @@ export function CloudRunnersView() {
     vscode.postMessage({ type: 'cloudRunnersLoad' });
     return () => window.removeEventListener('message', handle);
   }, []);
+
+  // --- Resizable columns (#3107) — drag a header handle to set a column's
+  // width; persisted via the webview state API so it survives reload. ---
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    const saved = (vscode.getState() as { [COL_WIDTHS_STATE_KEY]?: Record<string, number> } | undefined)?.[COL_WIDTHS_STATE_KEY];
+    const base: Record<string, number> = {};
+    COLUMNS.forEach(c => { base[c.id] = Math.max(MIN_COL_W, saved?.[c.id] ?? c.width); });
+    return base;
+  });
+  // Mirror widths in a ref so the once-registered window listeners never read a
+  // stale closure; resizeRef holds the in-flight drag.
+  const colWidthsRef = useRef(colWidths);
+  const resizeRef = useRef<{ id: string; startX: number; startW: number } | null>(null);
+
+  function startResize(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    resizeRef.current = { id, startX: e.clientX, startW: colWidthsRef.current[id] };
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const d = resizeRef.current;
+      if (!d) { return; }
+      const w = Math.max(MIN_COL_W, d.startW + (e.clientX - d.startX));
+      colWidthsRef.current = { ...colWidthsRef.current, [d.id]: w };
+      setColWidths(colWidthsRef.current);
+    }
+    function onUp() {
+      if (!resizeRef.current) { return; }
+      resizeRef.current = null;
+      const prev = (vscode.getState() as Record<string, unknown> | undefined) ?? {};
+      vscode.setState({ ...prev, [COL_WIDTHS_STATE_KEY]: colWidthsRef.current });
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const totalColWidth = COLUMNS.reduce((sum, c) => sum + colWidths[c.id], 0);
 
   function refresh() {
     setState(s => ({ ...s, loading: true, error: undefined }));
@@ -162,25 +225,35 @@ export function CloudRunnersView() {
           <div style={msgStyle}>No cloud runners yet.</div>
         )}
         {!state.loading && !state.error && state.runners.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table style={{ tableLayout: 'fixed', width: totalColWidth, borderCollapse: 'collapse', fontSize: 12 }}>
+            <colgroup>
+              {COLUMNS.map(c => <col key={c.id} data-testid={`col-${c.id}`} style={{ width: colWidths[c.id] }} />)}
+            </colgroup>
             <thead>
               <tr style={{ position: 'sticky', top: 0, background: 'var(--feed-bg)', zIndex: 1 }}>
-                <th style={{ ...th, width: 28 }}>
-                  <input
-                    type="checkbox"
-                    aria-label="Select all runners"
-                    checked={selected.size > 0 && selected.size === state.runners.length}
-                    onChange={toggleAll}
-                  />
-                </th>
-                <th style={th}>Name</th>
-                <th style={th}>Status</th>
-                <th style={th}>Pod Status</th>
-                <th style={th}>User</th>
-                <th style={th}>Repository</th>
-                <th style={th}>Branch</th>
-                <th style={th}>Created</th>
-                <th style={{ ...th, textAlign: 'right' }}>Actions</th>
+                {COLUMNS.map(c => (
+                  <th key={c.id} style={{ ...th, position: 'relative', ...(c.align === 'right' ? { textAlign: 'right' } : null) }}>
+                    {c.id === 'select'
+                      ? (
+                        <input
+                          type="checkbox"
+                          aria-label="Select all runners"
+                          checked={selected.size > 0 && selected.size === state.runners.length}
+                          onChange={toggleAll}
+                        />
+                      )
+                      : c.label}
+                    {c.resizable && (
+                      <span
+                        data-testid={`resize-${c.id}`}
+                        role="separator"
+                        aria-orientation="vertical"
+                        onMouseDown={e => startResize(e, c.id)}
+                        style={{ position: 'absolute', top: 0, right: 0, width: 7, height: '100%', cursor: 'col-resize', userSelect: 'none' }}
+                      />
+                    )}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
