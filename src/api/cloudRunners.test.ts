@@ -49,6 +49,7 @@ import {
   runnerHealthIcon,
   runnerPrimaryAction,
   bulkEligibility,
+  bulkPastTense,
   createRunnerReviewLines,
   type LaunchConfig,
 } from './cloudRunners.js';
@@ -562,6 +563,17 @@ describe('bulkEligibility (#2893)', () => {
     });
     expect(bulkEligibility([])).toEqual({ startable: 0, stoppable: 0 });
     expect(bulkEligibility(['authenticating'])).toEqual({ startable: 0, stoppable: 1 }); // pod up
+  });
+});
+
+describe('bulkPastTense (#2893)', () => {
+  it('maps each bulk verb to correct past tense — start is not "startd"', () => {
+    expect(bulkPastTense('start')).toBe('started');
+    expect(bulkPastTense('stop')).toBe('stopped');
+    expect(bulkPastTense('delete')).toBe('deleted');
+  });
+  it('falls back to the verb itself for an unknown verb', () => {
+    expect(bulkPastTense('restart')).toBe('restart');
   });
 });
 

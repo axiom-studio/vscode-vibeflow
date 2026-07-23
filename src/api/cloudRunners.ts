@@ -370,6 +370,22 @@ export function bulkEligibility(statuses: readonly string[]): { startable: numbe
 }
 
 /**
+ * Past-tense verb for the bulk summary toast (#2893, web BULK_DONE_VERBS
+ * parity). An `${verb}d` template mis-renders 'start' as 'startd' — the map is
+ * explicit so every verb reads correctly.
+ */
+export const BULK_DONE_VERBS: Record<string, string> = {
+  start: 'started',
+  stop: 'stopped',
+  delete: 'deleted',
+};
+
+/** The past tense for a bulk verb, falling back to the verb itself if unknown. */
+export function bulkPastTense(verb: string): string {
+  return BULK_DONE_VERBS[verb] ?? verb;
+}
+
+/**
  * Status-cell primary action from the (status, podStatus) tuple (#2891, web
  * runnerPrimaryAction parity): one-click 'Authenticate' for a healthy pod
  * awaiting login, 'Manage Agents' for running/error rows, disabled 'Stopped'
