@@ -174,7 +174,7 @@ function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
             style={{ ...btn, marginTop: 6, alignSelf: 'flex-start' }}
             disabled={state.busy || !code.trim()}
             onClick={() => vscode.postMessage({ type: 'manageSubmitOAuth', payload: { code: code.trim() } })}
-          >Submit code</button>
+          >{state.busy ? 'Submitting…' : 'Submit code'}</button>
         </div>
       ) : (
         <p style={{ fontSize: 12, color: 'var(--feed-muted)' }}>Waiting for confirmation…</p>
@@ -190,7 +190,9 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   // until state.hydrated, so this step cannot mount before the data lands.
   const saved = state.savedConfig;
   const [workingDir, setWorkingDir] = useState(saved?.workingDir ?? '');
-  const [project, setProject] = useState(state.defaultProject);
+  // Project is fixed to the workspace's current project (#3111) — read-only,
+  // cloud-UI parity. No local editable state.
+  const project = state.defaultProject;
   const [personas, setPersonas] = useState<string[]>(saved?.personas ?? []);
   const [sessionType, setSessionType] = useState<'vibeflow' | 'vanilla'>(saved?.sessionType ?? 'vibeflow');
   const [branch, setBranch] = useState(saved?.branch ?? 'main');
@@ -213,10 +215,9 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
   const [cloneProviderId, setCloneProviderId] = useState('');
 
   useEffect(() => {
-    if (!project && state.defaultProject) { setProject(state.defaultProject); }
     if (!workingDir && state.repos[0]?.path) { setWorkingDir(state.repos[0].path); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.defaultProject, state.repos]);
+  }, [state.repos]);
 
   function togglePersona(p: string) {
     // Workspace personas behave like a radio (one replaces another); advisory
@@ -298,18 +299,21 @@ function ConfigureStep({ state }: { state: CloudRunnerManageState }) {
 
       <div style={field}>
         <span style={label}>Project</span>
-        <input style={input} list="vf-agent-projects" value={project} onChange={e => setProject(e.target.value)} placeholder="vibeflow project name" />
-        <datalist id="vf-agent-projects">
-          {state.agentProjects.map(p => <option key={p} value={p} />)}
-        </datalist>
+        {/* Fixed to the workspace's current project (#3111) — read-only, cloud
+            parity. The session runs under the project this workspace is on. */}
+        <div style={{ ...input, color: 'var(--feed-muted)', display: 'flex', alignItems: 'center' }}>
+          {project || 'Current project'}
+        </div>
       </div>
 
       <div style={field}>
-        <span style={label}>Workspace agent — choose one</span>
+        <span style={label}>Workspace agent (optional)</span>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {WORKSPACE_PERSONAS.map(p => (
             <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-              <input type="radio" name="workspace-persona" checked={personas.includes(p)} onChange={() => togglePersona(p)} />
+              {/* Checkbox (not radio) so a workspace agent can be deselected; only
+                  one may be active — togglePersona replaces on select (#3111). */}
+              <input type="checkbox" checked={personas.includes(p)} onChange={() => togglePersona(p)} />
               {p}
             </label>
           ))}
