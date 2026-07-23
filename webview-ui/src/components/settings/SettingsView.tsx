@@ -2,7 +2,6 @@ import { useState, useEffect, type ComponentType } from 'react';
 import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsTypes';
 import { ConnectionTab } from './ConnectionTab';
 import { ProvidersTab } from './ProvidersTab';
-import { ModelsTab } from './ModelsTab';
 import { SessionDefaultsTab } from './SessionDefaultsTab';
 import { WorktreesTab } from './WorktreesTab';
 import { NotificationsTab } from './NotificationsTab';
@@ -11,7 +10,7 @@ import { GitConfigTab } from './GitConfigTab';
 import { CLOUD_RUNNERS_BUILD_ENABLED } from '../../../../src/api/cloudRunners';
 import { getVsCodeApi } from '../../vscodeApi';
 import {
-  PlugIcon, CpuIcon, SlidersIcon, BrainIcon, GitBranchIcon,
+  PlugIcon, CpuIcon, SlidersIcon, GitBranchIcon,
   BellIcon, InfoIcon, LockIcon,
 } from '../_shared/icons';
 
@@ -56,7 +55,6 @@ const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   // Git Configuration exists for Cloud Runners — hidden with the build switch (#2833).
   ...(CLOUD_RUNNERS_BUILD_ENABLED ? [{ id: 'git', label: 'Git Configuration', Icon: LockIcon }] : []),
   { id: 'session',       label: 'Session Defaults', Icon: SlidersIcon },
-  { id: 'models',        label: 'Sticky Models',    Icon: BrainIcon },
   { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
   { id: 'notifications', label: 'Notifications',    Icon: BellIcon },
   { id: 'about',         label: 'About',            Icon: InfoIcon },
@@ -218,9 +216,6 @@ export function SettingsView() {
           )}
           {activeTab === 'session' && (
             <SessionDefaultsTab data={data} onUpdate={updateSetting} />
-          )}
-          {activeTab === 'models' && (
-            <ModelsTab data={data} onCommand={sendCommand} />
           )}
           {activeTab === 'worktrees' && (
             <WorktreesTab data={data} onUpdate={updateSetting} />

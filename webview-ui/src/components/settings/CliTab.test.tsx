@@ -24,8 +24,6 @@ function settingsData(overrides: Partial<SettingsData> = {}): SettingsData {
     notifyAgentPrompts: true,
     notifyWorkComplete: true,
     chatDiffView: 'unified',
-    stickyModels: {},
-    knownModels: {},
     cliEnabled: true,
     cliBinaryPath: '',
     cliMcpName: '',

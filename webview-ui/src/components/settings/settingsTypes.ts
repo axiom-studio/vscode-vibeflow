@@ -46,12 +46,6 @@ export interface SettingsData {
   // host snapshots without the field don't break the tabs.
   cloudRunnersDebug?: boolean;
 
-  // Models — per-persona sticky model preferences. `stickyModels`
-  // maps persona_key -> model_id; `knownModels` is the full picker
-  // catalog grouped by provider key (claude/codex/gemini/cursor).
-  stickyModels?: Record<string, string>;
-  knownModels?: Record<string, string[]>;
-
   // CLI Interface
   cliEnabled: boolean;
   cliBinaryPath: string;

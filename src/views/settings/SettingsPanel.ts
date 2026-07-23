@@ -4,7 +4,6 @@ import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { CreateGitProviderRequest } from '../../api/types.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
-import { StickyModels, KNOWN_MODELS } from '../../sessions/stickyModels.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '../../commands/cliCommands.js';
@@ -24,8 +23,6 @@ export interface SettingsPanelDeps {
   authService?: AuthService;
   client?: VibeFlowClient;
   detector?: ProjectDetector;
-  /** Per-persona sticky model store; the Models tab reads/writes through this. */
-  stickyModels?: StickyModels;
   /**
    * Per-machine encrypted store (`vscode.ExtensionContext.secrets`). The
    * Providers tab uses this to persist per-provider env tokens
@@ -368,22 +365,6 @@ export class SettingsPanel {
           }
           break;
         }
-        case 'updateStickyModel':
-          if (!deps.stickyModels) {
-            vscode.window.showWarningMessage('VibeFlow: model preferences are not initialized');
-            break;
-          }
-          await deps.stickyModels.setModel(msg.payload.persona, msg.payload.model);
-          await pushSettings();
-          break;
-        case 'resetStickyModel':
-          if (!deps.stickyModels) {
-            vscode.window.showWarningMessage('VibeFlow: model preferences are not initialized');
-            break;
-          }
-          await deps.stickyModels.resetToDefault(msg.payload.persona);
-          await pushSettings();
-          break;
         case 'openCli': {
           const config = vscode.workspace.getConfiguration('vibeflow');
           const launchOptions = {
@@ -569,10 +550,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // package.json declaration only registers on reinstall. State lives in
     // globalState (with a config-key fallback for manual settings.json edits).
     cloudRunnersDebug: isCloudRunnerDebugEnabled(),
-    // Models tab data — empty objects when stickyModels isn't wired
-    // so the tab can still render its empty-state UI.
-    stickyModels: deps.stickyModels?.getAll() ?? {},
-    knownModels: KNOWN_MODELS,
     // CLI Interface — toggle drives whether session launches go through
     // the per-persona TerminalRegistry path or are delegated to the
     // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
