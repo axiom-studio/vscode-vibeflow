@@ -12,39 +12,20 @@ const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/late
 const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
 
 /**
- * "CLI Interface" — toggle a TUI-driven mode. When enabled, session
- * management is delegated to the vibeflow CLI in a fullscreen editor
- * terminal; the left sidebar (Agent Fleet, Work Items, Documents)
- * keeps polling the same backend so the user still sees live state.
+ * VibeFlow CLI runtime settings — rendered inside the Connection tab (#3113),
+ * not a standalone tab anymore. When enabled, session management is delegated
+ * to the vibeflow CLI in a fullscreen editor terminal; the left sidebar keeps
+ * polling the same backend so the user still sees live state.
  *
- * The toggle just flips the config; the actual gating happens in
- * extension.ts (launchSession short-circuits to openCli) and via
+ * The toggle just flips the config; the actual gating happens in extension.ts
+ * (launchSession short-circuits to openCli) and via
  * `when: config.vibeflow.cli.enabled` clauses in package.json menus.
  */
-export function CliTab({ data, onUpdate, onCommand }: Props) {
+export function CliSettings({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
-  const mcpNameRef = React.useRef(data.cliMcpName);
-  const rootPathRef = React.useRef(data.cliRootPath);
-  const [clearToken, setClearToken] = useState(0);
-
-  React.useEffect(() => {
-    mcpNameRef.current = data.cliMcpName;
-  }, [data.cliMcpName]);
-
-  React.useEffect(() => {
-    rootPathRef.current = data.cliRootPath;
-  }, [data.cliRootPath]);
-
-  const clearLaunchOptions = () => {
-    mcpNameRef.current = '';
-    rootPathRef.current = '';
-    setClearToken(token => token + 1);
-    onUpdate('cli.mcpName', '');
-    onUpdate('cli.rootPath', '');
-  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <>
       <Card
         title="Use VibeFlow CLI"
         description="When enabled, session launches open the VibeFlow CLI (TUI) in a fullscreen editor terminal instead of spawning per-persona terminals from the extension. The left sidebar still shows live agent state — same backend, different lens."
@@ -112,65 +93,7 @@ export function CliTab({ data, onUpdate, onCommand }: Props) {
         </div>
       </Card>
 
-      <Card
-        title="Open VibeFlow CLI"
-        description="Launches the TUI in a fullscreen editor-area terminal. Re-running focuses the existing terminal (one TUI process at a time — the CLI's own PID lock enforces this)."
-      >
-        <Field label="MCP name">
-          <BufferedTextInput
-            initial={data.cliMcpName}
-            placeholder="default"
-            resetToken={clearToken}
-            onValueChange={(v) => { mcpNameRef.current = v; }}
-            onCommit={(v) => onUpdate('cli.mcpName', v)}
-          />
-        </Field>
-        <Field label="Root path">
-          <BufferedTextInput
-            initial={data.cliRootPath}
-            placeholder="/path/to/root"
-            resetToken={clearToken}
-            onValueChange={(v) => { rootPathRef.current = v; }}
-            onCommit={(v) => onUpdate('cli.rootPath', v)}
-          />
-        </Field>
-        <div style={{ marginTop: 6, marginBottom: 12, fontSize: 10.5, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
-          Blank fields are omitted. Provided values are passed as <code>--mcp</code> and <code>--root</code>.
-        </div>
-        <ButtonRow>
-          <Btn
-            label="Clear"
-            secondary
-            onClick={clearLaunchOptions}
-          />
-          <Btn
-            label="Open CLI"
-            onClick={() => onCommand({
-              type: 'openCli',
-              payload: {
-                mcpName: mcpNameRef.current,
-                rootPath: rootPathRef.current,
-              },
-            })}
-            disabled={!installed}
-          />
-        </ButtonRow>
-      </Card>
-
-      <Card
-        title="What changes when CLI mode is on?"
-        description=""
-      >
-        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, lineHeight: 1.7, color: 'var(--feed-fg)' }}>
-          <li>The Agent Fleet "Launch Session" button → "Open VibeFlow CLI"</li>
-          <li><code>VibeFlow: Launch Session</code> command opens the CLI instead of the QuickPick wizard</li>
-          <li>Per-persona terminals are no longer spawned — the CLI manages everything via tmux under its own socket</li>
-          <li><code>Ctrl+Q</code> and <code>Ctrl+\</code> in any terminal route through to the shell (so the CLI's tmux toggle works without VS Code stealing the keystroke). Disable CLI mode to revert.</li>
-          <li>Right-click Restart, Kill, Focus, and the rest of the per-session commands still work — they hit the same backend</li>
-          <li><code>@vibeflow</code> chat participant stays available (read-only against the same project)</li>
-        </ul>
-      </Card>
-    </div>
+    </>
   );
 }
 
@@ -248,15 +171,6 @@ function BufferedTextInput({ initial, placeholder, onCommit, onValueChange, rese
 }
 
 // ===== Local primitives, kept private to this tab to match other tabs' style =====
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 12 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--feed-muted)' }}>{label}</span>
-      {children}
-    </label>
-  );
-}
 
 function Card({ title, description, children }: {
   title: string;
