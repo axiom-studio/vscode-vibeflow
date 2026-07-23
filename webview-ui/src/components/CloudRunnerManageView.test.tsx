@@ -54,6 +54,14 @@ describe('CloudRunnerManageView', () => {
     spy.mockRestore();
   });
 
+  it('shows a loading state on Start authentication while the OAuth-start call is in flight (#3109)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'authenticate', podReady: true, busy: true }));
+    const btn = screen.getByRole('button', { name: 'Starting…' }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Start authentication' })).toBeNull();
+  });
+
   it('submits a pasted code for claude (needsPasteBack)', () => {
     const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
     render(<CloudRunnerManageView />);
