@@ -39,7 +39,6 @@ import { SessionStreamRegistry } from './sessions/SessionStreamRegistry.js';
 import { AgentActivityOutputChannel } from './views/agentActivity/AgentActivityOutputChannel.js';
 import { TmuxBacking } from './sessions/tmuxBacking.js';
 import { SessionReattacher } from './sessions/SessionReattacher.js';
-import { StickyModels } from './sessions/stickyModels.js';
 import { createWorkItem, changeStatus, changePriority } from './commands/workItemCommands.js';
 import { createDocument } from './commands/documentCommands.js';
 import { qaVerify, qaReject, securityApprove, securityReject, checkBranchReviewStatus } from './commands/governanceCommands.js';
@@ -176,7 +175,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- Terminal Registry + Sticky Models ---
   const terminalRegistry = new TerminalRegistry();
-  const stickyModels = new StickyModels(contextProxy);
   context.subscriptions.push(terminalRegistry);
 
   // --- Tmux Backing (opt-in, todo #1615) ---
@@ -967,7 +965,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // clear error instead of a silent unhandled rejection (issue #3195).
       await runLaunchGuarded(
         'Launch Session',
-        () => launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, stickyModels, contextProxy, streamRegistry, tmuxBacking, connectToProject),
+        () => launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, contextProxy, streamRegistry, tmuxBacking, connectToProject),
         reportError,
       );
     }),
@@ -994,7 +992,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (session) {
         await runLaunchGuarded(
           'Restart Session',
-          () => restartSession(client, session, detector, sessionsProvider, terminalRegistry, stickyModels, contextProxy),
+          () => restartSession(client, session, detector, sessionsProvider, terminalRegistry, contextProxy),
           msg => vscode.window.showErrorMessage(msg),
         );
       }
@@ -1207,7 +1205,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         authService,
         client,
         detector,
-        stickyModels,
         secrets: context.secrets,
         onProjectSwitched: connectToProject,
       });
@@ -1453,7 +1450,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           sessionsProvider,
           context.extensionUri,
           terminalRegistry,
-          stickyModels,
           contextProxy,
           streamRegistry,
           tmuxBacking,
