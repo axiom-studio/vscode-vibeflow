@@ -22,6 +22,7 @@ const STATUS_COLOR: Record<string, string> = {
   starting: '#d29922',
   authenticating: '#d29922', // agent mid-login (#437) — pod up, awaiting sign-in
   active: 'var(--feed-success, #3fb950)',
+  running: 'var(--feed-success, #3fb950)', // backend emits 'running'; same live state as 'active'
   stopping: '#db6d28',
   stopped: 'var(--feed-muted, #8b949e)',
   failed: 'var(--feed-error, #f85149)',
@@ -195,7 +196,7 @@ export function CloudRunnersView() {
                   </td>
                   <td style={{ ...td, fontWeight: 600 }}>{r.name}</td>
                   <td style={td}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textTransform: 'capitalize' }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(r.status), display: 'inline-block' }} />
                       {r.status}
                     </span>
