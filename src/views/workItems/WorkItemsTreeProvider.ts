@@ -118,7 +118,20 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
   private sessionPersonaMap = new Map<string, string>();
   private pollSub: Disposer | undefined;
 
+  /**
+   * Ownership gate for the completion toast (#3115) — only items claimed by
+   * THIS user's own sessions notify, mirroring the ActivityPoller gate (#3348).
+   * Wired from extension.ts after connect; defaults allow-all so tests and the
+   * pre-connect state behave predictably.
+   */
+  private isOwnedSession: (sessionId: string | undefined) => boolean = () => true;
+
   constructor(private readonly coordinator: PollingCoordinator) {}
+
+  /** Scope the "Work Item Complete" toast to the user's own sessions (#3115). */
+  setOwnership(isOwned: (sessionId: string | undefined) => boolean): void {
+    this.isOwnedSession = isOwned;
+  }
 
   refresh(): void {
     this.fetchAndRefresh();
@@ -209,12 +222,12 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
    * to migrate to SSE when we want richer real-time updates.
    */
   private notifyCompletions(): void {
-    const curr = new Map<string, { status: string; title: string; type: 'todo' | 'issue'; id: number }>();
+    const curr = new Map<string, { status: string; title: string; type: 'todo' | 'issue'; id: number; claimedBy?: string }>();
     for (const t of this.todos) {
-      curr.set(`todo-${t.id}`, { status: t.status, title: t.title, type: 'todo', id: t.id });
+      curr.set(`todo-${t.id}`, { status: t.status, title: t.title, type: 'todo', id: t.id, claimedBy: t.claimed_by });
     }
     for (const i of this.issues) {
-      curr.set(`issue-${i.id}`, { status: i.status, title: i.title, type: 'issue', id: i.id });
+      curr.set(`issue-${i.id}`, { status: i.status, title: i.title, type: 'issue', id: i.id, claimedBy: i.claimed_by });
     }
 
     const prev = this.prevStatuses;
@@ -229,12 +242,16 @@ export class WorkItemsTreeProvider implements vscode.TreeDataProvider<WorkItemNo
       .get<boolean>('notifications.workItemComplete', true);
     if (!enabled) { return; }
 
-    for (const [key, { status, title, type, id }] of curr) {
+    for (const [key, { status, title, type, id, claimedBy }] of curr) {
       // Only the !done → done edge. Items already done across polls,
       // or items reappearing in done after being elsewhere, both pass
       // — only the actual transition fires.
       const prevStatus = prev.get(key)?.status;
       if (prevStatus === 'done' || status !== 'done') { continue; }
+      // Ownership scope (#3115): only items completed by THIS user's own
+      // sessions notify. A teammate's item — or a manual completion with no
+      // claimed_by — stays silent (the same gate ActivityPoller applies).
+      if (!this.isOwnedSession(claimedBy)) { continue; }
       this.showCompletionToast(type, id, title);
     }
   }

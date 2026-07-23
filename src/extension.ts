@@ -406,6 +406,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
     sessionOwnership = ownership;
 
+    // Scope the "Work Item Complete" toast to this user's own sessions (#3115),
+    // mirroring the ActivityPoller ownership gate below — WorkItemsTreeProvider
+    // runs its own completion poller and would otherwise notify on every
+    // project-wide item that finishes, including other users' agents.
+    workItemsProvider.setOwnership(id => ownership.isOwned(id));
+
     // Start real Activity Feed polling (stop any previous)
     activityPoller?.stop();
     activityPoller = new ActivityPoller(
