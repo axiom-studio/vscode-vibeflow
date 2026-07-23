@@ -386,25 +386,6 @@ export function bulkPastTense(verb: string): string {
 }
 
 /**
- * Status-cell primary action from the (status, podStatus) tuple (#2891, web
- * runnerPrimaryAction parity): one-click 'Authenticate' for a healthy pod
- * awaiting login, 'Manage Agents' for running/error rows, disabled 'Stopped'
- * / 'Initializing' otherwise. Enabled actions open the Manage wizard — its
- * routeInitialStep lands on the right step.
- */
-export function runnerPrimaryAction(status: string | undefined, podStatus: string | undefined): { label: string; disabled: boolean } {
-  const s = (status || '').toLowerCase();
-  const h = (podStatus || '').toLowerCase();
-  if (s === 'stopped' || s === 'stopping') { return { label: 'Stopped', disabled: true }; }
-  if (isErrorTuple(s, h)) { return { label: 'Manage Agents', disabled: false }; }
-  if (h === 'healthy') {
-    if (s === 'authenticating') { return { label: 'Authenticate', disabled: false }; }
-    if (s === 'running' || s === 'active') { return { label: 'Manage Agents', disabled: false }; }
-  }
-  return { label: 'Initializing', disabled: true };
-}
-
-/**
  * Health-cell classification from the (status, podStatus) tuple (#2890, web
  * runnerHealthIcon parity): 'none' for stopped rows (a spinner would misread
  * as activity), 'error' with a tooltip carrying the stored strings, 'healthy',

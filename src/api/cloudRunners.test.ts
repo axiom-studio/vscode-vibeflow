@@ -47,7 +47,6 @@ import {
   gitRepoUrlAuthError,
   llmGatewaySupportedForAgent,
   runnerHealthIcon,
-  runnerPrimaryAction,
   bulkEligibility,
   bulkPastTense,
   createRunnerReviewLines,
@@ -574,21 +573,6 @@ describe('bulkPastTense (#2893)', () => {
   });
   it('falls back to the verb itself for an unknown verb', () => {
     expect(bulkPastTense('restart')).toBe('restart');
-  });
-});
-
-describe('runnerPrimaryAction (#2891)', () => {
-  it('derives the one-click action from the (status, podStatus) tuple like the web', () => {
-    expect(runnerPrimaryAction('stopped', '')).toEqual({ label: 'Stopped', disabled: true });
-    expect(runnerPrimaryAction('stopping', 'Healthy')).toEqual({ label: 'Stopped', disabled: true });
-    expect(runnerPrimaryAction('failed', '')).toEqual({ label: 'Manage Agents', disabled: false });
-    expect(runnerPrimaryAction('running', 'Degraded')).toEqual({ label: 'Manage Agents', disabled: false });
-    expect(runnerPrimaryAction('authenticating', 'Healthy')).toEqual({ label: 'Authenticate', disabled: false });
-    expect(runnerPrimaryAction('running', 'Healthy')).toEqual({ label: 'Manage Agents', disabled: false });
-    expect(runnerPrimaryAction('active', 'Healthy')).toEqual({ label: 'Manage Agents', disabled: false });
-    // Healthy pod required for the one-click paths — otherwise still coming up.
-    expect(runnerPrimaryAction('authenticating', 'Progressing')).toEqual({ label: 'Initializing', disabled: true });
-    expect(runnerPrimaryAction('pending', '')).toEqual({ label: 'Initializing', disabled: true });
   });
 });
 
