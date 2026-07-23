@@ -956,7 +956,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // the TUI launcher so we don't spawn duplicate per-persona
       // terminals that would race with the CLI's tmux-managed sessions.
       const reportError = (msg: string) => vscode.window.showErrorMessage(msg);
-      const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', false);
+      const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', true);
       if (cliEnabled) {
         const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         await runLaunchGuarded('Open CLI', () => openCli(root), reportError);

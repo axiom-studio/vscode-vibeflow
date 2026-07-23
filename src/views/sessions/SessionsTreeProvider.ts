@@ -310,7 +310,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     // capped at 2s in the helper so a hung tmux server can't block the
     // poll loop. Outside CLI mode, set undefined so deriveStatus uses
     // the legacy 3-state path.
-    const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', false);
+    const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', true);
     this.liveTmuxSessions = cliEnabled ? getLiveTmuxSessions() : undefined;
 
     this._onDidChangeTreeData.fire();
