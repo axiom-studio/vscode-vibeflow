@@ -235,4 +235,27 @@ describe('CloudRunnersView — row actions (#2816)', () => {
     expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerManage', payload: { projectId: 28, id: 12, name: 'zeta' } });
     spy.mockRestore();
   });
+
+  it('resizes a column by dragging its header handle (#3107)', () => {
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 20, name: 'omega' })]);
+    const nameCol = () => document.querySelector('[data-testid="col-name"]') as HTMLElement;
+    const before = parseInt(nameCol().style.width, 10);
+    // Drag the Name column's handle +60px.
+    fireEvent.mouseDown(screen.getByTestId('resize-name'), { clientX: 200 });
+    fireEvent.mouseMove(window, { clientX: 260 });
+    fireEvent.mouseUp(window);
+    expect(parseInt(nameCol().style.width, 10)).toBe(before + 60);
+  });
+
+  it('clamps a column to the minimum width when dragged past it (#3107)', () => {
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 21, name: 'psi' })]);
+    const branchCol = () => document.querySelector('[data-testid="col-branch"]') as HTMLElement;
+    // Branch defaults to 110; drag far left so it would go negative — must clamp to 60.
+    fireEvent.mouseDown(screen.getByTestId('resize-branch'), { clientX: 400 });
+    fireEvent.mouseMove(window, { clientX: 100 });
+    fireEvent.mouseUp(window);
+    expect(parseInt(branchCol().style.width, 10)).toBe(60);
+  });
 });
