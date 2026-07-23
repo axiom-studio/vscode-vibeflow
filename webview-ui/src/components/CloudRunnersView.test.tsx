@@ -213,4 +213,25 @@ describe('CloudRunnersView — row actions (#2816)', () => {
     expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Start' })).toBeTruthy();
   });
+
+  it('does not render a second action button in the Status cell for a healthy runner', () => {
+    // Regression: a healthy/running row used to render a "Manage Agents" button
+    // inside the narrow Status column, which clipped to "Ma". The Status cell now
+    // carries only the status text; the single primary action lives in Actions.
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 11, projectId: 28, name: 'eps', status: 'running', podStatus: 'Healthy' })]);
+    expect(screen.queryByRole('button', { name: 'Manage Agents' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Manage' })).toBeTruthy();
+  });
+
+  it('flips the primary action to Authenticate for an authenticating runner (web parity)', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<CloudRunnersView />);
+    pushData([runner({ id: 12, projectId: 28, name: 'zeta', status: 'authenticating', podStatus: 'Healthy' })]);
+    // The one primary button reads Authenticate, not Manage, and still opens the wizard.
+    expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Authenticate' }));
+    expect(spy).toHaveBeenCalledWith({ type: 'cloudRunnerManage', payload: { projectId: 28, id: 12, name: 'zeta' } });
+    spy.mockRestore();
+  });
 });

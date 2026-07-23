@@ -5,7 +5,7 @@ import type {
   CloudRunnersClientMessage,
   CloudRunnersHostMessage,
 } from '../../../src/core/webviewMessages';
-import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos, runnerHealthIcon, runnerPrimaryAction, bulkEligibility } from '../../../src/api/cloudRunners';
+import { isRunnerRunning, isRunnerTransitioning, canManageRunner, summarizeRepos, runnerHealthIcon, bulkEligibility } from '../../../src/api/cloudRunners';
 
 /** Glyph per health kind (#2890) — text glyphs so no icon lib enters the CSP. */
 const HEALTH_GLYPH: Record<string, { glyph: string; color: string }> = {
@@ -198,22 +198,6 @@ export function CloudRunnersView() {
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor(r.status), display: 'inline-block' }} />
                       {r.status}
-                      {(() => {
-                        // One-click contextual action from the tuple (#2891).
-                        const action = runnerPrimaryAction(r.status, r.podStatus);
-                        if (action.disabled) {
-                          // Muted affordance only when it adds information.
-                          return action.label.toLowerCase() !== r.status
-                            ? <span style={{ fontSize: 11, color: 'var(--feed-muted)' }}>· {action.label}</span>
-                            : null;
-                        }
-                        return (
-                          <button
-                            style={{ ...actionBtn, padding: '2px 8px' }}
-                            onClick={() => vscode.postMessage({ type: 'cloudRunnerManage', payload: { projectId: r.projectId, id: r.id, name: r.name } })}
-                          >{action.label}</button>
-                        );
-                      })()}
                     </span>
                   </td>
                   <td style={{ ...td, color: 'var(--feed-muted)' }}>
@@ -240,7 +224,14 @@ export function CloudRunnersView() {
                     ) : (
                       <span style={{ display: 'inline-flex', gap: 6, justifyContent: 'flex-end' }}>
                         {canManageRunner(r.status) && (
-                          <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerManage', payload: { projectId: r.projectId, id: r.id, name: r.name } })}>Manage</button>
+                          // Primary action flips to Authenticate when the runner still
+                          // needs login (web NimbusRunners parity). Same click either way —
+                          // the wizard's routeInitialStep lands on the right step. A row only
+                          // reads 'authenticating' when unauthenticated: axiomcloud collapses
+                          // authenticated+authenticating to 'running'.
+                          <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerManage', payload: { projectId: r.projectId, id: r.id, name: r.name } })}>
+                            {r.status === 'authenticating' ? 'Authenticate' : 'Manage'}
+                          </button>
                         )}
                         {isRunnerRunning(r.status) ? (
                           <button style={actionBtn} onClick={() => vscode.postMessage({ type: 'cloudRunnerStop', payload: { projectId: r.projectId, id: r.id } })}>Stop</button>
