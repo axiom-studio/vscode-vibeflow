@@ -56,6 +56,7 @@ export class CloudRunnerManagePanel {
     private readonly projectId: number,
     private readonly runnerId: number,
     runnerName: string,
+    projectName: string,
   ) {
     this.state = {
       step: 'configure',
@@ -68,9 +69,10 @@ export class CloudRunnerManagePanel {
       podReady: false,
       needsPasteBack: true,
       repos: [],
-      agentProjects: [],
       gitProviders: [],
-      defaultProject: '',
+      // The session's project is fixed to the workspace's current project and
+      // shown read-only in Configure (#3111) — no per-runner project picking.
+      defaultProject: projectName,
       launching: false,
       busy: true,
       hydrated: false,
@@ -87,6 +89,7 @@ export class CloudRunnerManagePanel {
     projectId: number,
     runnerId: number,
     runnerName: string,
+    projectName: string,
   ): void {
     const key = CloudRunnerManagePanel.key(projectId, runnerId);
     const existing = CloudRunnerManagePanel.panels.get(key);
@@ -108,7 +111,7 @@ export class CloudRunnerManagePanel {
     panel.iconPath = vscode.Uri.joinPath(extensionUri, 'media', 'vibeflow-icon.svg');
     panel.webview.html = renderHtml(panel.webview, extensionUri);
 
-    const instance = new CloudRunnerManagePanel(panel, client, projectId, runnerId, runnerName);
+    const instance = new CloudRunnerManagePanel(panel, client, projectId, runnerId, runnerName, projectName);
     CloudRunnerManagePanel.panels.set(key, instance);
     instance.attach();
   }
@@ -255,16 +258,16 @@ export class CloudRunnerManagePanel {
   }
 
   private async loadConfigureData(): Promise<void> {
-    const [repos, projects, providers] = await Promise.all([
+    // Project is fixed to the workspace project (#3111), so the per-runner
+    // agent-projects list is no longer fetched — that endpoint fans out a
+    // serial per-runner status call upstream and is not worth the cost here.
+    const [repos, providers] = await Promise.all([
       this.client.listRunnerRepos(this.projectId, this.runnerId).catch(() => []),
-      this.client.listRunnerAgentProjects(this.projectId, this.runnerId).catch(() => []),
       this.client.listGitProviders().catch(() => []),
     ]);
     if (this.disposed) { return; }
     this.state.repos = repos.map(r => ({ name: r.name, path: r.path, branch: r.branch }));
-    this.state.agentProjects = projects;
     this.state.gitProviders = providers.map(p => ({ id: p.id, name: p.name }));
-    if (!this.state.defaultProject) { this.state.defaultProject = projects[0] ?? ''; }
     this.push();
   }
 

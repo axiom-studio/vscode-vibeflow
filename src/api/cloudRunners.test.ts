@@ -383,16 +383,15 @@ describe('authCompletesAutomatically', () => {
 });
 
 describe('canLaunch', () => {
-  it('requires a working dir, a project, and exactly one workspace persona (#2887)', () => {
+  it('requires a working dir, a project, and at least one persona of any kind (#3111, cloud parity)', () => {
     expect(canLaunch('/w', 'proj', ['developer'])).toBe(true);
     expect(canLaunch('/w', 'proj', ['principal_engineer', 'qa_lead'])).toBe(true);
+    // A workspace agent is NOT required — advisory-only is allowed (cloud parity).
+    expect(canLaunch('/w', 'proj', ['qa_lead', 'security_lead'])).toBe(true);
     expect(canLaunch('', 'proj', ['developer'])).toBe(false);
     expect(canLaunch('/w', '  ', ['developer'])).toBe(false);
+    // Zero personas is still blocked — the cloud UI requires >= 1.
     expect(canLaunch('/w', 'proj', [])).toBe(false);
-    // Advisory-only sessions write no code — blocked.
-    expect(canLaunch('/w', 'proj', ['qa_lead', 'security_lead'])).toBe(false);
-    // Two workspace agents would fight over the branch lock — blocked.
-    expect(canLaunch('/w', 'proj', ['developer', 'architect'])).toBe(false);
   });
 });
 
@@ -403,7 +402,7 @@ describe('persona grouping (#2887)', () => {
     expect(ADVISORY_PERSONAS).not.toContain('developer');
   });
 
-  it('workspace picks replace each other (radio semantics), advisory picks toggle', () => {
+  it('workspace picks replace each other and are deselectable; advisory picks toggle (#3111)', () => {
     let sel: string[] = [];
     sel = togglePersonaSelection(sel, 'developer');
     expect(sel).toEqual(['developer']);
@@ -413,8 +412,8 @@ describe('persona grouping (#2887)', () => {
     expect(sel).toEqual(['architect', 'qa_lead']);
     sel = togglePersonaSelection(sel, 'qa_lead'); // toggles off
     expect(sel).toEqual(['architect']);
-    // Re-picking the current workspace persona is a no-op (radio can't untick).
-    expect(togglePersonaSelection(sel, 'architect')).toEqual(['architect']);
+    // Re-clicking the selected workspace persona DESELECTS it (#3111 — optional).
+    expect(togglePersonaSelection(sel, 'architect')).toEqual([]);
   });
 
   it('manifestToSavedConfig keeps only the first workspace persona from a stale manifest', () => {

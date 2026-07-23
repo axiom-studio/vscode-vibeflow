@@ -552,8 +552,8 @@ export interface CloudRunnerManageState {
   oauthCode?: string;
   needsPasteBack: boolean; // claude = interactive paste-back; codex/cursor = auto
   repos: { name?: string; path?: string; branch?: string }[];
-  agentProjects: string[];
   gitProviders: { id: number; name: string }[];
+  /** The workspace's current project — shown read-only in Configure (#3111). */
   defaultProject: string;
   launchPhase?: string;
   launchErrors?: string[];

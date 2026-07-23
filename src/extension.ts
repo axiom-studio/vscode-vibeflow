@@ -1337,7 +1337,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           vscode.window.showErrorMessage('VibeFlow: Not logged in. Run "VibeFlow: Setup" first.');
           return;
         }
-        CloudRunnerManagePanel.open(context.extensionUri, client, projectId, runnerId, runnerName ?? `#${runnerId}`);
+        // The runner session runs under the workspace's current project — the
+        // Configure step shows it read-only (cloud-UI parity, #3111).
+        const projectName = detector.getCachedProject()?.projectName ?? '';
+        CloudRunnerManagePanel.open(context.extensionUri, client, projectId, runnerId, runnerName ?? `#${runnerId}`, projectName);
       },
     ),
     vscode.commands.registerCommand('vibeflow.openBrainstorm', () => {
