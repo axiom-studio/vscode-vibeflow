@@ -116,8 +116,6 @@ export type SettingsClientMessage =
   | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
-  | { type: 'updateStickyModel'; payload: { persona: string; model: string } }
-  | { type: 'resetStickyModel'; payload: { persona: string } }
   | { type: 'openCli'; payload: { mcpName: string; rootPath: string } }
   // Git Configuration tab (features #603 / #604). Per the #3389 design the
   // secret is entered inline in the form, so the create payload carries the

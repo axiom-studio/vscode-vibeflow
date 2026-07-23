@@ -7,7 +7,6 @@ import type { SessionsTreeProvider } from '../views/sessions/SessionsTreeProvide
 import type { VibeFlowSession } from '../api/types.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 import { removeWorktreeAt } from './worktreeCommands.js';
-import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.js';
 import { killTmuxSession } from '../sessions/tmuxState.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
@@ -298,7 +297,6 @@ export async function restartSession(
   detector: ProjectDetector,
   sessionsProvider: SessionsTreeProvider,
   terminalRegistry: TerminalRegistry,
-  stickyModels: StickyModels,
   context: ContextProxy,
 ): Promise<void> {
   const personaLabel = session.persona_name ?? session.persona_key;
@@ -359,7 +357,6 @@ export async function restartSession(
 
   const binary = AGENT_BINARIES[provider] ?? 'claude';
   const command = buildLaunchCommand(binary, provider, sessionMode);
-  const model = stickyModels.getModel(persona);
   const initPrompt = `Initialize a vibeflow session for project ${project.projectName} with persona ${persona} and follow the agent prompt. Call session_init with project_name: ${project.projectName}, persona: ${persona}, git_branch: ${branch} and begin Phase 1 immediately.`;
 
   try {
@@ -373,7 +370,6 @@ export async function restartSession(
         VIBEFLOW_SERVER_URL: serverUrl,
         VIBEFLOW_PERSONA: persona,
         VIBEFLOW_BRANCH: branch,
-        VIBEFLOW_MODEL: model,
       },
       terminalMode,
       initPrompt,

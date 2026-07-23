@@ -3,8 +3,8 @@ import * as vscode from 'vscode';
 /**
  * Single source of truth for every key the extension persists.
  *
- * Why: previously each service (AuthService, ProjectDetector,
- * StickyModels, …) defined its own string constants and called
+ * Why: previously each service (AuthService, ProjectDetector, …)
+ * defined its own string constants and called
  * `context.globalState.get(...)` / `context.secrets.store(...)`
  * directly. That worked but had three rough edges:
  *
@@ -34,7 +34,6 @@ export interface GlobalStateSchema {
   'vibeflow.projectId': number;
   'vibeflow.projectName': string;
   'vibeflow.gitRemoteUrl': string;
-  'vibeflow.stickyModels': Record<string, string>;
   /**
    * Per-launch session mode, keyed by `{persona}::{branch}::{workDir}`.
    * Written when launchSession spawns a terminal, read by SessionReattacher
@@ -127,7 +126,6 @@ export class ContextProxy {
       'vibeflow.projectId',
       'vibeflow.projectName',
       'vibeflow.gitRemoteUrl',
-      'vibeflow.stickyModels',
       'vibeflow.launchModes',
       'vibeflow.dashboard.nodePositions',
     ] satisfies GlobalStateKey[];
