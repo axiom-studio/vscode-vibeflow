@@ -35,6 +35,16 @@ function randomSuffix(): string {
 }
 
 /**
+ * Move the previously-chosen item to the front so it lands highlighted (#2894
+ * 'Start over' prefill). `showQuickPick` has no activeItems option, so
+ * first-is-active ordering is the native way to pre-select a single-pick list.
+ */
+export function activeFirst<T>(items: T[], isActive: (item: T) => boolean): T[] {
+  const idx = items.findIndex(isActive);
+  return idx <= 0 ? items : [items[idx], ...items.slice(0, idx), ...items.slice(idx + 1)];
+}
+
+/**
  * Multi-step flow for provisioning a Cloud Runner (feature #603), invoked from
  * the Work Items "+" action when the org has the capability. Collects the
  * runner config, POSTs it, then polls to `active` inside a progress
@@ -45,130 +55,152 @@ export async function createCloudRunner(
   client: VibeFlowClient,
   projectId: number,
 ): Promise<void> {
-  const name = await vscode.window.showInputBox({
-    prompt: `Cloud runner name — ${RUNNER_NAME_RULES}`,
-    placeHolder: 'vscode-dev',
-    ignoreFocusOut: true,
-    // Live inline validation (#2827): the pod's network name derives from
-    // this, so enforce the naming rules before anything is sent.
-    validateInput: value => validateRunnerName(value),
-  });
-  if (!name?.trim()) { return; }
-
-  const agentType = await vscode.window.showQuickPick(AGENT_TYPES, {
-    placeHolder: 'Agent type',
-    title: 'Create Cloud Runner',
-  });
-  if (!agentType) { return; }
-
-  const authMode = await vscode.window.showQuickPick(AUTH_MODES, {
-    placeHolder: 'Authentication',
-    title: 'Create Cloud Runner',
-  });
-  if (!authMode) { return; }
-
-  const body: CreateRunnerRequest = {
-    name: name.trim(),
-    agentType: agentType.value,
-    authMode: authMode.value,
-    cloudAgentType: 'vibeflow',
-  };
-
-  if (authMode.value === 'api_key') {
-    const apiKey = await vscode.window.showInputBox({
-      prompt: `Provider API key for ${agentType.value}`,
-      password: true,
+  // The wizard body loops so the Review step's 'Start over' (#2894) can restart
+  // it with the just-assembled config carried back as prefills — the user fixes
+  // one field without re-entering the whole flow. `defaults` is undefined on the
+  // first pass and the previous `body` on every 'Start over'.
+  let body: CreateRunnerRequest;
+  let defaults: CreateRunnerRequest | undefined;
+  for (;;) {
+    const name = await vscode.window.showInputBox({
+      prompt: `Cloud runner name — ${RUNNER_NAME_RULES}`,
+      placeHolder: 'vscode-dev',
+      value: defaults?.name,
       ignoreFocusOut: true,
+      // Live inline validation (#2827): the pod's network name derives from
+      // this, so enforce the naming rules before anything is sent.
+      validateInput: value => validateRunnerName(value),
     });
-    if (!apiKey) { return; } // cancelled or empty — abort
-    body.apiKey = apiKey;
-  } else {
-    // OAuth: pick the per-agent login method (spec #433 §7.3). Codex and Cursor
-    // have exactly one method, so it is applied without an extra prompt; Claude
-    // offers subscription vs Console vs third-party billing.
-    const methods = LOGIN_METHODS[agentType.value];
-    let loginMethod = methods[0].value;
-    if (methods.length > 1) {
-      const pick = await vscode.window.showQuickPick(
-        methods.map(m => ({ label: m.label, value: m.value })),
-        { placeHolder: 'How will this agent sign in?', title: 'Create Cloud Runner' },
-      );
-      if (!pick) { return; }
-      loginMethod = pick.value;
-    }
-    body.loginMethod = loginMethod;
-  }
+    if (!name?.trim()) { return; }
 
-  // Optional git provider + repos. A runner may only request repos when it has
-  // a provider (validated below and server-side).
-  const providers = await client.listGitProviders().catch(() => []);
-  if (providers.length > 0) {
-    const none = { label: '$(circle-slash) No git provider', providerId: undefined as number | undefined, authMode: undefined as string | undefined };
-    const pick = await vscode.window.showQuickPick(
-      [
-        none,
-        ...providers.map(p => ({
-          label: `$(key) ${p.name}`,
-          description: `${p.gitUrl} · ${p.authMode}`,
-          providerId: p.id as number | undefined,
-          authMode: p.authMode as string | undefined,
-        })),
-      ],
-      { placeHolder: 'Git provider for cloning repos (optional)', title: 'Create Cloud Runner' },
+    const agentType = await vscode.window.showQuickPick(
+      activeFirst(AGENT_TYPES, a => a.value === defaults?.agentType),
+      { placeHolder: 'Agent type', title: 'Create Cloud Runner' },
     );
-    if (pick === undefined) { return; }
-    if (pick.providerId !== undefined) {
-      body.gitProviderId = pick.providerId;
-      const reposInput = await vscode.window.showInputBox({
-        prompt: 'Repos to clone (comma-separated URLs, optional)',
-        placeHolder: 'https://github.com/acme/app, https://github.com/acme/lib',
+    if (!agentType) { return; }
+
+    const authMode = await vscode.window.showQuickPick(
+      activeFirst(AUTH_MODES, a => a.value === defaults?.authMode),
+      { placeHolder: 'Authentication', title: 'Create Cloud Runner' },
+    );
+    if (!authMode) { return; }
+
+    const next: CreateRunnerRequest = {
+      name: name.trim(),
+      agentType: agentType.value,
+      authMode: authMode.value,
+      cloudAgentType: 'vibeflow',
+    };
+
+    if (authMode.value === 'api_key') {
+      const apiKey = await vscode.window.showInputBox({
+        prompt: `Provider API key for ${agentType.value}`,
+        password: true,
+        // Carry the prior key across 'Start over' only if it stays an api_key runner.
+        value: defaults?.authMode === 'api_key' ? defaults.apiKey : undefined,
         ignoreFocusOut: true,
       });
-      if (reposInput === undefined) { return; }
-      if (parseRepoUrls(reposInput).length > 0) {
-        // Explicit branch (#2883): the pod clones `--branch <branch|main>`
-        // and swallows failures, so a repo whose default branch is not main
-        // would silently end up missing from /workspace/repos.
-        const branch = await vscode.window.showInputBox({
-          prompt: 'Git branch to clone (applies to the listed repos)',
-          value: 'main',
+      if (!apiKey) { return; } // cancelled or empty — abort
+      next.apiKey = apiKey;
+    } else {
+      // OAuth: pick the per-agent login method (spec #433 §7.3). Codex and Cursor
+      // have exactly one method, so it is applied without an extra prompt; Claude
+      // offers subscription vs Console vs third-party billing.
+      const methods = LOGIN_METHODS[agentType.value];
+      let loginMethod = methods[0].value;
+      if (methods.length > 1) {
+        // Only pre-highlight the prior method when the agent is unchanged.
+        const priorMethod = defaults?.agentType === agentType.value ? defaults.loginMethod : undefined;
+        const pick = await vscode.window.showQuickPick(
+          activeFirst(methods.map(m => ({ label: m.label, value: m.value })), m => m.value === priorMethod),
+          { placeHolder: 'How will this agent sign in?', title: 'Create Cloud Runner' },
+        );
+        if (!pick) { return; }
+        loginMethod = pick.value;
+      }
+      next.loginMethod = loginMethod;
+    }
+
+    // Optional git provider + repos. A runner may only request repos when it has
+    // a provider (validated below and server-side).
+    const providers = await client.listGitProviders().catch(() => []);
+    if (providers.length > 0) {
+      const none = { label: '$(circle-slash) No git provider', providerId: undefined as number | undefined, authMode: undefined as string | undefined };
+      const pick = await vscode.window.showQuickPick(
+        activeFirst(
+          [
+            none,
+            ...providers.map(p => ({
+              label: `$(key) ${p.name}`,
+              description: `${p.gitUrl} · ${p.authMode}`,
+              providerId: p.id as number | undefined,
+              authMode: p.authMode as string | undefined,
+            })),
+          ],
+          item => item.providerId === defaults?.gitProviderId,
+        ),
+        { placeHolder: 'Git provider for cloning repos (optional)', title: 'Create Cloud Runner' },
+      );
+      if (pick === undefined) { return; }
+      if (pick.providerId !== undefined) {
+        next.gitProviderId = pick.providerId;
+        const reposInput = await vscode.window.showInputBox({
+          prompt: 'Repos to clone (comma-separated URLs, optional)',
+          placeHolder: 'https://github.com/acme/app, https://github.com/acme/lib',
+          value: defaults?.gitRepos?.map(r => r.url).join(', '),
           ignoreFocusOut: true,
         });
-        if (branch === undefined) { return; }
-        body.gitRepos = parseRepoUrls(reposInput, branch.trim() || 'main');
-        // Scheme-vs-provider check (#2888): the server rejects mismatches one
-        // step later with a raw error — catch it here with the web's message.
-        for (const repo of body.gitRepos) {
-          const schemeErr = gitRepoUrlAuthError(repo.url, pick.authMode);
-          if (schemeErr) {
-            vscode.window.showErrorMessage(`VibeFlow: ${schemeErr}`);
-            return;
+        if (reposInput === undefined) { return; }
+        if (parseRepoUrls(reposInput).length > 0) {
+          // Explicit branch (#2883): the pod clones `--branch <branch|main>`
+          // and swallows failures, so a repo whose default branch is not main
+          // would silently end up missing from /workspace/repos.
+          const branch = await vscode.window.showInputBox({
+            prompt: 'Git branch to clone (applies to the listed repos)',
+            value: defaults?.gitRepos?.[0]?.branch ?? 'main',
+            ignoreFocusOut: true,
+          });
+          if (branch === undefined) { return; }
+          next.gitRepos = parseRepoUrls(reposInput, branch.trim() || 'main');
+          // Scheme-vs-provider check (#2888): the server rejects mismatches one
+          // step later with a raw error — catch it here with the web's message.
+          for (const repo of next.gitRepos) {
+            const schemeErr = gitRepoUrlAuthError(repo.url, pick.authMode);
+            if (schemeErr) {
+              vscode.window.showErrorMessage(`VibeFlow: ${schemeErr}`);
+              return;
+            }
           }
         }
       }
     }
-  }
 
-  const validationError = validateCreateRunner(body);
-  if (validationError) {
-    vscode.window.showErrorMessage(`VibeFlow: ${validationError}`);
-    return;
-  }
+    const validationError = validateCreateRunner(next);
+    if (validationError) {
+      vscode.window.showErrorMessage(`VibeFlow: ${validationError}`);
+      return;
+    }
 
-  // Review-before-deploy (#2894): show the assembled config and require an
-  // explicit confirm. The runner deploys to the operator-configured cluster.
-  const review = await vscode.window.showQuickPick(
-    [
-      { label: '$(rocket) Create runner', confirm: true },
-      { label: '$(x) Cancel', confirm: false },
-    ],
-    {
-      title: 'Review & Deploy',
-      placeHolder: createRunnerReviewLines(body).join('  ·  '),
-      ignoreFocusOut: true,
-    },
-  );
-  if (!review?.confirm) { return; }
+    // Review-before-deploy (#2894): show the assembled config and require an
+    // explicit action. 'Start over' restarts the wizard with these values as
+    // prefills; the runner deploys to the operator-configured cluster.
+    const review = await vscode.window.showQuickPick(
+      [
+        { label: '$(rocket) Create runner', action: 'create' as const },
+        { label: '$(refresh) Start over', action: 'startOver' as const },
+        { label: '$(x) Cancel', action: 'cancel' as const },
+      ],
+      {
+        title: 'Review & Deploy',
+        placeHolder: createRunnerReviewLines(next).join('  ·  '),
+        ignoreFocusOut: true,
+      },
+    );
+    if (!review || review.action === 'cancel') { return; } // Esc lands here too
+    if (review.action === 'startOver') { defaults = next; continue; }
+    body = next;
+    break;
+  }
 
   // Create OUTSIDE the progress notification so a 409 name-retry prompt
   // doesn't fight it (#3388). 403/502/503 map to specific messages.
