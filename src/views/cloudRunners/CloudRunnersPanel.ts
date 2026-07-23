@@ -9,7 +9,7 @@ import {
   type CloudRunnersClientMessage,
   type CloudRunnersHostMessage,
 } from '../../core/webviewMessages.js';
-import { runnerActionErrorMessage, isRunnerTransitioning } from '../../api/cloudRunners.js';
+import { runnerActionErrorMessage, isRunnerTransitioning, bulkPastTense } from '../../api/cloudRunners.js';
 
 const SETTLE_POLL_MS = 3000;
 const SETTLE_POLL_MAX = 10;
@@ -207,7 +207,7 @@ export class CloudRunnersPanel {
   private reportBulk(verb: string, results: PromiseSettledResult<unknown>[]): void {
     const ok = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.length - ok;
-    const past = verb === 'stop' ? 'stopped' : `${verb}d`; // start→started, delete→deleted, stop→stopped
+    const past = bulkPastTense(verb); // start→started, stop→stopped, delete→deleted (#2893)
     if (failed === 0) {
       vscode.window.showInformationMessage(`VibeFlow: ${ok} runner${ok === 1 ? '' : 's'} ${past}.`);
       return;
