@@ -195,14 +195,19 @@ export class CloudRunnerManagePanel {
 
   private async startOAuth(): Promise<void> {
     if (!this.state.podReady) { return; } // gate the device-code start (#436 §4.1)
+    // Surface a loading state — the device-code round-trip takes a few seconds
+    // and the button would otherwise look inert (parity with submitOAuth/clone).
+    this.state.busy = true;
+    this.push();
     try {
       const start = await this.client.getRunnerOAuthStart(this.projectId, this.runnerId);
       if (this.disposed) { return; }
+      this.state.busy = false;
       this.state.oauthUrl = firstPresent(start.url, start.verificationUrl, start.verification_url);
       this.state.oauthCode = firstPresent(start.code, start.userCode, start.user_code);
       this.push();
     } catch (err) {
-      this.showError(err);
+      this.showError(err); // clears busy
     }
   }
 

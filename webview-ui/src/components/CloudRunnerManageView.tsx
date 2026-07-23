@@ -113,7 +113,7 @@ function AuthenticateStep({ state }: { state: CloudRunnerManageState }) {
       <div>
         <p style={{ fontSize: 12, marginBottom: 12 }}>Authenticate the agent on this runner to continue.</p>
         <button style={btn} disabled={state.busy} onClick={() => vscode.postMessage({ type: 'manageStartOAuth' })}>
-          Start authentication
+          {state.busy ? 'Starting…' : 'Start authentication'}
         </button>
       </div>
     );
