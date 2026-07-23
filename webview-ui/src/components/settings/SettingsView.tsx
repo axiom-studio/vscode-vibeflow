@@ -7,13 +7,12 @@ import { SessionDefaultsTab } from './SessionDefaultsTab';
 import { WorktreesTab } from './WorktreesTab';
 import { NotificationsTab } from './NotificationsTab';
 import { AboutTab } from './AboutTab';
-import { CliTab } from './CliTab';
 import { GitConfigTab } from './GitConfigTab';
 import { CLOUD_RUNNERS_BUILD_ENABLED } from '../../../../src/api/cloudRunners';
 import { getVsCodeApi } from '../../vscodeApi';
 import {
   PlugIcon, CpuIcon, SlidersIcon, BrainIcon, GitBranchIcon,
-  BellIcon, TerminalIcon, InfoIcon, LockIcon,
+  BellIcon, InfoIcon, LockIcon,
 } from '../_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
@@ -60,7 +59,6 @@ const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   { id: 'models',        label: 'Sticky Models',    Icon: BrainIcon },
   { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
   { id: 'notifications', label: 'Notifications',    Icon: BellIcon },
-  { id: 'cli',           label: 'CLI Interface',    Icon: TerminalIcon },
   { id: 'about',         label: 'About',            Icon: InfoIcon },
 ] as const;
 
@@ -229,9 +227,6 @@ export function SettingsView() {
           )}
           {activeTab === 'notifications' && (
             <NotificationsTab data={data} onUpdate={updateSetting} />
-          )}
-          {activeTab === 'cli' && (
-            <CliTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
           {activeTab === 'about' && (
             <AboutTab data={data} />
