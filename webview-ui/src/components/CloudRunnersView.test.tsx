@@ -31,6 +31,7 @@ function pushError(message: string) {
 describe('statusColor', () => {
   it('maps known runner statuses and falls back to muted for unknown', () => {
     expect(statusColor('active')).toContain('feed-success');
+    expect(statusColor('running')).toContain('feed-success'); // #3106 — was gray (no 'running' key)
     expect(statusColor('failed')).toContain('feed-error');
     expect(statusColor('starting')).toBe('#d29922');
     expect(statusColor('whatever')).toContain('feed-muted');
