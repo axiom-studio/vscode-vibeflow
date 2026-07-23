@@ -720,13 +720,13 @@
           {
             "id": "launch",
             "title": "Launch your first agent",
-            "description": "Pick a persona, AI provider, and branch — the wizard handles the rest. Your agent boots in a per-persona terminal and starts polling for work the moment it lands.\n\n[Launch Session](command:vibeflow.launchSession)",
+            "description": "Agents run in the **VibeFlow CLI** — a terminal app that manages your persona team. Open it below; if it isn't installed yet you'll be offered a one-click install. Your team boots there and starts polling for work.\n\nThe left **Agent Fleet** stays live either way, and clicking any agent opens its chat — you drive everything from the sidebar.\n\n[Open the VibeFlow CLI](command:vibeflow.openCli)\n\n_Prefer per-persona VS Code terminals? Turn off **Use VibeFlow CLI** in Settings → CLI Interface._",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Launch"
             },
             "completionEvents": [
-              "onCommand:vibeflow.launchSession"
+              "onCommand:vibeflow.openCli"
             ]
           },
           {
@@ -776,8 +776,8 @@
         },
         "vibeflow.cli.enabled": {
           "type": "boolean",
-          "default": false,
-          "description": "Use the VibeFlow CLI (TUI) for session management instead of per-persona VS Code terminals. The left sidebar still shows live agent state. Requires the `vibeflow` binary on PATH — install from https://github.com/axiom-studio/vibeflow-cli/releases."
+          "default": true,
+          "description": "Use the VibeFlow CLI (TUI) for session management instead of per-persona VS Code terminals. This is the default — the left sidebar still shows live agent state and clicking an agent opens its chat. Requires the `vibeflow` binary on PATH (the extension offers a one-click install). Turn this off to launch agents in per-persona VS Code terminals instead."
         },
         "vibeflow.cli.binaryPath": {
           "type": "string",

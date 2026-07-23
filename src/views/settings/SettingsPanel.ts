@@ -577,7 +577,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // the per-persona TerminalRegistry path or are delegated to the
     // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
     // can render install guidance without an extra round-trip.
-    cliEnabled: config.get('cli.enabled', false),
+    cliEnabled: config.get('cli.enabled', true),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliMcpName: config.get('cli.mcpName', ''),
     cliRootPath: config.get('cli.rootPath', ''),
