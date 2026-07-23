@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.1 (2026-07-24)
+
+Cloud Runners polish, a CLI-first agent-launch flow, and correctly scoped notifications.
+
+### Added
+
+- **Resizable Cloud Runners columns** — drag any column's edge to set its width; your widths persist across reloads.
+- **Active-step indicator in the Manage wizard** — a numbered stepper highlights where you are (Authenticate → Configure → Launch).
+- **Loading states** on **Start authentication** and **Submit code**, so you get immediate feedback while the request is in flight.
+
+### Changed
+
+- **The VibeFlow CLI is now the default way to launch agents.** Onboarding and the walkthrough guide you to it, and the Agent Fleet stays live — click any agent on the left to open its chat. Prefer per-persona VS Code terminals? Turn off **Use VibeFlow CLI** under **Settings → Connection**.
+- **Simpler settings** — CLI setup (enable + binary install) now lives on the **Connection** tab; the separate **CLI Interface** tab and the **Sticky Models** tab have been removed.
+- **Configure step** — the coding (workspace) agent is now optional and can be deselected, and **Project** is shown read-only as your current project.
+- **Cleaner runner list** — one primary action per row (**Manage**, or **Authenticate** when the runner needs sign-in), plus a green dot and a capitalized label for running runners.
+
+### Fixed
+
+- **Notifications are scoped to your own sessions** — "work item complete" toasts no longer fire for other users' or teammates' items.
+- **The Status cell no longer clips its label** (the truncated "Ma" action button on narrow columns).
+
 ## 1.3.0 (2026-07-23)
 
 The Cloud Runners release — provision, authenticate, configure, and launch cloud-hosted agent runners (Claude, Codex, Cursor) directly from the IDE, and manage the git providers they clone with. The Cloud Runners surface appears when your organization has the feature enabled.
