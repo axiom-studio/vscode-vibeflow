@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { SettingsData, SettingsCommand } from './settingsTypes';
+import { CliSettings } from './CliTab';
 
 interface Props {
   data: SettingsData;
@@ -148,6 +149,9 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         </ActionRow>
       </Card>
 
+      {/* How agents run — the VibeFlow CLI is the default runtime (#3113). */}
+      <CliSettings data={data} onUpdate={onUpdate} onCommand={onCommand} />
+
       <Card
         title="Configure MCP for Coding Agents"
         description="Wire the VibeFlow MCP server into your coding agents so they can read and update VibeFlow work items. Uses the API key and server URL above — no re-entry. Also runs automatically when you install the CLI."
@@ -178,7 +182,7 @@ export function ConnectionTab({ data, onUpdate, onCommand }: Props) {
         </ActionRow>
         {!data.cliInstalled && (
           <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
-            Install the VibeFlow CLI (Settings → CLI Interface) to configure or change MCP.
+            Install the VibeFlow CLI (above) to configure or change MCP.
           </div>
         )}
       </Card>
