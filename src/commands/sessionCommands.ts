@@ -9,7 +9,6 @@ import type { VibeFlowProject, VibeFlowSession } from '../api/types.js';
 import { ensureAllAgentDocs } from '../agentdocs/ensureAgentDocs.js';
 import { TerminalRegistry, type TerminalMode } from '../sessions/TerminalRegistry.js';
 import { createOrAttachWorktree } from './worktreeCommands.js';
-import { StickyModels } from '../sessions/stickyModels.js';
 import { recordLaunchMode } from '../sessions/launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 import { SessionStreamRegistry } from '../sessions/SessionStreamRegistry.js';
@@ -137,7 +136,6 @@ export async function launchSession(
   sessionsProvider: SessionsTreeProvider,
   extensionUri: vscode.Uri,
   terminalRegistry: TerminalRegistry,
-  stickyModels: StickyModels,
   context: ContextProxy,
   streamRegistry: SessionStreamRegistry,
   tmuxBacking: TmuxBacking,
@@ -554,7 +552,6 @@ export async function launchSession(
   for (const persona of personas) {
     try {
       const personaProviderKey = personaProviders.get(persona) ?? provider.value;
-      const model = stickyModels.getModel(persona);
       const binary = AGENT_BINARIES[personaProviderKey] ?? 'claude';
 
       // Build the init prompt that tells the agent which persona and project to use.
@@ -565,7 +562,6 @@ export async function launchSession(
       const fullEnv = {
         ...env,
         VIBEFLOW_PERSONA: persona,
-        VIBEFLOW_MODEL: model,
       };
 
       // Chat-first sessions spawn directly via SessionStreamRegistry in
