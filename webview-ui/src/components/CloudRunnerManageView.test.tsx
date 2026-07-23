@@ -8,7 +8,7 @@ function baseState(over: Partial<CloudRunnerManageState> = {}): CloudRunnerManag
   return {
     step: 'configure', runnerName: 'runner-a', agentType: 'claude', authMode: 'oauth',
     authenticated: false, configured: false, podStatus: '', podReady: false,
-    needsPasteBack: true, repos: [], agentProjects: [], gitProviders: [],
+    needsPasteBack: true, repos: [], gitProviders: [],
     defaultProject: '', launching: false, busy: false, hydrated: true, ...over,
   };
 }
@@ -118,6 +118,30 @@ describe('CloudRunnerManageView', () => {
       payload: expect.objectContaining({ workingDir: '/workspace/repos/app', project: 'proj-x', personas: ['principal_engineer'] }),
     }));
     spy.mockRestore();
+  });
+
+  it('enables Launch with only an advisory persona — no workspace agent required (#3111)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure', repos: [{ path: '/workspace/repos/app', branch: 'main' }], defaultProject: 'proj-x' }));
+    fireEvent.click(screen.getByLabelText('qa_lead')); // advisory only, no workspace agent
+    expect((screen.getByRole('button', { name: 'Launch' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('renders Project read-only (fixed to the current project, #3111)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure', defaultProject: 'proj-x' }));
+    // The project name is shown, but there is no editable textbox for it.
+    expect(screen.getByText('proj-x')).toBeTruthy();
+    expect(screen.queryByPlaceholderText('vibeflow project name')).toBeNull();
+  });
+
+  it('shows a loading state on Submit code while busy (#3111)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'authenticate', podReady: true, oauthUrl: 'https://auth', needsPasteBack: true, busy: true }));
+    // Type a code so the button is enabled-modulo-busy, then assert the busy label.
+    fireEvent.change(screen.getByPlaceholderText('verification code'), { target: { value: 'ABCD' } });
+    expect(screen.getByRole('button', { name: 'Submitting…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Submit code' })).toBeNull();
   });
 
   it('holds Loading… on the busy-first hydrate push instead of mounting a step (#2885)', () => {

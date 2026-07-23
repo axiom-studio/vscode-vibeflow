@@ -413,12 +413,13 @@ export function llmGatewaySupportedForAgent(agentType: string | undefined): bool
 }
 
 /**
- * Launch is enabled only with a working directory, a project, and a valid
- * persona set: exactly ONE workspace persona (#2887) plus any advisors.
+ * Launch is enabled with a working directory, a project, and at least one
+ * persona of ANY kind — cloud-UI parity (CloudRunnerDetail.jsx `canLaunch`).
+ * A workspace agent is NOT required (#3111); togglePersonaSelection still caps
+ * workspace personas at one, but the user may launch with only advisors.
  */
 export function canLaunch(workingDir: string, project: string, personas: readonly string[]): boolean {
-  const workspaceCount = personas.filter(p => (WORKSPACE_PERSONAS as readonly string[]).includes(p)).length;
-  return workingDir.trim().length > 0 && project.trim().length > 0 && workspaceCount === 1;
+  return workingDir.trim().length > 0 && project.trim().length > 0 && personas.length >= 1;
 }
 
 /**
@@ -518,7 +519,9 @@ export const ADVISORY_PERSONAS: readonly string[] =
 export function togglePersonaSelection(selected: readonly string[], value: string): string[] {
   const workspace = WORKSPACE_PERSONAS as readonly string[];
   if (workspace.includes(value)) {
-    if (selected.includes(value)) { return [...selected]; }
+    // Re-clicking the selected workspace persona DESELECTS it — a workspace
+    // agent is optional (#3111). Picking a different one still replaces it.
+    if (selected.includes(value)) { return selected.filter(p => p !== value); }
     return [value, ...selected.filter(p => !workspace.includes(p))];
   }
   return selected.includes(value) ? selected.filter(p => p !== value) : [...selected, value];
