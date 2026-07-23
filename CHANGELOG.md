@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0 (2026-07-14)
+## 1.3.0 (2026-07-23)
 
 The Cloud Runners release — provision, authenticate, configure, and launch cloud-hosted agent runners (Claude, Codex, Cursor) directly from the IDE, and manage the git providers they clone with. The Cloud Runners surface appears when your organization has the feature enabled.
 
@@ -9,12 +9,13 @@ The Cloud Runners release — provision, authenticate, configure, and launch clo
 - **Cloud Runners.** A new Browse section to see your project's cloud-hosted agent runners and their status, and to start, stop, and delete them.
 - **Create a runner** from the Work Items **+** menu or the **New Runner** button on the Cloud Runners page — pick the agent (Claude, Codex, or Cursor), API-key or OAuth authentication with the per-agent login method (e.g. Claude subscription / Console / third-party), an optional git provider, and repositories with a branch — ending in a review-before-deploy step.
 - **Manage wizard** — **Authenticate** the agent, then **Configure** personas, model, session type, working directory, branch, and worktree, and **Launch** a session on the pod. The Configure form pre-fills from the runner's last saved configuration.
+- **Streamlined Authenticate step** — a clickable **Open sign-in page** link plus **Copy** buttons for the sign-in link and the device code, with copied confirmation.
 - **Per-agent model selection** with presets and a custom model id.
 - **Workspace + advisory personas** — choose exactly one code-writing agent plus any number of advisory personas.
 - **Clone repositories into a running pod** from the Manage screen, re-injecting git credentials so push access is restored after a restart.
 - **Pod terminal** — open an interactive terminal into the runner pod.
 - **Bulk actions** — select multiple runners and start, stop, or delete them at once.
-- **At-a-glance runner list** — a health indicator, the owner's email, a one-click contextual action in the status cell, and an automatically refreshing table.
+- **At-a-glance runner list** — a health indicator, the owner's email, a one-click contextual action in the status cell, and an automatically refreshing table, with a live runner count on the Browse nav row.
 - **Git Configuration** — add and manage account-level git providers (PAT or SSH) from **Settings → Git Configuration** and a **Git Providers** page in Browse. Providers you created in the web are available here too.
 
 ### Fixed
