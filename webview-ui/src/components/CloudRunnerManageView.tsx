@@ -64,16 +64,39 @@ export function CloudRunnerManageView() {
   const steps: CloudRunnerManageState['step'][] = state.authMode === 'oauth'
     ? ['authenticate', 'configure', 'launch']
     : ['configure', 'launch'];
+  const currentIndex = steps.indexOf(state.step);
 
   return (
     <div style={wrap}>
       <h2 style={{ fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>Manage {state.runnerName}</h2>
       <div style={{ display: 'flex', gap: 14, margin: '10px 0 18px', alignItems: 'center' }}>
-        {steps.map(s => (
-          <span key={s} style={{ fontSize: 12, fontWeight: s === state.step ? 700 : 400, color: s === state.step ? 'var(--feed-fg)' : 'var(--feed-muted)' }}>
-            {STEP_LABELS[s]}
-          </span>
-        ))}
+        {steps.map((s, i) => {
+          const current = i === currentIndex;
+          const done = i < currentIndex;
+          const filled = current || done;
+          return (
+            <span
+              key={s}
+              aria-current={current ? 'step' : undefined}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12,
+                fontWeight: current ? 700 : 400,
+                color: filled ? 'var(--feed-fg)' : 'var(--feed-muted)',
+                borderBottom: current ? '2px solid var(--feed-button-bg)' : '2px solid transparent',
+                paddingBottom: 4,
+              }}
+            >
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 18, height: 18, borderRadius: '50%', fontSize: 10, fontWeight: 700, lineHeight: 1,
+                background: filled ? 'var(--feed-button-bg)' : 'transparent',
+                color: filled ? 'var(--feed-button-fg)' : 'var(--feed-muted)',
+                border: filled ? 'none' : '1px solid var(--feed-border)',
+              }}>{done ? '✓' : i + 1}</span>
+              <span>{STEP_LABELS[s]}</span>
+            </span>
+          );
+        })}
         <button
           style={{ ...ghostBtn, marginLeft: 'auto', padding: '4px 10px' }}
           onClick={() => vscode.postMessage({ type: 'manageOpenTerminal' })}

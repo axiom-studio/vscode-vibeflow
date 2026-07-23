@@ -62,6 +62,14 @@ describe('CloudRunnerManageView', () => {
     expect(screen.queryByRole('button', { name: 'Start authentication' })).toBeNull();
   });
 
+  it('marks the current wizard step with aria-current (#3110)', () => {
+    render(<CloudRunnerManageView />);
+    pushState(baseState({ step: 'configure', authMode: 'oauth' }));
+    // Only the current step (Configure) carries aria-current=step; a passed step does not.
+    expect(screen.getByText('Configure').closest('[aria-current="step"]')).toBeTruthy();
+    expect(screen.getByText('Authenticate').closest('[aria-current="step"]')).toBeNull();
+  });
+
   it('submits a pasted code for claude (needsPasteBack)', () => {
     const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
     render(<CloudRunnerManageView />);
