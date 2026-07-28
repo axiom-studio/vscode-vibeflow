@@ -27,8 +27,9 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { openCli, getCliVersion, type CliLaunchOptions } from './commands/cliCommands.js';
-import { installCli, fetchLatestCliTag } from './commands/cliInstaller.js';
+import { openCli, type CliLaunchOptions } from './commands/cliCommands.js';
+import { installCli } from './commands/cliInstaller.js';
+import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateCheck.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import {
   confirmAndCloseTabsForProjectSwitch,
@@ -95,6 +96,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     },
   );
   context.subscriptions.push(pollingCoordinator);
+
+  // Periodic "a newer VibeFlow CLI is out" check. Rides the shared timer
+  // (no second setInterval) and gates on a persisted wall-clock stamp, so
+  // refocus fires are cheap no-ops. Nothing runs on the activation path.
+  registerCliUpdateCheck(context, pollingCoordinator, contextProxy);
 
   const workingIndicatorChannel = vscode.window.createOutputChannel('VibeFlow Working Indicator', { log: true });
   context.subscriptions.push(workingIndicatorChannel);
@@ -920,28 +926,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await uninstallMcp();
     }),
     vscode.commands.registerCommand('vibeflow.checkCliUpdate', async () => {
-      const installed = getCliVersion();
-      if (!installed) {
-        vscode.window.showWarningMessage('VibeFlow CLI not found — install it first (Settings → CLI Interface).');
-        return;
-      }
-      const latest = await fetchLatestCliTag();
-      if (!latest) {
-        vscode.window.showWarningMessage(`VibeFlow CLI v${installed} — could not reach GitHub to check for updates.`);
-        return;
-      }
-      const norm = (v: string) => v.replace(/^v/, '');
-      if (norm(latest) === norm(installed)) {
-        vscode.window.showInformationMessage(`VibeFlow CLI is up to date (v${installed}).`);
-        return;
-      }
-      const choice = await vscode.window.showInformationMessage(
-        `VibeFlow CLI update available: v${installed} → ${latest}.`,
-        'Install Latest',
-      );
-      if (choice === 'Install Latest') {
-        await vscode.commands.executeCommand('vibeflow.installCli');
-      }
+      await runCliUpdateCheck({ silent: false });
     }),
     vscode.commands.registerCommand('vibeflow.browseCliBinary', async () => {
       const picked = await vscode.window.showOpenDialog({

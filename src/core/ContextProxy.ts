@@ -50,6 +50,19 @@ export interface GlobalStateSchema {
    * button in the section header — falls back to PERSONA_POSITIONS.
    */
   'vibeflow.dashboard.nodePositions': Record<string, Record<string, { x: number; y: number }>>;
+  /**
+   * Epoch-ms of the last background CLI update check. Gates the periodic
+   * check on wall-clock time so it survives reloads and laptop sleep
+   * (the polling coordinator only accumulates elapsed time while the
+   * window is focused). See commands/cliUpdateCheck.ts.
+   */
+  'vibeflow.cli.updateCheckedAt': number;
+  /**
+   * The last CLI release tag the user was shown an upgrade prompt for.
+   * Suppresses a repeat prompt for the same version on every subsequent
+   * tick; a newer tag still gets through.
+   */
+  'vibeflow.cli.updateNotifiedVersion': string;
 }
 
 /**
@@ -128,6 +141,8 @@ export class ContextProxy {
       'vibeflow.gitRemoteUrl',
       'vibeflow.launchModes',
       'vibeflow.dashboard.nodePositions',
+      'vibeflow.cli.updateCheckedAt',
+      'vibeflow.cli.updateNotifiedVersion',
     ] satisfies GlobalStateKey[];
     for (const key of globalKeys) {
       await this.context.globalState.update(key, undefined);
