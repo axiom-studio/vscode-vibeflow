@@ -794,6 +794,12 @@
           "default": "",
           "description": "Optional root path passed to the VibeFlow CLI as --root when opening the CLI."
         },
+        "vibeflow.cli.updateCheckIntervalHours": {
+          "type": "number",
+          "default": 12,
+          "minimum": 0,
+          "description": "How often to check GitHub for a newer VibeFlow CLI release, in hours. You are notified only when a newer version is available — never when you are already up to date. Set to 0 to disable. Values below 1 are raised to 1."
+        },
         "vibeflow.session.reattachMode": {
           "type": "string",
           "enum": [
