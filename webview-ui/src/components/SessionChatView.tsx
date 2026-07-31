@@ -60,22 +60,24 @@ export function SessionChatView() {
   // path when the message list is long.
   const deferredMessages = useDeferredValue(messages);
 
-  // Inline "Working…" affordance (#2704): while an agent reply is pending,
-  // also show a compact working indicator on the most-recent user message —
-  // in addition to the existing standalone pending-agent row. Both read the
-  // same pending state, so they clear together the moment the reply lands.
+  // The agent is BLOCKED awaiting the human: an agent-authored prompt is still
+  // `pending`, i.e. it asked a question and is waiting on a reply. This is the
+  // same condition `MessageBubble` uses for its "Agent needs your input" label
+  // and reply box (`isAgentPending`).
+  //
+  // It is NOT a working signal — it is the opposite one, and it is what
+  // suppresses the Working affordances below (#4203). axiomcloud carries the
+  // same rule as `sessionHasPendingAgentPrompt`, added in its issue #3592 with
+  // the note "a blocked agent is not working"; the extension never got it, so
+  // it painted an animated "Working…" spinner on the very row that says the
+  // agent needs your input.
+  //
   // Recomputes only when the message list changes (never per keystroke), so
   // the value passed to the memoized MessageBubble stays stable while typing.
-  const pendingSince = useMemo(() => {
-    const p = deferredMessages.find(m => m.source === 'agent' && m.status === 'pending');
-    return p ? p.created_at : undefined;
-  }, [deferredMessages]);
-  const lastUserIndex = useMemo(() => {
-    for (let i = deferredMessages.length - 1; i >= 0; i--) {
-      if (deferredMessages[i].source === 'user') { return i; }
-    }
-    return -1;
-  }, [deferredMessages]);
+  const agentBlocked = useMemo(
+    () => deferredMessages.some(m => m.source === 'agent' && m.status === 'pending'),
+    [deferredMessages],
+  );
 
   // Optimistic standalone Working bubble (#2769, web-chat parity per asset
   // #1437): set SYNCHRONOUSLY in send() — before any host/server round-trip —
@@ -114,7 +116,12 @@ export function SessionChatView() {
   const personaColor = PERSONA_COLORS[meta.personaKey] ?? 'var(--vscode-textLink-foreground)';
   // Live observer state (#3387) wins for the elapsed clock; the optimistic
   // post-send bubble fills the gap before the first activity event arrives.
-  const workingSince = liveWorkingSince ?? sendWorkingSince;
+  //
+  // Blocked beats working (#4203): if the agent has asked the user something
+  // and is waiting, a stale `liveWorkingSince` must not keep claiming it is
+  // busy. Mirrors axiomcloud's `&& !hasPendingAgentPrompt` on both of its
+  // session-level pill sites (VibeFlowSessions.jsx:3904, :4090).
+  const workingSince = agentBlocked ? undefined : (liveWorkingSince ?? sendWorkingSince);
 
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -710,7 +717,13 @@ export function SessionChatView() {
                 diffView={diffView}
                 sessionMode={meta.sessionMode}
                 onRespond={respond}
-                inlineWorkingSince={pendingSince && i === lastUserIndex ? pendingSince : undefined}
+                /* #2704's inline Working indicator is gone (#4203). Its only
+                   trigger was the agent-BLOCKED timestamp, so it appeared
+                   exactly when the agent was not working; and re-pointing it
+                   at the real working signal just duplicated the standalone
+                   bubble, which #2770 already settled as "the one affordance"
+                   (the #2769 tests below assert exactly one). No correct
+                   trigger remained, so the affordance was removed. */
               />
             ))
           )}
