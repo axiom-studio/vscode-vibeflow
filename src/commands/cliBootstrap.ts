@@ -21,7 +21,7 @@ const DEFAULT_BASE_URL = 'https://cloud.axiomstudio.ai';
 type AgentConfigType = 'json' | 'toml';
 
 interface McpAgent {
-  /** `--agents` CSV value (codex, gemini, cursor, claude-cli, claude-desktop). */
+  /** `--agents` CSV value (codex, gemini, cursor, claude-cli, claude-desktop, kiro). */
   key: string;
   /** Human label shown in the picker and the Settings status line. */
   label: string;
@@ -53,6 +53,15 @@ const MCP_AGENTS: McpAgent[] = [
   { key: 'cursor', label: 'Cursor', type: 'json', configPath: () => path.join(os.homedir(), '.cursor', 'mcp.json') },
   { key: 'claude-cli', label: 'Claude CLI', type: 'json', configPath: () => path.join(os.homedir(), '.claude.json') },
   { key: 'claude-desktop', label: 'Claude Desktop', type: 'json', configPath: claudeDesktopConfigPath },
+  // Kiro (#4201). vibeflow-cli has supported `--agents kiro` since its feature
+  // #648; only this list was missing it, which made Kiro invisible in the
+  // extension's picker AND in status detection even though the binary could
+  // already bootstrap it. Key/label/path mirror the CLI's own resolver
+  // (internal/vibeflowcli/bootstrap.go:78 + kiroConfigPath at :174) — user-level
+  // config only, matching Claude CLI's scope. Kiro also supports a
+  // workspace-level `<root>/.kiro/settings/mcp.json`, which `vibeflow bootstrap`
+  // deliberately does not write, so we don't detect it either.
+  { key: 'kiro', label: 'Kiro CLI', type: 'json', configPath: () => path.join(os.homedir(), '.kiro', 'settings', 'mcp.json') },
 ];
 
 /**
