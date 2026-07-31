@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.2 (2026-07-31)
+
+Automatic CLI update checks, Kiro support in MCP setup, and two chat fixes.
+
+### Added
+
+- **The extension now checks for VibeFlow CLI updates on its own.** Previously you had to run **Check for CLI Update** by hand; it now checks every 12 hours in the background and offers a one-click install when a newer release is out. You are only notified when there is genuinely something newer — never when you are already up to date, and a version you dismiss stays dismissed. Tune or disable it with **`vibeflow.cli.updateCheckIntervalHours`** (`0` turns it off; values under 1 are raised to 1).
+- **Kiro CLI can now be set up from the extension.** It appears in the MCP bootstrap picker alongside Codex, Gemini CLI, Cursor, Claude CLI and Claude Desktop, with the same bootstrapped/not-bootstrapped status and removal support. Requires a VibeFlow CLI new enough to support Kiro.
+
+### Changed
+
+- **The extension now reports which editor you use, so your organization can see how many IDE seats are in use.** While you are signed in, three values are sent at most once every 24 hours: the editor you are running (VS Code, Cursor, Windsurf, VSCodium, Kiro, or other), its version, and the extension version. Nothing else — no editor content, file names, paths, workspace or repository names, project data, or record of what you did — and nothing at all while you are signed out. See the **Data collection** section of the README and the [privacy policy](https://axiomstudio.ai/privacy).
+
+### Fixed
+
+- **Long file paths no longer spill outside the chat bubble.** File references in an agent's message now wrap inside the bubble instead of running past its edge and over the next panel.
+- **The chat no longer says "Working" when an agent is actually waiting on you.** When an agent asks a question, that message now shows only **Agent needs your input** and its reply box — the animated "Working…" indicator is reserved for when the agent is genuinely busy, and there is now one such indicator rather than several.
+
 ## 1.3.1 (2026-07-24)
 
 Cloud Runners polish, a CLI-first agent-launch flow, and correctly scoped notifications.
