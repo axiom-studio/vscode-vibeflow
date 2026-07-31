@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBootstrapArgs, redactBootstrapArgs, hasVibeflowEntry } from './cliBootstrap.js';
+import { buildBootstrapArgs, redactBootstrapArgs, hasVibeflowEntry, mcpAgentStatuses } from './cliBootstrap.js';
 
 describe('buildBootstrapArgs', () => {
   it('builds an --all invocation when all is set, with no --agents', () => {
@@ -72,5 +72,45 @@ describe('hasVibeflowEntry (toml / codex)', () => {
   it('returns false when only a sibling section exists', () => {
     const content = '[mcp_servers.other]\nurl = "https://x"\n';
     expect(hasVibeflowEntry(content, 'toml')).toBe(false);
+  });
+});
+
+/**
+ * Kiro's presence in MCP_AGENTS (#4201).
+ *
+ * Asserted through `mcpAgentStatuses()` rather than by exporting the array:
+ * that function and `pickAgents()` both derive from MCP_AGENTS, so proving
+ * Kiro surfaces here proves it reaches BOTH the agent picker and the
+ * bootstrapped/not-bootstrapped status line — the two places it was missing.
+ * `uninstallMcp()` routes through the same `pickAgents()`, so install and
+ * uninstall stay symmetric by construction.
+ *
+ * The key is the `--agents` CSV value forwarded to the CLI binary, so it must
+ * match vibeflow-cli's own agent key exactly (bootstrap.go:78) — the
+ * extension writes no config itself.
+ */
+describe('MCP_AGENTS — Kiro support (#4201)', () => {
+  it('exposes Kiro to the picker and status detection', () => {
+    const kiro = mcpAgentStatuses().find(a => a.key === 'kiro');
+    expect(kiro).toBeDefined();
+    expect(kiro?.label).toBe('Kiro CLI');
+  });
+
+  it('keeps every previously supported agent', () => {
+    // Guards against a careless edit dropping an agent while adding one.
+    const keys = mcpAgentStatuses().map(a => a.key);
+    expect(keys).toEqual(
+      expect.arrayContaining(['codex', 'gemini', 'cursor', 'claude-cli', 'claude-desktop', 'kiro']),
+    );
+  });
+
+  it('reports a status for every agent without throwing on absent config', () => {
+    // configPath() is called for each agent; a missing file must degrade to
+    // `enabled: false`, never an exception.
+    const statuses = mcpAgentStatuses();
+    expect(statuses.length).toBeGreaterThanOrEqual(6);
+    for (const s of statuses) {
+      expect(typeof s.enabled).toBe('boolean');
+    }
   });
 });
