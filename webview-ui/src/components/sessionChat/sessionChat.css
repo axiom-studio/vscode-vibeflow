@@ -682,18 +682,10 @@
   border: var(--vf-border-subtle);
 }
 .msg-user .msg-content > :last-child { margin-bottom: 0; }
-/*
- * Inline "Working…" indicator on the just-sent user message (#2704). Mirrors
- * the standalone pending-agent row so the busy state is visible right at the
- * prompt. `.msg-body` is a flex column, so align-self right-aligns it under
- * the user bubble; the column's 6px gap supplies the spacing. Both this and
- * the standalone row are gated on the same pending state, so they clear
- * together when the agent reply lands.
- */
-.msg-inline-working {
-  align-self: flex-end;
-  display: inline-flex;
-}
+/* The #2704 `.msg-inline-working` rule was removed with its markup in #4203 —
+ * that indicator only ever fired while the agent was BLOCKED awaiting the
+ * user, so it reported the opposite of its own name. The standalone agent
+ * Working bubble (#2769/#3387) is the one affordance. */
 /*
  * Markdown table styling for BOTH the user-prompt body (.msg-content)
  * AND the agent-response body (.msg-response). Previously only .msg-content

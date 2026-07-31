@@ -230,3 +230,58 @@ describe('SessionChatView live Working indicator (#3387)', () => {
     expect(screen.queryByLabelText(/^Working for/)).toBeNull();
   });
 });
+
+/**
+ * A blocked agent is not working (#4203).
+ *
+ * An agent-authored prompt still `pending` means the agent asked the user
+ * something and is waiting — the state that renders "Agent needs your input"
+ * and a reply box. The live `chatWorking` signal can still be true (or stale)
+ * at that moment, so without an explicit suppression the standalone bubble
+ * kept claiming the agent was busy while it was blocked on the human.
+ * axiomcloud carries the same rule (`!hasPendingAgentPrompt`, its #3592).
+ */
+describe('SessionChatView blocked-agent suppression (#4203)', () => {
+  function agentPendingMsg(id: number, text: string): ChatPrompt {
+    return {
+      ...userMsg(id, text),
+      source: 'agent',
+      status: 'pending',
+      responded_at: '',
+      response_text: '',
+    };
+  }
+
+  it('suppresses the Working bubble while an agent prompt awaits the user', () => {
+    render(<SessionChatView />);
+    sendHost('chatTranscript', {
+      messages: [agentPendingMsg(20, 'Which approach do you prefer?')],
+      hasMore: false,
+    });
+
+    // Even with live working state asserted by the host, a blocked agent
+    // must not be reported as working.
+    sendHost('chatWorking', { working: true, startedAtMs: Date.now() - 5000 });
+    expect(screen.queryAllByLabelText(/^Working for/)).toHaveLength(0);
+
+    // The blocked-state affordance is what should be visible instead.
+    expect(screen.getByText('Agent needs your input')).toBeInTheDocument();
+  });
+
+  it('shows the Working bubble again once the agent prompt is answered', () => {
+    render(<SessionChatView />);
+    sendHost('chatTranscript', {
+      messages: [agentPendingMsg(21, 'Which approach?')],
+      hasMore: false,
+    });
+    sendHost('chatWorking', { working: true, startedAtMs: Date.now() - 5000 });
+    expect(screen.queryAllByLabelText(/^Working for/)).toHaveLength(0);
+
+    // The user replies → the row flips to responded → no longer blocked, so
+    // the live working state is free to surface again.
+    sendHost('chatAppend', {
+      messages: [{ ...agentPendingMsg(21, 'Which approach?'), status: 'responded', response_text: 'ack' }],
+    });
+    expect(screen.getByLabelText(/^Working for/)).toBeInTheDocument();
+  });
+});
