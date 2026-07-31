@@ -53,6 +53,7 @@
     "email": "support@axiomstudio.ai"
   },
   "homepage": "https://cloud.axiomstudio.ai",
+  "privacy": "https://axiomstudio.ai/privacy",
   "contributes": {
     "viewsContainers": {
       "activitybar": [

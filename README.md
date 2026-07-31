@@ -150,6 +150,14 @@ Full per-setting reference (whens, gotchas, enum semantics): [VS Code](docs/vsco
 - Chat attachments validated host-side: declared MIME re-verified against magic bytes; executables (PE/ELF/Mach-O/Java class) rejected; filenames sanitized; 32 MB cap; binary cache cleared on logout.
 - Vulnerability disclosure: [SECURITY.md](https://github.com/axiom-studio/vscode-vibeflow/blob/main/SECURITY.md).
 
+## Data collection
+
+While you are **signed in**, the extension reports three values to your VibeFlow server at most **once every 24 hours**, so your organization can see how many IDE seats are in use: the **editor you're running** (one of `vscode`, `cursor`, `windsurf`, `vscodium`, `kiro`, or `other`), its **version**, and the **extension version**. These are recorded against your user account and organization.
+
+Nothing else is collected. No editor content, file names, paths, workspace or repository names, project data, keystrokes, or records of what you did in the editor. Nothing is sent while you are signed out.
+
+See the [privacy policy](https://axiomstudio.ai/privacy) for how this data is handled.
+
 ## Development
 
 ```bash
