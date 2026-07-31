@@ -63,6 +63,12 @@ export interface GlobalStateSchema {
    * tick; a newer tag still gets through.
    */
   'vibeflow.cli.updateNotifiedVersion': string;
+  /**
+   * Epoch-ms of the last successful IDE-usage report (axiomcloud #4210).
+   * Gates the report to at most once per 24h on wall-clock time, so window
+   * reloads don't re-post. See ide/ideUsageReporter.ts.
+   */
+  'vibeflow.ide.lastReportedAt': number;
 }
 
 /**
@@ -143,6 +149,7 @@ export class ContextProxy {
       'vibeflow.dashboard.nodePositions',
       'vibeflow.cli.updateCheckedAt',
       'vibeflow.cli.updateNotifiedVersion',
+      'vibeflow.ide.lastReportedAt',
     ] satisfies GlobalStateKey[];
     for (const key of globalKeys) {
       await this.context.globalState.update(key, undefined);

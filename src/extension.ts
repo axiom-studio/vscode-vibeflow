@@ -30,6 +30,7 @@ import { killSession, killAndForgetSession, restartSession, focusTerminal, delet
 import { openCli, type CliLaunchOptions } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
 import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateCheck.js';
+import { registerIdeUsageReporting } from './ide/ideUsageReporter.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import {
   confirmAndCloseTabsForProjectSwitch,
@@ -116,6 +117,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // --- API Client (needs auth) ---
   const client = new VibeFlowClient(authService);
+
+  // Record which IDE this user runs (VS Code / Cursor / Windsurf / VSCodium /
+  // Kiro) for the org's seat count — axiomcloud #4210. Fire-and-forget, gated
+  // to once per 24h by a persisted stamp, silent on failure, and a no-op when
+  // signed out. Never blocks activation.
+  registerIdeUsageReporting(
+    client,
+    authService,
+    contextProxy,
+    context.extension.packageJSON.version as string,
+  );
 
   // The MCP transport captures the bearer token at construction time, so a
   // token swap (Settings → "Set API Key") would otherwise leave it talking
