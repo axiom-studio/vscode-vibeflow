@@ -202,6 +202,35 @@ export class VibeFlowClient {
     });
   }
 
+  /**
+   * Report which IDE this extension is running in, for the org's seat count
+   * (axiomcloud #4210 → the operator org usage modal's "IDE extensions in
+   * use" tile).
+   *
+   * `user_id` and `organization_id` are derived server-side from the bearer
+   * token — deliberately NOT sent, and they would be ignored if they were.
+   * The server responds 204; `request()` tolerates an empty success body
+   * (#3632), so nothing special is needed here.
+   *
+   * `ide` must be a slug from the server's bounded allowlist — see
+   * `detectIde` in src/ide/ideIdentity.ts for why sending the raw appName
+   * would silently file every client under "other".
+   */
+  async reportIdeUsage(payload: {
+    ide: string;
+    ideVersion: string;
+    extensionVersion: string;
+  }): Promise<void> {
+    await this.request('/rest/v1/ide-usage', {
+      method: 'POST',
+      body: JSON.stringify({
+        ide: payload.ide,
+        ide_version: payload.ideVersion,
+        extension_version: payload.extensionVersion,
+      }),
+    });
+  }
+
   // --- Sessions ---
 
   async listSessions(projectId: number): Promise<VibeFlowSession[]> {
