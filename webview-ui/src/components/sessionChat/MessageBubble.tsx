@@ -52,13 +52,12 @@ interface Props {
   groupStart: boolean;
   onRespond?: (promptId: string, text: string) => void;
   /**
-   * When set (an ISO timestamp), render a compact inline "Working…"
-   * indicator inside this (user) message bubble — the #2704 addition that
-   * mirrors the standalone pending-agent row right at the just-sent prompt.
-   * Driven by the same pending state as that row, so both clear together
-   * when the agent's reply lands. `undefined` = no agent reply pending.
+   * Removed in #4203 — see the note at the render site in SessionChatView.
+   * The #2704 inline indicator was driven by the agent-BLOCKED timestamp, so
+   * it rendered "Working" precisely when the agent was waiting on the user;
+   * pointing it at the real working signal only duplicated the standalone
+   * bubble that #2770 settled on. The standalone bubble is the one affordance.
    */
-  inlineWorkingSince?: string;
 }
 
 /**
@@ -90,7 +89,7 @@ interface Props {
  */
 // Exported (unmemoized) for the memo-stability regression test (#3258);
 // production always consumes the memoized `MessageBubble` export below.
-export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond, inlineWorkingSince }: Props) {
+export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaColor, diffView, sessionMode, groupStart, onRespond }: Props) {
   const [replyText, setReplyText] = useState('');
   const isUser = msg.source === 'user';
   const isAgentPending = msg.source === 'agent' && msg.status === 'pending';
@@ -116,7 +115,8 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
   // **Suppressed in chat-first mode** (#2329 follow-up): chat-first
   // agents DO reply via `response_text` — that's the whole point of
   // chat-first. The hint would actively mislead the user there. The
-  // WorkingIndicator ("Working... 1m 23s") in the message header is
+  // inline WorkingIndicator ("Working... 1m 23s") rendered under this
+  // message while the agent works (#2704, `inlineWorkingSince` below) is
   // already sufficient signal that the agent is alive and processing;
   // a chat-first user just needs to wait, not "create a work item".
   const showStalePendingHint = isUser
@@ -174,10 +174,16 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
               {author}
             </span>
             <span className="msg-time">{time}</span>
-            {/* Agent-side pending rows only (#2770): on the user's own pending
-                message this duplicated the #2769 standalone Working bubble —
-                removed at the user's request; the bubble is the one affordance. */}
-            {msg.status === 'pending' && !isUser && <WorkingIndicator startTime={msg.created_at} />}
+            {/* No Working indicator here (#4203). This branch fired on
+                `status === 'pending' && !isUser` — byte-identical to
+                `isAgentPending` below, which means the agent has ASKED the
+                user something and is blocked on the answer. It rendered an
+                animated "Working…" spinner on the same row that shows
+                "Agent needs your input" and a reply box: the exact inverse of
+                the truth. axiomcloud suppresses its pill on this state for the
+                same reason (its #3592, "a blocked agent is not working").
+                Real working state is the standalone bubble (#2769/#3387) —
+                which #2770 already settled as "the one affordance". */}
             {msg.status === 'expired' && (
               <span className="msg-status msg-status-expired">expired</span>
             )}
@@ -204,11 +210,6 @@ export function MessageBubbleImpl({ msg, personaName, personaAvatarUrl, personaC
           </div>
         )}
 
-        {isUser && inlineWorkingSince && (
-          <div className="msg-inline-working">
-            <WorkingIndicator startTime={inlineWorkingSince} />
-          </div>
-        )}
 
         {msg.response_text && (
           <div className="msg-response">
