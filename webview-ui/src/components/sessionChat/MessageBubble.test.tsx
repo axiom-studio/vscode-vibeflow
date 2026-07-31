@@ -102,8 +102,8 @@ describe('MessageBubble memoization', () => {
   });
 });
 
-describe('MessageBubble inline working indicator (#2704)', () => {
-  const AGENT_MSG: ChatPrompt = {
+describe('MessageBubble Working affordances (#2704 removed by #4203)', () => {
+  const AGENT_RESPONDED: ChatPrompt = {
     ...MSG,
     id: 2,
     source: 'agent',
@@ -111,22 +111,12 @@ describe('MessageBubble inline working indicator (#2704)', () => {
     response_text: 'ok',
   };
 
-  it('renders the inline Working indicator on a user message when inlineWorkingSince is set', () => {
-    render(
-      <MessageBubble
-        msg={MSG}
-        personaName="Kai"
-        personaColor="#ffffff"
-        diffView="unified"
-        sessionMode="vanilla"
-        groupStart
-        inlineWorkingSince="2026-06-30T00:00:00Z"
-      />,
-    );
-    expect(screen.getByText('Working')).toBeInTheDocument();
-  });
-
-  it('does not render the inline indicator when inlineWorkingSince is unset (cleared together with the standalone row)', () => {
+  // The inline indicator on the user's own message is gone: its only trigger
+  // was the agent-BLOCKED timestamp (an agent-authored prompt still pending),
+  // so it claimed "Working" exactly when the agent was waiting on the human.
+  // Re-pointing it at the real working signal would have duplicated the
+  // standalone bubble that #2770 settled on, so it was removed outright.
+  it('renders no Working indicator on a plain user message', () => {
     render(
       <MessageBubble
         msg={MSG}
@@ -140,16 +130,15 @@ describe('MessageBubble inline working indicator (#2704)', () => {
     expect(screen.queryByText('Working')).toBeNull();
   });
 
-  it('is gated on the user message — a non-pending agent row does not render it even if inlineWorkingSince is passed', () => {
+  it('renders no Working indicator on a responded agent row', () => {
     render(
       <MessageBubble
-        msg={AGENT_MSG}
+        msg={AGENT_RESPONDED}
         personaName="Kai"
         personaColor="#ffffff"
         diffView="unified"
         sessionMode="vanilla"
         groupStart
-        inlineWorkingSince="2026-06-30T00:00:00Z"
       />,
     );
     expect(screen.queryByText('Working')).toBeNull();
@@ -292,5 +281,42 @@ describe('MessageBubble markdown-linked commit hashes (#3360)', () => {
     expect(anchor).not.toBeNull();
     expect(anchor.textContent).toBe('the docs');
     expect(container.querySelector('button.chat-commit-hash')).toBeNull();
+  });
+});
+
+/**
+ * A blocked agent is not working (#4203).
+ *
+ * An agent-authored prompt still `pending` means the agent ASKED the user
+ * something and is waiting on the answer — the same condition that renders
+ * "Agent needs your input" and the reply box. The header used to render a
+ * WorkingIndicator on exactly that condition (`status === 'pending' && !isUser`),
+ * so the row claimed the agent was busy while it was in fact blocked on the
+ * human. axiomcloud suppresses its pill on the same state (its #3592).
+ */
+describe('MessageBubble blocked-agent row (#4203)', () => {
+  const AGENT_PENDING: ChatPrompt = {
+    ...MSG,
+    id: 3,
+    source: 'agent',
+    status: 'pending',
+    prompt_text: 'Which approach do you prefer?',
+    response_text: '',
+  };
+
+  it('shows "Agent needs your input" and NO Working indicator', () => {
+    render(
+      <MessageBubble
+        msg={AGENT_PENDING}
+        personaName="Kai"
+        personaColor="#ffffff"
+        diffView="unified"
+        sessionMode="vanilla"
+        groupStart
+      />,
+    );
+    expect(screen.getByText('Agent needs your input')).toBeInTheDocument();
+    expect(screen.queryByText('Working')).toBeNull();
+    expect(screen.queryByLabelText(/^Working for/)).toBeNull();
   });
 });
