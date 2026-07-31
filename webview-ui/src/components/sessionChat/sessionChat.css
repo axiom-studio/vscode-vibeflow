@@ -586,6 +586,25 @@
   font-size: 14px;
   line-height: 1.55;
   color: var(--vscode-foreground);
+}
+
+/*
+ * Text-flow rules shared by BOTH message bodies. These lived only on
+ * `.msg-content`, so an agent response — which renders into `.msg-response`
+ * (see MessageBubble's `msg.response_text` branch) — had no wrapping rule at
+ * all. Prose still wrapped at spaces, but a long unbreakable token could not:
+ * a file path inside a `.chat-path-ref` chip ran straight past the bubble
+ * border. Exactly the omission #2325 fixed for tables ("previously only
+ * .msg-content had table rules"). Grouped so a future body class can't
+ * silently miss it again.
+ *
+ * Safe for the atomic chips: `.chat-commit-hash` / `.chat-workitem-ref` set
+ * `white-space: nowrap`, which disallows line breaking outright, so
+ * `overflow-wrap` never applies to them. Code blocks are likewise unaffected
+ * — `pre` defaults to `white-space: pre` and scrolls via its own `overflow-x`.
+ */
+.msg-content,
+.msg-response {
   word-wrap: break-word;
   overflow-wrap: anywhere;
 }
@@ -613,14 +632,19 @@
   border-left: 3px solid var(--vscode-textLink-foreground);
   color: var(--vscode-descriptionForeground);
 }
-.msg-content code {
+/* Grouped for the same reason as the wrap rules above: `.msg-response` had
+ * no `code`/`pre` styling at all, so inline code and fenced blocks in an
+ * agent response rendered unstyled against the tinted card. */
+.msg-content code,
+.msg-response code {
   font-family: var(--vscode-editor-font-family);
   font-size: 0.92em;
   padding: 1px 5px;
   border-radius: var(--vf-r-sm);
   background: var(--vscode-textCodeBlock-background, rgba(127,127,127,0.15));
 }
-.msg-content pre {
+.msg-content pre,
+.msg-response pre {
   margin: 8px 0;
   padding: 12px 14px;
   border-radius: 6px;
@@ -631,7 +655,8 @@
   line-height: 1.5;
   border: var(--vf-border);
 }
-.msg-content pre code {
+.msg-content pre code,
+.msg-response pre code {
   background: transparent;
   padding: 0;
   border-radius: 0;
