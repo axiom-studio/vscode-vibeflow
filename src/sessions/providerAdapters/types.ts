@@ -24,10 +24,16 @@
  */
 
 /**
- * Provider key as used by the launch wizard's PROVIDERS list and the
- * agent CLI binary-name dispatch in `sessionCommands.ts`.
+ * Provider key, derived from `providers/registry.ts` — the single source of
+ * truth the launch wizard, Settings table, agent-doc loop and binary map all
+ * read from (issue #4633). Re-exported here so the many existing importers of
+ * `providerAdapters/types.js` are unaffected.
+ *
+ * Because the union is generated, an adapter for a provider the registry does
+ * not know about is a compile error rather than a silent drift.
  */
-export type ProviderKey = 'claude' | 'codex' | 'gemini' | 'qwen' | 'cursor';
+export type { ProviderKey } from '../../providers/registry.js';
+import type { ProviderKey } from '../../providers/registry.js';
 
 /**
  * Normalized agent event. Discriminated by `kind`. Every variant

@@ -12,9 +12,13 @@ import { cursorAdapter } from './cursor.js';
  * callers must downgrade to REST polling and surface a one-time
  * warning. See `SessionStreamRegistry` for that policy.
  *
- * All five providers in the launch wizard's PROVIDERS list have a
- * stream-json adapter registered here. See VibeFlow document #285
- * §3.2 for the provider matrix.
+ * This map is keyed by `ProviderKey`, which is generated from
+ * `providers/registry.ts`, so an adapter for an unregistered provider will
+ * not compile. The reverse does NOT hold: a registered provider need not
+ * have an adapter, and one currently does not — `qwen` has an adapter but
+ * is not launchable (see the registry), while a future launchable provider
+ * may ship with no adapter and take the documented REST-polling downgrade.
+ * See VibeFlow document #285 §3.2 for the provider matrix.
  */
 const ADAPTERS: Partial<Record<ProviderKey, ProviderAdapter>> = {
   claude: claudeAdapter,
@@ -27,11 +31,6 @@ const ADAPTERS: Partial<Record<ProviderKey, ProviderAdapter>> = {
 /** Look up the adapter for a provider key; undefined if unsupported. */
 export function getAdapter(providerKey: string): ProviderAdapter | undefined {
   return ADAPTERS[providerKey as ProviderKey];
-}
-
-/** List of provider keys with a registered stream-json adapter. */
-export function supportedProviders(): ProviderKey[] {
-  return Object.keys(ADAPTERS) as ProviderKey[];
 }
 
 export type { ProviderAdapter, ProviderKey, NormalizedAgentEvent } from './types.js';

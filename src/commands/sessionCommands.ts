@@ -17,6 +17,7 @@ import type { ProviderKey } from '../sessions/providerAdapters/types.js';
 import { TmuxBacking, buildHeadlessTmuxName } from '../sessions/tmuxBacking.js';
 import { detectTmuxAvailability } from '../sessions/tmuxAvailability.js';
 import { clearWhichBinaryCache } from '../utils/whichBinary.js';
+import { PROVIDER_REGISTRY } from '../providers/registry.js';
 import {
   isProviderInstalled,
   providerBinaryDisplayName,
@@ -828,16 +829,13 @@ async function waitForAgentRegistration(
   }
 }
 
-// Provider binary mapping (matches CLI defaults from config.go DefaultConfig).
-// Single-name lookup used at launch + restart — distinct from PROVIDER_BINARIES
-// in launchWizard/providers.ts, which lists ALL acceptable names per provider
-// for availability detection (cursor accepts both `cursor-agent` and `agent`).
-export const AGENT_BINARIES: Record<string, string> = {
-  claude: 'claude',
-  codex: 'codex',
-  gemini: 'gemini',
-  cursor: 'agent',
-};
+// Provider → the single binary actually spawned at launch + restart. Derived
+// from `providers/registry.ts` (issue #4633); distinct from `detectNames()`,
+// which lists ALL acceptable names per provider for availability detection
+// (cursor accepts both `cursor-agent` and `agent` but we spawn `agent`).
+export const AGENT_BINARIES: Record<string, string> = Object.fromEntries(
+  PROVIDER_REGISTRY.map(p => [p.key, p.binary]),
+);
 
 /**
  * Build the agent binary launch command with session mode flags.
