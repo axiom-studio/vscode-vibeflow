@@ -10,7 +10,7 @@ import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '
 import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
-import { isBinaryOnPath } from '../../utils/whichBinary.js';
+import { getProvider, launchableProviders, isProviderInstalled } from '../../providers/registry.js';
 import { confirmAndCloseTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
@@ -41,17 +41,14 @@ export interface SettingsPanelDeps {
 
 /**
  * Provider key → env-var name. Codex uses `MCP_TOKEN` (per the agent
- * binary's CLI contract); Gemini uses `GEMINI_API_KEY`. Kept as a single
- * source of truth so the message handlers and the snapshot reader can't
- * drift on the literal string. Returning undefined means the provider
- * has no env-token surface (claude, cursor) and the UI hides the row.
+ * binary's CLI contract); Gemini uses `GEMINI_API_KEY`. Read from
+ * `providers/registry.ts` (issue #4633) so the message handlers and the
+ * snapshot reader can't drift on the literal string. Returning undefined
+ * means the provider has no env-token surface (claude, cursor) and the UI
+ * hides the row.
  */
 function providerEnvName(provKey: string): string | undefined {
-  switch (provKey) {
-    case 'codex': return 'MCP_TOKEN';
-    case 'gemini': return 'GEMINI_API_KEY';
-    default: return undefined;
-  }
+  return getProvider(provKey)?.envTokenName;
 }
 
 /**
@@ -515,8 +512,19 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
   // Per-provider env-token presence — read from Secrets API. Empty (or
   // missing) means "Not set"; any non-empty stored value flips to "Set".
   // Only providers with an env-token surface are queried.
-  const codexTokenSet = !!(deps.secrets && (await deps.secrets.get('MCP_TOKEN')));
-  const geminiTokenSet = !!(deps.secrets && (await deps.secrets.get('GEMINI_API_KEY')));
+  const providerRows = await Promise.all(
+    launchableProviders().map(async p => ({
+      key: p.key,
+      name: p.name,
+      binary: p.binary,
+      available: isProviderInstalled(p.key),
+      vibeflowIntegrated: p.vibeflowIntegrated,
+      ...(p.envTokenName ? { envTokenName: p.envTokenName } : {}),
+      envTokenSet: p.envTokenName
+        ? !!(deps.secrets && (await deps.secrets.get(p.envTokenName)))
+        : false,
+    })),
+  );
 
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
@@ -527,15 +535,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     projectName: cached?.projectName ?? null,
     projects,
     defaultProvider: config.get('defaultProvider', 'claude'),
-    providers: [
-      { key: 'claude', name: 'Claude Code', binary: 'claude', available: isBinaryOnPath('claude'), vibeflowIntegrated: true, envTokenSet: false },
-      { key: 'codex', name: 'OpenAI Codex CLI', binary: 'codex', available: isBinaryOnPath('codex'), vibeflowIntegrated: false, envTokenName: 'MCP_TOKEN', envTokenSet: codexTokenSet },
-      { key: 'gemini', name: 'Google Gemini CLI', binary: 'gemini', available: isBinaryOnPath('gemini'), vibeflowIntegrated: false, envTokenName: 'GEMINI_API_KEY', envTokenSet: geminiTokenSet },
-      // Cursor's IDE-bundled binary is `cursor-agent`; some installs
-      // alias it as `agent` (matches what sessionCommands.ts spawns).
-      // Either being on PATH counts as available.
-      { key: 'cursor', name: 'Cursor Agent', binary: 'agent', available: isBinaryOnPath('agent') || isBinaryOnPath('cursor-agent'), vibeflowIntegrated: true, envTokenSet: false },
-    ],
+    providers: providerRows,
     worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
     worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
     worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
