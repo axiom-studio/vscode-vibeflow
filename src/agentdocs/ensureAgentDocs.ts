@@ -2,16 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-/**
- * Map provider key → agent doc filename.
- * Mirrors CLI agentdocs.go providerDocFile map.
- */
-const PROVIDER_DOC_FILE: Record<string, string> = {
-  claude: 'CLAUDE.md',
-  codex: 'AGENTS.md',
-  cursor: 'AGENTS.md', // Cursor uses the same file as codex
-  gemini: 'GEMINI.md',
-};
+import { launchableProviders } from '../providers/registry.js';
 
 /**
  * Ensure all agent-specific markdown files exist in workDir.
@@ -27,8 +18,10 @@ export function ensureAllAgentDocs(
   const updated: string[] = [];
   const seenFile = new Set<string>();
 
-  for (const providerKey of ['claude', 'codex', 'gemini', 'cursor']) {
-    const docName = PROVIDER_DOC_FILE[providerKey];
+  // Launchable providers only — a provider the wizard cannot offer has no
+  // session that would read its doc. Doc filenames come from the registry
+  // (issue #4633), which mirrors the CLI's `agentdocs.go` providerDocFile map.
+  for (const { docFile: docName } of launchableProviders()) {
     if (!docName || seenFile.has(docName)) { continue; }
     seenFile.add(docName);
 

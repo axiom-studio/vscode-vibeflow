@@ -236,7 +236,11 @@ describe('validateProviderKey', () => {
 });
 
 describe('buildProvidersWithAvailability', () => {
-  it('returns the four hardcoded providers in stable order', () => {
+  // No longer "hardcoded" — derived from PROVIDER_REGISTRY (issue #4633).
+  // The order is still user-visible (it is the quick-pick order), so it stays
+  // pinned here; `qwen` is in the registry but not launchable, so it must NOT
+  // appear. See providers/registry.test.ts for the registry's own invariants.
+  it('returns the launchable providers in stable order', () => {
     const list = buildProvidersWithAvailability();
     expect(list.map(p => p.value)).toEqual(['claude', 'codex', 'gemini', 'cursor']);
   });

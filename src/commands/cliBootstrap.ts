@@ -46,6 +46,12 @@ function claudeDesktopConfigPath(): string {
  * The agents `vibeflow bootstrap` supports, with the config paths it writes
  * (default root). Mirrors the resolvers in vibeflow-cli's bootstrap.go so the
  * extension can detect existing MCP config without shelling out.
+ *
+ * This is deliberately NOT derived from `providers/registry.ts`, and the two
+ * disagreeing is not drift (issue #4633). These are MCP-config WRITE TARGETS,
+ * not launchable agents: `claude-cli` and `claude-desktop` are two targets for
+ * the single provider "claude", which a launch registry cannot represent, and
+ * `kiro` is bootstrappable without being launchable. Keep them separate.
  */
 const MCP_AGENTS: McpAgent[] = [
   { key: 'codex', label: 'Codex CLI', type: 'toml', configPath: () => path.join(os.homedir(), '.codex', 'config.toml') },

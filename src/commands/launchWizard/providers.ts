@@ -1,36 +1,17 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { isBinaryOnPath } from '../../utils/whichBinary.js';
+import {
+  launchableProviders,
+  isProviderInstalled,
+  providerBinaryDisplayName,
+} from '../../providers/registry.js';
 
-export const PROVIDERS = [
-  { label: '$(hubot) Claude', description: 'claude', value: 'claude' },
-  { label: '$(code) Codex', description: 'codex', value: 'codex' },
-  { label: '$(sparkle) Gemini', description: 'gemini', value: 'gemini' },
-  { label: '$(terminal) Cursor', description: 'cursor', value: 'cursor' },
-];
-
-// Provider → CLI binary names. Mirrors `SettingsPanel.ts:392-398` (the same
-// table the Setup tab uses to render its availability dots). Cursor ships
-// as `cursor-agent` but some installers symlink it to `agent`; either name
-// satisfies the gate. Aligns with vibeflow-cli's `ProviderRegistry`
-// (`internal/vibeflowcli/provider.go:174-180 checkBinaryAvailable`).
-export const PROVIDER_BINARIES: Record<string, string[]> = {
-  claude: ['claude'],
-  codex: ['codex'],
-  gemini: ['gemini'],
-  cursor: ['cursor-agent', 'agent'],
-};
-
-export function isProviderInstalled(provider: string): boolean {
-  const names = PROVIDER_BINARIES[provider] ?? [provider];
-  return names.some(n => isBinaryOnPath(n));
-}
-
-// Canonical name to print in user-facing error messages.
-export function providerBinaryDisplayName(provider: string): string {
-  return PROVIDER_BINARIES[provider]?.[0] ?? provider;
-}
+// The provider list, the binary-name table and the two availability helpers
+// all used to live here as hand-maintained copies. They now derive from
+// `providers/registry.ts` — see that module for why (issue #4633). Re-exported
+// so existing callers are unaffected.
+export { isProviderInstalled, providerBinaryDisplayName };
 
 // Conservative minimum-length floor per env-token kind. Goal: trip on the
 // "user pasted `abc123` / hit Enter on an empty box" path without rejecting
@@ -103,20 +84,20 @@ export function validateProviderKey(envName: string, raw: string): { ok: true; v
   return { ok: true, value: trimmed };
 }
 
-// Build the PROVIDERS list with per-entry availability tagged in the
-// description. Picking a flagged provider still triggers the post-pick
+// Build the launchable-provider list with per-entry availability tagged in
+// the description. Picking a flagged provider still triggers the post-pick
 // abort below — the tag is informational so users see the constraint
 // before picking. Mirrors vibeflow-cli's `Available()` filter pattern
 // from `provider.go:81-88`, but renders unavailable rows instead of
 // hiding them so the user understands why their preferred provider is
 // missing rather than being silently presented a different list.
 export function buildProvidersWithAvailability(): { label: string; description: string; value: string; available: boolean }[] {
-  return PROVIDERS.map(p => {
-    const available = isProviderInstalled(p.value);
+  return launchableProviders().map(p => {
+    const available = isProviderInstalled(p.key);
     return {
       label: p.label,
-      description: available ? p.description : `${p.description} · $(error) not installed`,
-      value: p.value,
+      description: available ? p.key : `${p.key} · $(error) not installed`,
+      value: p.key,
       available,
     };
   });
