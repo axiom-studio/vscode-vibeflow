@@ -11,7 +11,7 @@ import { recordLaunchMode, lookupLaunchMode } from '../sessions/launchModeStore.
 import { killTmuxSession } from '../sessions/tmuxState.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 import { TmuxBacking, buildHeadlessTmuxName } from '../sessions/tmuxBacking.js';
-import { buildLaunchCommand, AGENT_BINARIES } from './sessionCommands.js';
+import { buildLaunchArgs, AGENT_BINARIES } from './sessionCommands.js';
 
 /**
  * Best-effort delete of `.vibeflow-session-{persona}` from the session's
@@ -356,7 +356,6 @@ export async function restartSession(
   const serverUrl = config.get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
 
   const binary = AGENT_BINARIES[provider] ?? 'claude';
-  const command = buildLaunchCommand(binary, provider, sessionMode);
   const initPrompt = `Initialize a vibeflow session for project ${project.projectName} with persona ${persona} and follow the agent prompt. Call session_init with project_name: ${project.projectName}, persona: ${persona}, git_branch: ${branch} and begin Phase 1 immediately.`;
 
   try {
@@ -365,7 +364,8 @@ export async function restartSession(
       branch,
       provider,
       workDir,
-      command,
+      binary,
+      args: buildLaunchArgs(provider, sessionMode),
       env: {
         VIBEFLOW_SERVER_URL: serverUrl,
         VIBEFLOW_PERSONA: persona,

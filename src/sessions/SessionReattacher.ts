@@ -6,6 +6,7 @@ import { personaDisplayName } from './personas.js';
 import { lookupLaunchMode, recordLaunchMode } from './launchModeStore.js';
 import type { ContextProxy } from '../core/ContextProxy.js';
 import { TmuxBacking, buildHeadlessTmuxName } from './tmuxBacking.js';
+import { AGENT_BINARIES, buildLaunchArgs } from '../commands/sessionCommands.js';
 
 export interface PhantomSession {
   persona: string;
@@ -182,8 +183,6 @@ export class SessionReattacher {
         const phantomMode = recordedMode ?? userChoice ?? sessionMode;
         const phantomTerminalMode: TerminalMode = phantomMode === 'chat_first' ? 'none' : 'all';
 
-        const command = buildReattachCommand(provider, phantomMode);
-
         const initPrompt = projectName
           ? `Initialize a vibeflow session for project ${projectName} with persona ${phantom.persona} and follow the agent prompt. Call session_init with project_name: ${projectName}, persona: ${phantom.persona}, git_branch: ${gitBranch} and begin Phase 1 immediately.`
           : undefined;
@@ -193,7 +192,8 @@ export class SessionReattacher {
           branch: gitBranch,
           provider,
           workDir,
-          command,
+          binary: AGENT_BINARIES[provider] ?? 'claude',
+          args: buildLaunchArgs(provider, phantomMode),
           env: {
             VIBEFLOW_SERVER_URL: serverUrl,
             VIBEFLOW_PERSONA: phantom.persona,
@@ -226,29 +226,8 @@ export class SessionReattacher {
   }
 }
 
-/**
- * Build the command for reattaching — same as a fresh launch.
- * The agent binary reads the existing .vibeflow-session-{persona} file
- * and resumes the previous session via session_init(session_id: existing_id).
- */
-function buildReattachCommand(provider: string, sessionMode: string): string {
-  const binaries: Record<string, string> = {
-    claude: 'claude',
-    codex: 'codex',
-    gemini: 'gemini',
-    cursor: 'agent',
-  };
-  const binary = binaries[provider] ?? 'claude';
-
-  // YOLO modes: vibeflow (visible terminal) and chat_first (hidden
-  // terminal + chat-only — see todo #1611). Both apply
-  // --dangerously-skip-permissions / --yolo flags. Anything else (e.g.
-  // legacy 'auto' written by older builds, or 'vanilla') falls through
-  // to a flag-free binary so we never reattach with an unexpected flag.
-  const isYolo = sessionMode === 'vibeflow' || sessionMode === 'chat_first';
-  if (!isYolo) { return binary; }
-  if (provider === 'claude') { return `${binary} --dangerously-skip-permissions`; }
-  if (provider === 'codex' || provider === 'gemini') { return `${binary} --yolo`; }
-  if (provider === 'cursor') { return `${binary} --yolo --approve-mcps`; }
-  return binary;
-}
+// Reattach launches are literally "same as a fresh launch" (the agent
+// binary reads the existing .vibeflow-session-{persona} file and resumes
+// via session_init) — so they use the same AGENT_BINARIES + buildLaunchArgs
+// as a fresh launch. A local copy of both used to live here and had
+// already drifted from the registry-derived originals (#4633/#4995).

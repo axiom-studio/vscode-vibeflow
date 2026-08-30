@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildCliLaunchCommand, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchArgs, buildCliLaunchCommand, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
 
 describe('parseCliVersion', () => {
   it('extracts the version from the first line of `vibeflow version`', () => {
@@ -18,6 +18,27 @@ describe('parseCliVersion', () => {
   it('returns undefined for unrecognized or empty output', () => {
     expect(parseCliVersion('command not found')).toBeUndefined();
     expect(parseCliVersion('')).toBeUndefined();
+  });
+});
+
+describe('buildCliLaunchArgs', () => {
+  // Since #4995 this argv IS what executes — the TUI binary is spawned as
+  // the terminal process; the string form below is display/log only.
+  it('emits nothing for blank options and flag pairs for set ones — values verbatim, unquoted', () => {
+    expect(buildCliLaunchArgs({ mcpName: ' ', rootPath: '' })).toEqual([]);
+    expect(buildCliLaunchArgs({ mcpName: 'team-mcp', rootPath: "/Users/rp/O'Hara Project" }))
+      .toEqual(['--mcp', 'team-mcp', '--root', "/Users/rp/O'Hara Project"]);
+  });
+
+  it('agrees with buildCliLaunchCommand for hostile values (string derives from argv)', () => {
+    const options = { mcpName: 'team;rm', rootPath: "/Users/rp/O'Hara Project" };
+    const derived = ['/Users/Foo Bar/bin/vibeflow', ...buildCliLaunchArgs(options)];
+    // The shell-quoted display string must be exactly the quoted argv —
+    // #3342's "log cannot diverge from execution" invariant, now enforced
+    // structurally by derivation.
+    expect(buildCliLaunchCommand('/Users/Foo Bar/bin/vibeflow', options, 'darwin'))
+      .toBe("'/Users/Foo Bar/bin/vibeflow' --mcp 'team;rm' --root '/Users/rp/O'\\''Hara Project'");
+    expect(derived).toEqual(['/Users/Foo Bar/bin/vibeflow', '--mcp', 'team;rm', '--root', "/Users/rp/O'Hara Project"]);
   });
 });
 

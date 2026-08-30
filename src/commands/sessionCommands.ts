@@ -669,13 +669,13 @@ export async function launchSession(
             `VibeFlow: ${personaProviderKey} has no stream-json adapter yet; chat-first mode for this persona falls back to a hidden TUI terminal with REST polling. Chat still works at ~5s cadence.`,
           );
         }
-        const command = buildLaunchCommand(binary, personaProviderKey, sessionMode);
         terminalRegistry.create({
           persona,
           branch,
           provider: personaProviderKey,
           workDir,
-          command,
+          binary,
+          args: buildLaunchArgs(personaProviderKey, sessionMode),
           env: fullEnv,
           terminalMode,
           initPrompt,
@@ -838,7 +838,7 @@ export const AGENT_BINARIES: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * Build the agent binary launch command with session mode flags.
+ * Session-mode launch flags per provider, as argv.
  *   vanilla     → no flags (per-action permission prompts)
  *   vibeflow    → --dangerously-skip-permissions (claude) / --yolo (codex/gemini)
  *   chat_first  → same flags as vibeflow (YOLO is bundled because the hidden
@@ -847,24 +847,37 @@ export const AGENT_BINARIES: Record<string, string> = Object.fromEntries(
  *
  * Any other sessionMode string falls through to vanilla so a stale
  * config value (e.g. 'auto' from an older install) doesn't crash launch.
+ *
+ * Argv is the primary form since #4995 — agent terminals spawn the binary
+ * directly (`createProcessTerminal`), no shell string involved.
  */
-export function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
+export function buildLaunchArgs(provider: string, sessionMode: string): string[] {
   const isYolo = sessionMode === 'vibeflow' || sessionMode === 'chat_first';
   if (!isYolo) {
-    return binary;
+    return [];
   }
 
   // YOLO / skip permissions
   if (provider === 'claude') {
-    return `${binary} --dangerously-skip-permissions`;
+    return ['--dangerously-skip-permissions'];
   }
   if (provider === 'codex' || provider === 'gemini') {
-    return `${binary} --yolo`;
+    return ['--yolo'];
   }
   if (provider === 'cursor') {
-    return `${binary} --yolo --approve-mcps`;
+    return ['--yolo', '--approve-mcps'];
   }
-  return binary;
+  return [];
+}
+
+/**
+ * String form of the launch command. Derived from `buildLaunchArgs` so the
+ * flag knowledge lives once. Still the right shape for the tmux-backed
+ * path, where tmux's `new-session` runs `$SHELL -c <command>` inside
+ * tmux's own PTY (not a VS Code terminal — unaffected by #4995).
+ */
+export function buildLaunchCommand(binary: string, provider: string, sessionMode: string): string {
+  return [binary, ...buildLaunchArgs(provider, sessionMode)].join(' ');
 }
 
 

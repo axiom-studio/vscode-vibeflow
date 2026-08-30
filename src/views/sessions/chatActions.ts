@@ -174,6 +174,10 @@ export async function openCommitDiff(hash: string, sessionRemoteUrl?: string): P
     return;
   }
   if (pick === 'Open in terminal') {
+    // Deliberately NOT converted to createProcessTerminal (#4995): the
+    // command is sub-second and display-only (worst case under the PTY
+    // race is one garbled output line), and keeping a live shell afterward
+    // is the point — the user lands in a prompt to keep poking at git.
     const term = vscode.window.createTerminal({
       name: `git show ${hash.slice(0, 8)}`,
       cwd: folder.uri.fsPath,

@@ -18,6 +18,7 @@ import type { MentionItem } from '../../core/webviewMessages.js';
 import type { ContextProxy } from '../../core/ContextProxy.js';
 import { lookupLaunchMode } from '../../sessions/launchModeStore.js';
 import { TmuxBacking, buildHeadlessTmuxName, TMUX_SOCKET } from '../../sessions/tmuxBacking.js';
+import { createProcessTerminal } from '../../sessions/terminalLaunch.js';
 
 /**
  * Session-mode union recognized by the webview. Mirrors the `SESSION_MODES`
@@ -532,8 +533,20 @@ export class SessionPanelManager implements vscode.Disposable {
       existing.show();
       return;
     }
-    const term = vscode.window.createTerminal({ name: termName });
-    term.sendText(`tmux -L ${TMUX_SOCKET} attach -t ${name}`);
+    // tmux runs as the terminal process itself (#4995) — previously this
+    // was createTerminal().sendText(...), which let the Python extension's
+    // async venv activation type into the attached pane 1–3s later, i.e.
+    // straight into the running agent's stdin, and left the attach
+    // vulnerable to the env-collection relaunch. The two benefits the old
+    // sendText approach was chosen for survive: the attach is still fully
+    // interactive (Ctrl-b d detaches) and tmux errors still print in the
+    // terminal before it closes. The only delta: after detach/exit the
+    // terminal closes instead of dropping to a shell prompt.
+    const term = createProcessTerminal({
+      name: termName,
+      binary: 'tmux',
+      args: ['-L', TMUX_SOCKET, 'attach', '-t', name],
+    });
     term.show();
   }
 
