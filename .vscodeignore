@@ -43,6 +43,7 @@ QWEN.md
 # files), doubling the package size for zero user value.
 out/**
 TESTING.md
+DEVELOPMENT.md
 tsconfig.test.json
 tsconfig.test-integration.json
 vitest.config.ts

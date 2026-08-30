@@ -161,7 +161,7 @@ Highlight code in any editor tab, then run **VibeFlow: Ask Agent About Selection
 - **Issue / todo references**: a `#1982`-style reference renders as a clickable chip that opens that work item's detail panel in a new tab.
 - **Inline diffs**: rendered per `vibeflow.chat.diffView` (`unified` stacks `+/-` lines; `split` shows before/after side-by-side). Each diff has an **Open in Editor** button that launches the native VS Code diff editor.
 
-While a turn is in progress, the transcript shows tool calls live ("Reading `src/foo.ts`…", "Running `yarn check`…") and a **Working…** bubble appears the instant you send, before the agent responds. You can scroll, but you can't send a new message until the current turn finishes. When the agent turns the question back to *you*, its message is highlighted as needing your input, an inline Respond form appears, and the chat's editor tab gets a **❓** prefix and a beacon icon so you can find it if you've tabbed away.
+While a turn is in progress, the transcript shows tool calls live ("Reading `src/foo.ts`…", "Running `yarn run check`…") and a **Working…** bubble appears the instant you send, before the agent responds. You can scroll, but you can't send a new message until the current turn finishes. When the agent turns the question back to *you*, its message is highlighted as needing your input, an inline Respond form appears, and the chat's editor tab gets a **❓** prefix and a beacon icon so you can find it if you've tabbed away.
 
 ---
 

@@ -17,11 +17,14 @@ The project has three distinct verification layers. Each catches a different cla
 yarn test                # vitest unit tests (~200ms)
 yarn test:watch          # watch mode for TDD on a single module
 yarn test:coverage       # v8 coverage report (text + summary)
+yarn test:webview        # webview React tests (vitest + jsdom under webview-ui/)
 yarn test:integration    # @vscode/test-electron extension-host suite (~5-30s; downloads VS Code on first run)
-yarn check               # typecheck + lint + unit test + security-guards (CI gate; does NOT run integration)
+yarn run check           # typecheck + lint + unit + webview tests + security-guards (CI gate; does NOT run integration)
+                         # NOTE: `yarn run check`, not `yarn check` — bare `check` is yarn v1's reserved
+                         # dependency-tree verifier and never runs the package.json script.
 ```
 
-Integration tests deliberately do NOT run inside `yarn check` — they download a ~210 MB VS Code build on first run, take 4-30s per cycle, and launch a real Electron process. Wire them into CI as a separate job, or invoke `yarn test:integration` manually before pushing changes that touch `activate()` / view registration / panel webview lifecycle.
+Integration tests deliberately do NOT run inside `yarn run check` — they download a ~210 MB VS Code build on first run, take 4-30s per cycle, and launch a real Electron process. Wire them into CI as a separate job, or invoke `yarn test:integration` manually before pushing changes that touch `activate()` / view registration / panel webview lifecycle.
 
 ## File layout
 

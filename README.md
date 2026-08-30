@@ -1,43 +1,47 @@
 # VibeFlow
 
-A full AI engineering team — **Developer**, **Architect**, **Principal Engineer**, **Product Manager**, **Project Manager**, **UX Designer**, **QA Lead**, **Security Lead**, and **Customer** — inside your editor. Shared context, persistent decisions, governed autonomous shipping. Not autocomplete. An AI team that knows your codebase.
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/AxiomStudio.vscode-vibeflow?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow)
+[![Open VSX](https://img.shields.io/open-vsx/v/AxiomStudio/vscode-vibeflow?label=Open%20VSX)](https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-Backed by the VibeFlow platform: features, todos, issues, governance, attachments, and compliance all live on a real backend that the agents read and write to. The editor extension is the live cockpit.
+A full AI engineering team — **Developer**, **Architect**, **Principal Engineer**, **Product Manager**, **Project Manager**, **UX Designer**, **QA Lead**, **Security Lead**, and **Customer** — inside your editor.
+Shared context, persistent decisions, governed autonomous shipping.
+Not autocomplete: an AI team that knows your codebase.
 
-> **Runs in VS Code _and_ Cursor** (and other VS Code forks like VS Codium). It's a single cross-host extension — same views, commands, panels, keybindings, and Settings UI everywhere. The only real differences are **where you install it from** (Marketplace vs Open VSX) and a couple of Cursor-specific notes called out below.
+Backed by the VibeFlow platform — features, todos, issues, governance, attachments, and compliance live on a real backend that the agents read and write.
+The extension is the live cockpit.
+
+> **Runs in VS Code _and_ Cursor** (and other VS Code forks such as VSCodium).
+> It is a single cross-host extension — same views, commands, panels, keybindings, and Settings UI everywhere.
+> The only real difference is where you install it from (Marketplace vs Open VSX), plus two Cursor-specific notes below.
 
 ## Install
 
-The extension is published as **`AxiomStudio.vscode-vibeflow`** (display name **"VibeFlow"**).
+Published as **`AxiomStudio.vscode-vibeflow`** (display name **"VibeFlow"**).
 
-**VS Code** — [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow):
+**VS Code** — from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow):
+
 - Extensions view (`Cmd/Ctrl+Shift+X`) → search **VibeFlow** (publisher **AxiomStudio**) → Install, or
 - `code --install-extension AxiomStudio.vscode-vibeflow`
 
-**Cursor / VS Codium / other forks** — these editors use the [Open VSX Registry](https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow):
-- Extensions view (`Cmd/Ctrl+Shift+X`) → search **VibeFlow** → Install, or
-- drag the `.vsix` onto the Extensions panel, or run **Extensions: Install from VSIX…** from the Command Palette, or `cursor --install-extension <path-to>.vsix`
+**Cursor / VSCodium / other forks** — from the [Open VSX Registry](https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow):
 
-> **Cursor note 1 — the listing still reads "VibeFlow."** There is one cross-host build; the `vscode` in the id is historical. It's the right extension for Cursor.
+- Extensions view (`Cmd/Ctrl+Shift+X`) → search **VibeFlow** → Install, or
+- **Extensions: Install from VSIX…** from the Command Palette (or `cursor --install-extension <path-to>.vsix`)
+
+> **Cursor note 1 — the listing reads "VibeFlow".** There is one cross-host build; the `vscode` in the extension id is historical. It is the right extension for Cursor.
 >
-> **Cursor note 2 — "Cursor" means two things.** The *editor* you're in is Cursor; separately, **Cursor is one of VibeFlow's selectable AI providers** (the agent can run on the `cursor` CLI). They're independent — you can run any provider inside the Cursor editor, and the Cursor provider works in any editor.
+> **Cursor note 2 — "Cursor" means two things.** The *editor* you are in is Cursor; separately, **Cursor is one of VibeFlow's selectable AI providers** (agents can run on the `cursor` CLI). They are independent — any provider runs inside the Cursor editor, and the Cursor provider works in any editor.
 
 ## Quick start
 
 1. **Install** (above).
-2. **Connect** — run **`VibeFlow: Setup`** from the Command Palette: server URL → API key (from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)) → project. The key is stored in the editor's encrypted Secrets API.
-3. **Launch a session** — **`VibeFlow: Launch Session`** (`Cmd/Ctrl+Shift+V L`) → pick persona(s), provider, branch, and session mode. The agent fleet starts working.
+2. **Connect** — run **`VibeFlow: Setup`** from the Command Palette: server URL → API key (from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)) → project.
+   The key is stored in the editor's encrypted Secrets API.
+3. **Launch a session** — **`VibeFlow: Launch Session`** (`Cmd/Ctrl+Shift+V L`) → pick persona(s), provider, branch, and session mode.
+   The agent fleet starts working.
 
 If you already use [`vibeflow-cli`](https://github.com/axiom-studio/vibeflow-cli), the extension can hand session management to it — or click **Install Latest** in Settings → CLI Interface to download the binary in one step.
-
-## Full user guide
-
-A complete user-facing guide ships in the repo, in two parallel editions:
-
-- **VS Code edition** → [`docs/vscode-vibeflow/docs/`](docs/vscode-vibeflow/docs/index.md)
-- **Cursor edition** → [`docs/cursor-vibeflow/docs/`](docs/cursor-vibeflow/docs/index.md)
-
-Each is nine documents: getting started, a feature tour of every view/panel/command, end-to-end flow diagrams, the chat-first deep dive, the full settings reference, troubleshooting, glossary, and FAQ. Publishing the extension is covered in [`docs/publishing.md`](docs/publishing.md).
 
 ## The team (9 personas)
 
@@ -108,10 +112,10 @@ The extension registers VibeFlow as an MCP server via the VS Code MCP API so oth
 ## Session modes
 
 - **Vanilla** — per-action permission prompts (safe default).
-- **VibeFlow (YOLO)** — autonomous, skip-permissions (`--dangerously-skip-permissions` on Claude; `--yolo` on Codex/Gemini/Qwen; `--yolo --approve-mcps` on Cursor). Consent modal once per session.
+- **VibeFlow (YOLO)** — autonomous, skip-permissions (`--dangerously-skip-permissions` on Claude; `--yolo` on Codex/Gemini; `--yolo --approve-mcps` on Cursor). Consent modal once per session.
 - **Chat-first headless** — the agent runs in the background (stream-json subprocess, or optional `tmux` backing) instead of a foreground terminal; the chat panel is the only surface, with sub-millisecond streaming. Always implies YOLO.
 
-Providers: **Claude, Codex, Gemini, Cursor, Qwen**.
+Providers: **Claude, Codex, Gemini, and Cursor**.
 
 ## Settings (all 14)
 
@@ -138,7 +142,7 @@ Full per-setting reference (whens, gotchas, enum semantics): [VS Code](docs/vsco
 
 - **VS Code 1.93+** (the `engines.vscode` minimum). For **Cursor / forks**, a build whose bundled VS Code engine is ≥ 1.93 — check via *Cursor → About*; current releases satisfy this.
 - A VibeFlow account at [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai) with an API key.
-- For each provider you launch: its CLI on `PATH` — one of `claude`, `codex`, `gemini`, `qwen`, or the Cursor `agent` binary.
+- For each provider you launch: its CLI on `PATH` — one of `claude`, `codex`, `gemini`, or the Cursor `agent` binary.
 
 ## Security
 
@@ -158,17 +162,19 @@ Nothing else is collected. No editor content, file names, paths, workspace or re
 
 See the [privacy policy](https://axiomstudio.ai/privacy) for how this data is handled.
 
-## Development
+## Documentation
 
-```bash
-yarn install            # install host + webview-ui deps
-yarn build              # security guards + webview build + esbuild bundle
-yarn test               # vitest unit tests (host pure-function modules)
-yarn check              # typecheck + lint + test + security-guards
-make package            # build and produce vscode-vibeflow-<version>.vsix
-```
+A complete user guide ships in the repo, in two parallel editions:
 
-See [TESTING.md](TESTING.md) for the test-layer model and [`docs/publishing.md`](docs/publishing.md) / [`Makefile`](Makefile) for publishing to Open VSX and the VS Code Marketplace.
+- **VS Code edition** → [`docs/vscode-vibeflow/docs/`](docs/vscode-vibeflow/docs/index.md)
+- **Cursor edition** → [`docs/cursor-vibeflow/docs/`](docs/cursor-vibeflow/docs/index.md)
+
+Each is nine documents: getting started, a feature tour of every view/panel/command, end-to-end flow diagrams, the chat-first deep dive, the full settings reference, troubleshooting, glossary, and FAQ.
+
+## Contributing
+
+Development setup, build, tests, and packaging are covered in [DEVELOPMENT.md](DEVELOPMENT.md).
+Bug reports and feature requests are welcome on the [issue tracker](https://github.com/axiom-studio/vscode-vibeflow/issues).
 
 ## Support
 

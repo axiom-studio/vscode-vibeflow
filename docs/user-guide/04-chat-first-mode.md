@@ -160,7 +160,7 @@ Highlight code in any editor tab, then run **VibeFlow: Ask Agent About Selection
 - **File paths**: click to open the file in the editor.
 - **Inline diffs**: rendered per `vibeflow.chat.diffView` (`unified` stacks `+/-` lines; `split` shows before/after side-by-side). Each diff has an **Open in Editor** button that launches the native VS Code diff editor.
 
-While a turn is in progress, the transcript shows tool calls live ("Reading `src/foo.ts`…", "Running `yarn check`…"). You can scroll, but you can't send a new message until the current turn finishes.
+While a turn is in progress, the transcript shows tool calls live ("Reading `src/foo.ts`…", "Running `yarn run check`…"). You can scroll, but you can't send a new message until the current turn finishes.
 
 ---
 

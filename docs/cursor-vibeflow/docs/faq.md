@@ -164,7 +164,7 @@ GitHub Issues at [github.com/axiom-studio/vscode-vibeflow/issues](https://github
 
 ### Can I contribute?
 
-The repo is Apache 2.0 licensed and open for PRs at [github.com/axiom-studio/vscode-vibeflow](https://github.com/axiom-studio/vscode-vibeflow). Before opening a PR, run `yarn check` (typecheck + lint + tests + security-guards). The security-guards script is non-negotiable and will fail the build if your change weakens the HTTPS validator, `.mcp.json` gitignore check, or worktree path-confinement. See the development section of the [README](../../README.md#development).
+The repo is Apache 2.0 licensed and open for PRs at [github.com/axiom-studio/vscode-vibeflow](https://github.com/axiom-studio/vscode-vibeflow). Before opening a PR, run `yarn run check` (typecheck + lint + tests + security-guards — note `yarn run check`, not bare `yarn check`, which is yarn v1's reserved dependency-tree verifier). The security-guards script is non-negotiable and will fail the build if your change weakens the HTTPS validator, `.mcp.json` gitignore check, or worktree path-confinement. See the developer guide at [DEVELOPMENT.md](../../DEVELOPMENT.md).
 
 ### Where do I see what's planned next?
 
