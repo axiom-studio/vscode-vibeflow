@@ -48,12 +48,7 @@ yarn test:integration   # real VS Code Electron host (@vscode/test-electron + mo
 Integration tests deliberately do not run inside `yarn run check` — they launch a real VS Code build (downloaded and cached under `.vscode-test/` on first run).
 Run them before pushing anything that touches `activate()`, view/command registration, terminal spawning, or panel lifecycle.
 
-> **Known issue:** current VS Code stable (1.135+) cannot be spawned by `@vscode/test-electron` 2.5.x on macOS (the `Electron` binary alias was removed).
-> Until the dependency is bumped, pin a compatible build:
->
-> ```bash
-> VSCODE_TEST_VERSION=1.121.0 yarn test:integration
-> ```
+> Set `VSCODE_TEST_VERSION` to pin the suite to a specific VS Code build (useful in CI, or to bisect a VS Code regression) — e.g. `VSCODE_TEST_VERSION=1.121.0 yarn test:integration`.
 
 ## Run and debug
 
