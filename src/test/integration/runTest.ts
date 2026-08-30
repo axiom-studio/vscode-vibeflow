@@ -26,12 +26,12 @@ async function main(): Promise<void> {
     const extensionTestsPath = path.resolve(__dirname, 'suite', 'index');
 
     await runTests({
-      // Default: latest stable. Overridable because current stable
-      // (1.135+) dropped the `Electron -> Code` binary symlink on macOS
-      // and @vscode/test-electron 2.5.x still spawns `Electron`, so runs
-      // against stable fail with spawn ENOENT until the dep is bumped —
-      // e.g. `VSCODE_TEST_VERSION=1.121.0 yarn test:integration` uses a
-      // compatible (cached) build.
+      // Default: latest stable. VSCODE_TEST_VERSION pins a specific build
+      // (useful in CI, or to bisect a VS Code regression) — e.g.
+      // `VSCODE_TEST_VERSION=1.121.0 yarn test:integration`. Historical
+      // note (#4996): this knob started as the workaround for
+      // @vscode/test-electron 2.5.x spawning the `Electron` binary that
+      // VS Code 1.135 removed on macOS; the 3.x bump fixed that.
       version: process.env.VSCODE_TEST_VERSION,
       extensionDevelopmentPath,
       extensionTestsPath,
