@@ -26,6 +26,13 @@ async function main(): Promise<void> {
     const extensionTestsPath = path.resolve(__dirname, 'suite', 'index');
 
     await runTests({
+      // Default: latest stable. Overridable because current stable
+      // (1.135+) dropped the `Electron -> Code` binary symlink on macOS
+      // and @vscode/test-electron 2.5.x still spawns `Electron`, so runs
+      // against stable fail with spawn ENOENT until the dep is bumped —
+      // e.g. `VSCODE_TEST_VERSION=1.121.0 yarn test:integration` uses a
+      // compatible (cached) build.
+      version: process.env.VSCODE_TEST_VERSION,
       extensionDevelopmentPath,
       extensionTestsPath,
       launchArgs: [

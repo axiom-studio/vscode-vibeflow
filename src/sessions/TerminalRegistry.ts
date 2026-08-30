@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { isCodeAgent, personaDisplayName } from './personas.js';
+import { createProcessTerminal } from './terminalLaunch.js';
 
 export type TerminalMode = 'hybrid' | 'all' | 'none';
 
@@ -48,7 +49,10 @@ export class TerminalRegistry implements vscode.Disposable {
     branch: string;
     provider: string;
     workDir: string;
-    command: string;
+    /** Agent binary — spawned directly as the terminal process (#4995). */
+    binary: string;
+    /** Launch flags, passed as argv — no shell string, no escaping. */
+    args: readonly string[];
     env: Record<string, string>;
     terminalMode: TerminalMode;
     initPrompt?: string;
@@ -74,8 +78,27 @@ export class TerminalRegistry implements vscode.Disposable {
     const displayName = personaDisplayName(opts.persona);
     const terminalName = `VibeFlow: ${displayName} [${opts.branch}]`;
 
-    const terminal = vscode.window.createTerminal({
+    // The agent binary IS the terminal process (#4995) — there is no shell
+    // to type into, so nothing (notably the Python extension's venv
+    // activation) can interleave with the agent's stdin, and env-collection
+    // changes can't mark the terminal stale (strictEnv inside the helper).
+    //
+    // If initPrompt is provided, append it as a positional argv element.
+    // Claude accepts `claude [options] [prompt]` — the prompt becomes the
+    // first user message, no TUI input timing issues. As a real argv
+    // element it needs no shell quoting; quotes/newlines pass through
+    // byte-exact.
+    const argv = opts.initPrompt ? [...opts.args, opts.initPrompt] : [...opts.args];
+    console.log(
+      '[VibeFlow] Terminal spawn:',
+      opts.binary,
+      JSON.stringify(argv).slice(0, 200),
+    );
+
+    const terminal = createProcessTerminal({
       name: terminalName,
+      binary: opts.binary,
+      args: argv,
       cwd: opts.workDir,
       env: opts.env,
       hideFromUser: hidden,
@@ -90,23 +113,8 @@ export class TerminalRegistry implements vscode.Disposable {
       hidden,
     });
 
-    // Show and run command.
-    // If initPrompt is provided, append it as a positional argument to the
-    // binary command. Claude accepts `claude [options] [prompt]` — the prompt
-    // becomes the first user message, no TUI input timing issues.
     if (!hidden) {
       terminal.show(true); // preserveFocus = true
-    }
-
-    if (opts.initPrompt) {
-      // Use single quotes to avoid escaping issues with double quotes in the prompt
-      const escaped = opts.initPrompt.replace(/'/g, "'\\''");
-      const fullCommand = `${opts.command} '${escaped}'`;
-      console.log('[VibeFlow] Terminal command:', fullCommand.slice(0, 200));
-      terminal.sendText(fullCommand, true);
-    } else {
-      console.log('[VibeFlow] Terminal command (no prompt):', opts.command);
-      terminal.sendText(opts.command, true);
     }
 
     this._onDidChange.fire();
