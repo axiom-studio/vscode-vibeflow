@@ -6,6 +6,8 @@ import {
   detectExternalAuth,
   validateProviderKey,
   buildProvidersWithAvailability,
+  buildLaunchArgs,
+  buildLaunchCommand,
   runLaunchGuarded,
   findActiveSession,
 } from './sessionCommands.js';
@@ -232,6 +234,41 @@ describe('validateProviderKey', () => {
     // A 20-char floor input padded with quotes is < 20 after trim.
     const r = validateProviderKey('GEMINI_API_KEY', '"' + 'A'.repeat(15) + '"');
     expect(r.ok).toBe(false);
+  });
+});
+
+describe('buildLaunchArgs', () => {
+  // Argv is the executed form since #4995 — agent terminals spawn the
+  // binary directly, so these arrays ARE the launch flags, not a
+  // pre-quoting convenience.
+  it('emits the per-provider YOLO flags for vibeflow and chat_first modes', () => {
+    for (const mode of ['vibeflow', 'chat_first']) {
+      expect(buildLaunchArgs('claude', mode)).toEqual(['--dangerously-skip-permissions']);
+      expect(buildLaunchArgs('codex', mode)).toEqual(['--yolo']);
+      expect(buildLaunchArgs('gemini', mode)).toEqual(['--yolo']);
+      expect(buildLaunchArgs('cursor', mode)).toEqual(['--yolo', '--approve-mcps']);
+    }
+  });
+
+  it('emits no flags for vanilla and for unknown/stale session modes', () => {
+    expect(buildLaunchArgs('claude', 'vanilla')).toEqual([]);
+    expect(buildLaunchArgs('claude', 'auto')).toEqual([]); // legacy config value
+  });
+
+  it('emits no flags for an unregistered provider even in YOLO mode', () => {
+    // The fail-open shape is deliberate here and documented in todo
+    // #3292, which owns tightening it — this test pins current behavior
+    // so a change there is a conscious one.
+    expect(buildLaunchArgs('not-a-provider', 'vibeflow')).toEqual([]);
+  });
+
+  it('agrees with buildLaunchCommand for every provider × mode (string derives from argv)', () => {
+    for (const provider of ['claude', 'codex', 'gemini', 'cursor', 'qwen']) {
+      for (const mode of ['vanilla', 'vibeflow', 'chat_first']) {
+        expect(buildLaunchCommand('bin', provider, mode))
+          .toBe(['bin', ...buildLaunchArgs(provider, mode)].join(' '));
+      }
+    }
   });
 });
 

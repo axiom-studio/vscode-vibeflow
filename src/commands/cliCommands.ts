@@ -3,6 +3,7 @@ import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createProcessTerminal } from '../sessions/terminalLaunch.js';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
 
@@ -150,12 +151,12 @@ export function hasCliLaunchOptions(options?: CliLaunchOptions): boolean {
   return Boolean(options?.mcpName?.trim() || options?.rootPath?.trim());
 }
 
-export function buildCliLaunchCommand(
-  binary: string,
-  options: CliLaunchOptions = {},
-  platform: NodeJS.Platform = process.platform,
-): string {
-  const args = [binary];
+/**
+ * Launch flags as argv — the executed form since #4995 (the TUI binary is
+ * spawned directly as the terminal process; no shell parses these).
+ */
+export function buildCliLaunchArgs(options: CliLaunchOptions = {}): string[] {
+  const args: string[] = [];
   const mcpName = options.mcpName?.trim();
   const rootPath = options.rootPath?.trim();
   if (mcpName) {
@@ -164,7 +165,22 @@ export function buildCliLaunchCommand(
   if (rootPath) {
     args.push('--root', rootPath);
   }
-  return args.map(arg => shellQuote(arg, platform)).join(' ');
+  return args;
+}
+
+/**
+ * Shell-quoted display form, derived from `buildCliLaunchArgs` so it
+ * cannot diverge from what executes (#3342's logging invariant — the
+ * launch log and the spawn share one args source).
+ */
+export function buildCliLaunchCommand(
+  binary: string,
+  options: CliLaunchOptions = {},
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return [binary, ...buildCliLaunchArgs(options)]
+    .map(arg => shellQuote(arg, platform))
+    .join(' ');
 }
 
 /**
@@ -258,17 +274,22 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     ? workspaceRoot
     : undefined;
 
-  const command = buildCliLaunchCommand(binary, launchOptions ?? readCliLaunchOptions());
-  logCli(`launching in editor terminal (cwd: ${cwd ?? '<none>'}): ${command}`);
+  const options = launchOptions ?? readCliLaunchOptions();
+  // Log and execution derive from the same buildCliLaunchArgs result
+  // (#3342 invariant) — the display string is the argv, shell-quoted for
+  // readability; the spawn takes the argv itself. Since #4995 the TUI is
+  // the terminal process (no shell), so nothing can interleave with it.
+  logCli(`launching in editor terminal (argv spawn, no shell; cwd: ${cwd ?? '<none>'}): ${buildCliLaunchCommand(binary, options)}`);
 
-  const terminal = vscode.window.createTerminal({
+  const terminal = createProcessTerminal({
     name: TERMINAL_NAME,
-    location: vscode.TerminalLocation.Editor,
+    binary,
+    args: buildCliLaunchArgs(options),
     cwd,
+    location: vscode.TerminalLocation.Editor,
     iconPath: new vscode.ThemeIcon('terminal'),
   });
   terminal.show(false);
-  terminal.sendText(command, true);
 }
 
 function shellQuote(arg: string, platform: NodeJS.Platform): string {
