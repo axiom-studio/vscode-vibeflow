@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.3 (2026-09-22)
+
+A fix for agent sessions dying seconds after launch, a Qwen reattach fix, and a cleaner marketplace README.
+
+### Fixed
+
+- **Agent sessions no longer die a couple of seconds after launch when the Python extension is active.** Agent, CLI and tmux-attach terminals now run the agent binary directly as the terminal process instead of typing a command into a shell. Previously the Python extension could write its environment activation into that same shell and trigger a terminal relaunch that killed the agent. As a result these terminals no longer start a shell: no shell rc files run, and the terminal closes when the agent exits instead of dropping to a prompt.
+- **Reattaching to a Qwen session now launches Qwen.** It previously fell back to Claude without warning.
+
+### Changed
+
+- **The marketplace README is now user-focused.** Build, test and contribution instructions moved to a separate contributor guide that is not shipped in the extension, and the provider list reflects the four launchable providers (Claude, Codex, Gemini, Cursor).
+
 ## 1.3.2 (2026-07-31)
 
 Automatic CLI update checks, Kiro support in MCP setup, and two chat fixes.
