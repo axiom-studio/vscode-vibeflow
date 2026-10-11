@@ -1,4 +1,16 @@
 import * as vscode from 'vscode';
+import type {
+  ControlPRReviewBody,
+  ControlPRReviewFindingBody,
+  PRReviewFinding,
+  PRReviewJob,
+  PRReviewPage,
+  PRReviewRepositorySummary,
+  PRReviewSummary,
+  PRReviewSummaryPublication,
+  RequestPRReviewBody,
+  RetryPRReviewPublicationBody,
+} from './prReviewTypes.js';
 import type { AuthService } from '../auth/AuthService.js';
 import { validateServerUrl } from '../auth/serverUrl.js';
 import { VibeFlowMcpClient } from './mcpClient.js';
@@ -494,6 +506,77 @@ export class VibeFlowClient {
       return r;
     }
     return r.prs ?? r.pull_requests ?? r.results ?? [];
+  }
+
+  // --- Vera PR review (#4038) — REST via request() (Bearer). Routes and
+  //     shapes: axiomcloud handlers/vibeflow_pr_reviews.go RegisterPRReviewRoutes;
+  //     types in api/prReviewTypes.ts cite their source structs.
+
+  /** One page of review summaries, newest first (ListPRReviewSummaries, limit 1-100). */
+  async listPRReviewSummaries(projectId: number, afterId = '', limit = 25): Promise<PRReviewPage<PRReviewSummary>> {
+    const q = new URLSearchParams({ after_id: afterId, limit: String(limit) });
+    const r = await this.request<{ summaries: PRReviewSummary[] | null; next_after_id: string }>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-summaries?${q}`,
+    );
+    return { items: r.summaries ?? [], nextAfterId: r.next_after_id ?? '' };
+  }
+
+  /** Everything the review panel shows for one review (GetPRReviewSummary). */
+  async getPRReviewSummary(projectId: number, jobId: string): Promise<PRReviewSummary> {
+    return this.request<PRReviewSummary>(`/rest/v1/vibeflow/projects/${projectId}/pr-review-summaries/${encodeURIComponent(jobId)}`);
+  }
+
+  /** One page of a review's findings (ListPRReviewSummaryFindings, limit 1-100). */
+  async listPRReviewFindings(projectId: number, jobId: string, afterId = '', limit = 50): Promise<PRReviewPage<PRReviewFinding>> {
+    const q = new URLSearchParams({ after_id: afterId, limit: String(limit) });
+    const r = await this.request<{ findings: PRReviewFinding[] | null; next_after_id: string }>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-summaries/${encodeURIComponent(jobId)}/findings?${q}`,
+    );
+    return { items: r.findings ?? [], nextAfterId: r.next_after_id ?? '' };
+  }
+
+  /** Repositories that can be reviewed (ListPRReviewRepositories). */
+  async listPRReviewRepositories(projectId: number): Promise<PRReviewRepositorySummary[]> {
+    const r = await this.request<{ repositories: PRReviewRepositorySummary[] | null }>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-repositories`,
+    );
+    return r.repositories ?? [];
+  }
+
+  /** Request a review (RequestPRReview). 409 = blocked (paused, disabled, closed…). */
+  async requestPRReview(projectId: number, body: RequestPRReviewBody): Promise<PRReviewJob> {
+    return this.request<PRReviewJob>(`/rest/v1/vibeflow/projects/${projectId}/pr-reviews`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Pause or Continue a review (ControlPRReview). */
+  async controlPRReview(projectId: number, jobId: string, body: ControlPRReviewBody): Promise<PRReviewJob> {
+    return this.request<PRReviewJob>(`/rest/v1/vibeflow/projects/${projectId}/pr-reviews/${encodeURIComponent(jobId)}/control`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Dismiss or reopen one finding (ControlPRReviewFinding). */
+  async controlPRReviewFinding(projectId: number, jobId: string, findingId: string, body: ControlPRReviewFindingBody): Promise<PRReviewJob> {
+    return this.request<PRReviewJob>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-reviews/${encodeURIComponent(jobId)}/findings/${encodeURIComponent(findingId)}/control`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
+  }
+
+  /**
+   * Republish the PR summary and check without another review (RetryPRReviewPublication).
+   * The server returns database.PRReviewPublication, a superset of the summary's
+   * publication fields; only those shared fields are typed.
+   */
+  async retryPRReviewPublication(projectId: number, jobId: string, body: RetryPRReviewPublicationBody): Promise<PRReviewSummaryPublication> {
+    return this.request<PRReviewSummaryPublication>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-reviews/${encodeURIComponent(jobId)}/publication/retry`,
+      { method: 'POST', body: JSON.stringify(body) },
+    );
   }
 
   async listBrainstorms(projectId: number): Promise<VibeFlowBrainstormSession[]> {
