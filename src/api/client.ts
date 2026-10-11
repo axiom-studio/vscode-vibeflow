@@ -499,16 +499,19 @@ export class VibeFlowClient {
    * purpose (#4039): the legacy unpaged form keeps only PRs linked to a work
    * item, dropping PRs that are tracked only for Vera review; the paged form
    * returns both, each with its `review_summary`, under `pull_requests`.
-   * First page only (server max 100).
+   * Walks every page (server max 100 per page) until `has_more` is false.
    */
   async listPullRequests(projectId: number): Promise<VibeFlowPullRequest[]> {
-    const r = await this.request<
-      { prs?: VibeFlowPullRequest[]; pull_requests?: VibeFlowPullRequest[]; results?: VibeFlowPullRequest[] } | VibeFlowPullRequest[]
-    >(`/rest/v1/vibeflow/projects/${projectId}/prs?page=1&limit=100`);
-    if (Array.isArray(r)) {
-      return r;
+    const all: VibeFlowPullRequest[] = [];
+    for (let page = 1; ; page++) {
+      const r = await this.request<{ pull_requests?: VibeFlowPullRequest[] | null; has_more?: boolean }>(
+        `/rest/v1/vibeflow/projects/${projectId}/prs?page=${page}&limit=100`,
+      );
+      const rows = r.pull_requests ?? [];
+      all.push(...rows);
+      // An empty page ends the walk even if has_more is set, so a server bug cannot loop us.
+      if (!r.has_more || rows.length === 0) { return all; }
     }
-    return r.prs ?? r.pull_requests ?? r.results ?? [];
   }
 
   // --- Vera PR review (#4038) — REST via request() (Bearer). Routes and

@@ -1363,20 +1363,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.requestPrReview', async (node?: { id?: string }) => {
       // Ask Vera to review a PR from the Pull Requests view (#4039). Manual
       // requests work in every trigger mode, including on drafts.
-      const project = detector.getCachedProject();
-      const pr = node?.id ? pullRequestsProvider.getPullRequest(node.id) : undefined;
-      if (!project || !pr) {
+      // The row carries the project it was listed in; request in that project,
+      // never the currently selected one, so a switch mid-load cannot misroute it.
+      const row = node?.id ? pullRequestsProvider.getPullRequest(node.id) : undefined;
+      if (!row) {
         vscode.window.showWarningMessage('VibeFlow: pick a pull request in the Pull Requests view to request a review.');
         return;
       }
+      const { pr, projectId } = row;
       try {
-        const repositories = pr.review_summary ? [] : await client.listPRReviewRepositories(project.projectId);
+        const repositories = pr.review_summary ? [] : await client.listPRReviewRepositories(projectId);
         const target = resolveReviewTarget(pr, repositories);
         if (!target) {
           vscode.window.showWarningMessage(`VibeFlow: ${pr.repo} is not linked for PR reviews. Link it under Settings → Integrations → Source Control in VibeFlow.`);
           return;
         }
-        await client.requestPRReview(project.projectId, {
+        await client.requestPRReview(projectId, {
           provider: target.provider,
           repository_link_id: target.repositoryLinkId,
           number: target.number,
