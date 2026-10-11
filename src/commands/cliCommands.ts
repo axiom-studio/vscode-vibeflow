@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { execSync, execFileSync } from 'child_process';
 import * as fs from 'fs';
+import { createHash } from 'crypto';
+import { readCliConfig } from '../auth/cliConfig.js';
 import * as os from 'os';
 import * as path from 'path';
 import { createProcessTerminal } from '../sessions/terminalLaunch.js';
@@ -62,6 +64,29 @@ export function cliPidLockPath(
   home: string = os.homedir(),
 ): string {
   return path.join(cliRootDir(rootPath, cwd, env, home), 'vibeflow.pid');
+}
+
+/**
+ * The tmux socket a CLI launched with `rootPath` runs its agents on. Mirrors
+ * vibeflow-cli `ResolveTmuxSocket` + `TmuxSocketName`: config `tmux_socket` >
+ * "vibeflow" for the default root > "vibeflow-" + first 8 hex chars of
+ * sha256(root) for a custom root. The CLI hashes the root string exactly as it
+ * received it (--root as passed, else VIBEFLOW_ROOT), so this does too.
+ */
+export function cliTmuxSocket(
+  rootPath: string | undefined,
+  configSocket: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (configSocket?.trim()) { return configSocket.trim(); }
+  const root = rootPath?.trim() || env.VIBEFLOW_ROOT;
+  if (!root) { return 'vibeflow'; }
+  return `vibeflow-${createHash('sha256').update(root).digest('hex').slice(0, 8)}`;
+}
+
+/** The tmux socket of the CLI this window's Open CLI would run. */
+export function currentCliTmuxSocket(): string {
+  return cliTmuxSocket(readCliLaunchOptions().rootPath, readCliConfig(currentCliConfigPath())?.tmuxSocket);
 }
 
 /** The config.yaml the CLI opened from this window (Open CLI) would read. */

@@ -101,3 +101,25 @@ export function groupFleetByProject(
   return [...groups.values()].sort((a, b) =>
     Number(b.current) - Number(a.current) || a.projectName.localeCompare(b.projectName));
 }
+
+/**
+ * Agent Fleet shows what the VibeFlow CLI is running (#4159): the CLI's own
+ * rule for its session list is "a sessions.json entry whose tmux session is
+ * alive". Server records only enrich those rows (status, last activity); a
+ * server session with no live CLI pane is not part of the fleet.
+ */
+export function liveCliFleet(
+  serverSessions: readonly VibeFlowSession[],
+  cliSessions: readonly CliSessionMeta[],
+  liveTmux: ReadonlySet<string>,
+): { sessions: VibeFlowSession[]; localOnly: CliSessionMeta[] } {
+  const byId = new Map(serverSessions.map(s => [s.session_id, s]));
+  const sessions = new Set<VibeFlowSession>();
+  const localOnly: CliSessionMeta[] = [];
+  for (const m of cliSessions) {
+    if (!liveTmux.has(m.tmux_session)) { continue; }
+    const server = byId.get(m.vibeflow_session_id ?? '') ?? byId.get(m.name);
+    if (server) { sessions.add(server); } else { localOnly.push(m); }
+  }
+  return { sessions: [...sessions], localOnly };
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VibeFlowSession } from '../../api/types.js';
-import { groupFleetByProject, parseCliSessions, type CliSessionMeta } from './fleetModel.js';
+import { groupFleetByProject, liveCliFleet, parseCliSessions, type CliSessionMeta } from './fleetModel.js';
 
 function server(sessionId: string, projectId: number): VibeFlowSession {
   return {
@@ -70,5 +70,27 @@ describe('groupFleetByProject', () => {
   it('groups a CLI session with no project id under its project name', () => {
     const groups = groupFleetByProject([], [local('qa-1', 'old-project')], 28, names);
     expect(groups.map(g => [g.key, g.projectName, g.current])).toEqual([['name:old-project', 'old-project', false]]);
+  });
+});
+
+describe('liveCliFleet', () => {
+  it('lists only CLI sessions whose tmux session is alive, as the CLI does', () => {
+    const a = local('session-a', 'p1', 1);
+    const b = local('session-b', 'p1', 1);
+    const fleet = liveCliFleet([], [a, b], new Set(['vibeflow_session-a']));
+    expect(fleet.localOnly).toEqual([a]);
+  });
+
+  it('uses the server record for a live CLI session, matched by id or name', () => {
+    const byName = server('session-a', 1);
+    const byId = server('vf-2', 2);
+    const fleet = liveCliFleet(
+      [byName, byId, server('session-gone', 1)],
+      [local('session-a', 'p1', 1), local('session-x', 'p2', 2, 'vf-2')],
+      new Set(['vibeflow_session-a', 'vibeflow_session-x']),
+    );
+    // A server session with no live CLI pane is not part of the fleet.
+    expect(fleet.sessions).toEqual([byName, byId]);
+    expect(fleet.localOnly).toEqual([]);
   });
 });
