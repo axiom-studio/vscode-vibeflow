@@ -18,9 +18,18 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private prs: VibeFlowPullRequest[] = [];
+  /** The project `prs` was fetched for, so a row is never acted on in another project. */
+  private prsProjectId: number | undefined;
+  /** Bumped per fetch; only the latest fetch may replace `prs`. */
+  private fetchSeq = 0;
 
   connect(client: VibeFlowClient, projectId: number): void {
     this.client = client;
+    if (projectId !== this.projectId) {
+      // Drop the old project's rows now rather than when the new list lands.
+      this.prs = [];
+      this.prsProjectId = undefined;
+    }
     this.projectId = projectId;
     void this.fetch();
   }
@@ -34,11 +43,17 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
       this._onDidChangeTreeData.fire();
       return;
     }
+    const seq = ++this.fetchSeq;
+    const projectId = this.projectId;
+    let prs: VibeFlowPullRequest[];
     try {
-      this.prs = await this.client.listPullRequests(this.projectId);
+      prs = await this.client.listPullRequests(projectId);
     } catch {
-      this.prs = [];
+      prs = [];
     }
+    if (seq !== this.fetchSeq) { return; } // a newer fetch (or project) superseded this one
+    this.prs = prs;
+    this.prsProjectId = projectId;
     this._onDidChangeTreeData.fire();
   }
 
@@ -65,9 +80,10 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
     return pullRequestNode(pr);
   }
 
-  /** The PR behind a tree node, for context-menu commands. */
-  getPullRequest(nodeId: string): VibeFlowPullRequest | undefined {
-    return this.prs.find(pr => pullRequestNodeId(pr) === nodeId);
+  /** The PR behind a tree node and the project it was listed in, for context-menu commands. */
+  getPullRequest(nodeId: string): { pr: VibeFlowPullRequest; projectId: number } | undefined {
+    const pr = this.prs.find(p => pullRequestNodeId(p) === nodeId);
+    return pr && this.prsProjectId !== undefined ? { pr, projectId: this.prsProjectId } : undefined;
   }
 
   dispose(): void {

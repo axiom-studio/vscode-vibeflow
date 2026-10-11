@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { VibeFlowClient } from '../../api/client.js';
 import type { VibeFlowPullRequest } from '../../api/types.js';
 import type { PRReviewSummary } from '../../api/prReviewTypes.js';
-import { pullRequestNode, resolveReviewTarget } from './PullRequestsTreeProvider.js';
+import { PullRequestsTreeProvider, pullRequestNode, pullRequestNodeId, resolveReviewTarget } from './PullRequestsTreeProvider.js';
 
 // Rows shaped like axiomcloud ListProjectPRs `prInfo` (vibeflow_features.go).
 const basePr: VibeFlowPullRequest = {
@@ -75,5 +76,53 @@ describe('resolveReviewTarget', () => {
     expect(resolveReviewTarget({ ...basePr, repo: 'someone/else' }, repos)).toBeUndefined();
     expect(resolveReviewTarget({ ...basePr, provider: 'bitbucket' }, repos)).toBeUndefined();
     expect(resolveReviewTarget({ ...basePr, pr_number: null }, repos)).toBeUndefined();
+  });
+});
+
+describe('listPullRequests', () => {
+  it('walks every page until has_more is false', async () => {
+    const urls: string[] = [];
+    const request = async (url: string) => {
+      urls.push(url);
+      const page = Number(new URL(url, 'http://x').searchParams.get('page'));
+      return page === 1
+        ? { pull_requests: Array.from({ length: 100 }, (_, i) => ({ ...basePr, pr_number: i + 1 })), has_more: true }
+        : { pull_requests: [{ ...basePr, pr_number: 101 }], has_more: false };
+    };
+    const prs = await VibeFlowClient.prototype.listPullRequests.call({ request } as unknown as VibeFlowClient, 28);
+    expect(prs).toHaveLength(101);
+    expect(prs[100].pr_number).toBe(101);
+    expect(urls).toEqual(['/rest/v1/vibeflow/projects/28/prs?page=1&limit=100', '/rest/v1/vibeflow/projects/28/prs?page=2&limit=100']);
+  });
+});
+
+describe('PullRequestsTreeProvider project binding', () => {
+  it('never hands out a row under a project other than the one it was listed in', async () => {
+    const pending = new Map<number, (rows: VibeFlowPullRequest[]) => void>();
+    const client = {
+      listPullRequests: (projectId: number) => new Promise<VibeFlowPullRequest[]>(r => pending.set(projectId, r)),
+    } as unknown as VibeFlowClient;
+    const provider = new PullRequestsTreeProvider();
+    const rowA = { ...basePr, pr_number: 2 };
+    const rowB = { ...basePr, pr_number: 3, vibeflow_id: 9 };
+
+    provider.connect(client, 10);
+    pending.get(10)!([rowA]);
+    await Promise.resolve();
+    expect(provider.getPullRequest(pullRequestNodeId(rowA))).toEqual({ pr: rowA, projectId: 10 });
+
+    // Switch to 20: A's rows are dropped immediately, not when B's list lands.
+    provider.connect(client, 20);
+    expect(provider.getPullRequest(pullRequestNodeId(rowA))).toBeUndefined();
+
+    // B resolves first, then a late A response arrives and must be ignored.
+    provider.connect(client, 10);
+    provider.connect(client, 20);
+    pending.get(20)!([rowB]);
+    pending.get(10)!([rowA]);
+    await new Promise(r => setTimeout(r, 0));
+    expect(provider.getPullRequest(pullRequestNodeId(rowA))).toBeUndefined();
+    expect(provider.getPullRequest(pullRequestNodeId(rowB))).toEqual({ pr: rowB, projectId: 20 });
+    provider.dispose();
   });
 });
