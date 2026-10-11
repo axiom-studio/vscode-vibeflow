@@ -50,6 +50,11 @@ describe('pullRequestNode', () => {
     expect(node.tooltip).toContain('Vera: Findings to address.');
   });
 
+  it('opens the review panel for a tracked PR and the browser otherwise', () => {
+    expect(pullRequestNode(reviewed('changes_requested')).command?.command).toBe('vibeflow.openPrReview');
+    expect(pullRequestNode(basePr).command?.command).toBe('vscode.open');
+  });
+
   it('omits the blocker count when there are none and marks a clean review', () => {
     const node = pullRequestNode(reviewed('clean', {
       unresolved_blockers: 0,
