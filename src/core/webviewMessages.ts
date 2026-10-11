@@ -143,8 +143,10 @@ export type SettingsClientMessage =
   | { type: 'gitProviderDelete'; payload: { id: number; name: string } }
   // Admin-only Project tab (#4036).
   | { type: 'projectSettingsLoad' }
-  | { type: 'projectNotificationsSave'; payload: ProjectNotificationSetting[] }
-  | { type: 'prReviewPolicySave'; payload: { provider: string; repositoryLinkId: number; policy: PRReviewPolicy; expectedVersion: number } }
+  // Project-tab saves name the project whose settings were displayed; the host
+  // refuses them if the active project has changed since.
+  | { type: 'projectNotificationsSave'; payload: { projectId: number; settings: ProjectNotificationSetting[] } }
+  | { type: 'prReviewPolicySave'; payload: { projectId: number; provider: string; repositoryLinkId: number; policy: PRReviewPolicy; expectedVersion: number } }
   // Generic command-passthrough — the Settings panel uses this to fire
   // extension commands (like vibeflow.openCli) directly from a tab so we
   // don't need a one-off wire shape per button.
