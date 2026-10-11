@@ -126,6 +126,15 @@ export class SettingsPanel {
       panel.webview.postMessage(msg);
     };
 
+    /**
+     * Project-tab saves run one at a time, in arrival order: notification saves
+     * replace the whole list, so an older list must never land after a newer one.
+     */
+    let projectSaveQueue: Promise<void> = Promise.resolve();
+    const pushProjectSettings = async () => {
+      postToWebview({ type: 'projectSettingsData', payload: await loadProjectSettings(deps) });
+    };
+
     /** Push a fresh settings snapshot to the webview. */
     const pushSettings = async () => {
       const payload = await buildSettingsPayload(deps);
@@ -330,6 +339,7 @@ export class SettingsPanel {
             mirrorConnectionToCli(deps);
             vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
             await pushSettings();
+            await pushProjectSettings();
           } catch (err) {
             const errMsg = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${errMsg}`);
@@ -435,27 +445,37 @@ export class SettingsPanel {
           break;
         }
         case 'projectSettingsLoad':
-          postToWebview({ type: 'projectSettingsData', payload: await loadProjectSettings(deps) });
+          await pushProjectSettings();
           break;
         case 'projectNotificationsSave':
         case 'prReviewPolicySave': {
-          const projectId = deps.detector?.getCachedProject()?.projectId;
-          if (!deps.client || !projectId) { break; }
-          try {
-            if (msg.type === 'projectNotificationsSave') {
-              await deps.client.updateProjectNotificationSettings(projectId, msg.payload);
-              vscode.window.showInformationMessage('VibeFlow: project notifications saved.');
-            } else {
-              const { provider, repositoryLinkId, policy, expectedVersion } = msg.payload;
-              await deps.client.updatePRReviewPolicy(projectId, provider, repositoryLinkId, policy, expectedVersion);
-              vscode.window.showInformationMessage('VibeFlow: PR review settings saved.');
+          const client = deps.client;
+          if (!client) { break; }
+          const save = projectSaveQueue.then(async () => {
+            // Write only to the project whose settings the user was looking at.
+            const { projectId } = msg.payload;
+            if (deps.detector?.getCachedProject()?.projectId !== projectId) {
+              vscode.window.showWarningMessage('VibeFlow: the active project changed, so nothing was saved. Showing the current project\'s settings.');
+              return;
             }
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(`VibeFlow: could not save project settings — ${message}`);
-          }
+            try {
+              if (msg.type === 'projectNotificationsSave') {
+                await client.updateProjectNotificationSettings(projectId, msg.payload.settings);
+                vscode.window.showInformationMessage('VibeFlow: project notifications saved.');
+              } else {
+                const { provider, repositoryLinkId, policy, expectedVersion } = msg.payload;
+                await client.updatePRReviewPolicy(projectId, provider, repositoryLinkId, policy, expectedVersion);
+                vscode.window.showInformationMessage('VibeFlow: PR review settings saved.');
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`VibeFlow: could not save project settings — ${message}`);
+            }
+          });
+          projectSaveQueue = save;
+          await save;
           // Re-read either way: a 409 means someone else changed it first.
-          postToWebview({ type: 'projectSettingsData', payload: await loadProjectSettings(deps) });
+          await pushProjectSettings();
           break;
         }
         case 'runCommand':

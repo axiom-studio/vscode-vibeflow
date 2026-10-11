@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ProjectSettingsData } from '../../../../src/core/webviewMessages';
 import type { PRReviewPolicy, PRReviewRepositoryPolicy, PRReviewRepositorySummary } from '../../../../src/api/prReviewTypes';
 import type { SettingsCommand } from './settingsTypes';
@@ -62,6 +62,9 @@ export function policyFromForm(form: PolicyForm, current: PRReviewPolicy): PRRev
  */
 export function ProjectTab({ data, onCommand }: Props) {
   const [notifications, setNotifications] = useState(data.notifications);
+  // Adopt every reload from the host (after saves, or someone else's change).
+  useEffect(() => { setNotifications(data.notifications); }, [data.notifications]);
+  const projectId = data.projectId;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       {data.error && <div style={{ fontSize: 12, color: 'var(--feed-error)' }}>{data.error}</div>}
@@ -76,9 +79,10 @@ export function ProjectTab({ data, onCommand }: Props) {
             desc=""
             checked={n.enabled}
             onChange={v => {
+              if (projectId == null) { return; }
               const next = notifications.map(x => (x.event_type === n.event_type ? { ...x, enabled: v } : x));
               setNotifications(next);
-              onCommand({ type: 'projectNotificationsSave', payload: next });
+              onCommand({ type: 'projectNotificationsSave', payload: { projectId, settings: next } });
             }}
           />
         ))}
@@ -90,7 +94,10 @@ export function ProjectTab({ data, onCommand }: Props) {
         </Card>
       )}
       {data.repositories.map(r => (
-        <RepositoryPolicyCard key={`${r.repository.provider}-${r.repository.repository_link_id}`} repository={r.repository} policy={r.policy} error={r.error} onCommand={onCommand} />
+        // Keyed on the policy version: a newer version (after a 409 or someone
+        // else's save) remounts the form with its values, so a retry can never
+        // pair stale form fields with the new version.
+        <RepositoryPolicyCard key={`${r.repository.provider}-${r.repository.repository_link_id}-${r.policy?.version ?? 'none'}`} projectId={projectId} repository={r.repository} policy={r.policy} error={r.error} onCommand={onCommand} />
       ))}
 
       {data.webUrl && (
@@ -102,7 +109,8 @@ export function ProjectTab({ data, onCommand }: Props) {
   );
 }
 
-function RepositoryPolicyCard({ repository, policy, error, onCommand }: {
+function RepositoryPolicyCard({ projectId, repository, policy, error, onCommand }: {
+  projectId: number | null;
   repository: PRReviewRepositorySummary;
   policy: PRReviewRepositoryPolicy | null;
   error?: string;
@@ -114,7 +122,7 @@ function RepositoryPolicyCard({ repository, policy, error, onCommand }: {
     return <Card title={title} description={error ?? 'Review settings are unavailable.'}><span /></Card>;
   }
   const set = (patch: Partial<PolicyForm>) => setForm({ ...form, ...patch });
-  const disabled = !policy.can_manage;
+  const disabled = !policy.can_manage || projectId == null;
   return (
     <Card
       title={title}
@@ -144,9 +152,9 @@ function RepositoryPolicyCard({ repository, policy, error, onCommand }: {
         <button
           disabled={disabled}
           title={disabled ? 'Only the project owner or an org admin can change review settings.' : ''}
-          onClick={() => onCommand({
+          onClick={() => projectId != null && onCommand({
             type: 'prReviewPolicySave',
-            payload: { provider: repository.provider, repositoryLinkId: repository.repository_link_id, policy: policyFromForm(form, policy.policy), expectedVersion: policy.version },
+            payload: { projectId, provider: repository.provider, repositoryLinkId: repository.repository_link_id, policy: policyFromForm(form, policy.policy), expectedVersion: policy.version },
           })}
           style={{ padding: '5px 14px', fontSize: 12, background: 'var(--feed-button-bg)', color: 'var(--feed-button-fg)', border: 'none', borderRadius: 4, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1 }}
         >Save review settings</button>
