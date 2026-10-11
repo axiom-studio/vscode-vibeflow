@@ -5,6 +5,8 @@ export interface CliConfig {
   serverUrl?: string;
   apiToken?: string;
   defaultProject?: string;
+  /** `tmux_socket`: pins the CLI's tmux socket (vibeflow-cli ResolveTmuxSocket). */
+  tmuxSocket?: string;
 }
 
 /**
@@ -58,6 +60,7 @@ function parseYaml(content: string): CliConfig {
       case 'server_url': config.serverUrl = value; break;
       case 'api_token': config.apiToken = value; break;
       case 'default_project': config.defaultProject = value; break;
+      case 'tmux_socket': config.tmuxSocket = value; break;
     }
   }
   return config;

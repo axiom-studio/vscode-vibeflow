@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, cliRootDir, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, cliRootDir, cliTmuxSocket, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
 
 // Mirrors vibeflow-cli PIDLockPath(): <root>/vibeflow.pid with
 // --root > VIBEFLOW_ROOT > ~/.vibeflow-cli (issue #5742).
@@ -148,5 +148,19 @@ describe('hasCliLaunchOptions', () => {
     const some = { mcpName: 'team-mcp', rootPath: '' };
     expect(hasCliLaunchOptions(none)).toBe(buildCliLaunchCommand('vibeflow', none, 'darwin') !== 'vibeflow');
     expect(hasCliLaunchOptions(some)).toBe(buildCliLaunchCommand('vibeflow', some, 'darwin') !== 'vibeflow');
+  });
+});
+
+describe('cliTmuxSocket', () => {
+  // vibeflow-cli ResolveTmuxSocket / TmuxSocketName.
+  it('uses "vibeflow" for the default root', () => {
+    expect(cliTmuxSocket(undefined, undefined, {})).toBe('vibeflow');
+  });
+  it('derives the socket from the root string for a custom root', () => {
+    expect(cliTmuxSocket('/tmp/vf-root', undefined, {})).toBe('vibeflow-2baf4e59');
+    expect(cliTmuxSocket(undefined, undefined, { VIBEFLOW_ROOT: '/tmp/vf-root' })).toBe('vibeflow-2baf4e59');
+  });
+  it('prefers the tmux_socket pinned in the CLI config', () => {
+    expect(cliTmuxSocket('/tmp/vf-root', 'pinned', {})).toBe('pinned');
   });
 });
