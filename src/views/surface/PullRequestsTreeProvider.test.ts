@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VibeFlowPullRequest } from '../../api/types.js';
 import type { PRReviewSummary } from '../../api/prReviewTypes.js';
-import { pullRequestNode, resolveReviewTarget } from './PullRequestsTreeProvider.js';
+import { pullRequestNode, resolveReviewTarget, reviewTransitions } from './PullRequestsTreeProvider.js';
 
 // Rows shaped like axiomcloud ListProjectPRs `prInfo` (vibeflow_features.go).
 const basePr: VibeFlowPullRequest = {
@@ -80,5 +80,31 @@ describe('resolveReviewTarget', () => {
     expect(resolveReviewTarget({ ...basePr, repo: 'someone/else' }, repos)).toBeUndefined();
     expect(resolveReviewTarget({ ...basePr, provider: 'bitbucket' }, repos)).toBeUndefined();
     expect(resolveReviewTarget({ ...basePr, pr_number: null }, repos)).toBeUndefined();
+  });
+});
+
+describe('reviewTransitions', () => {
+  const findings = reviewed('changes_requested');
+  const clean = reviewed('clean', {
+    unresolved_blockers: 0,
+    last_completed_round: { id: 'r', job_id: 'job-1', number: 1, head_sha: 'h', base_sha: 'b', state: 'completed', attempt_count: 1, result: 'clean' },
+  });
+  const queued = reviewed('queued');
+
+  it('stays silent on the first load (no baseline)', () => {
+    expect(reviewTransitions(undefined, [findings]).transitions).toEqual([]);
+  });
+
+  it('reports a PR whose review newly finished, once', () => {
+    const first = reviewTransitions(undefined, [queued]);
+    const second = reviewTransitions(first.labels, [clean]);
+    expect(second.transitions.map(t => t.label)).toEqual(['Reviewed']);
+    expect(reviewTransitions(second.labels, [clean]).transitions).toEqual([]);
+  });
+
+  it('reports findings but not intermediate states', () => {
+    const base = reviewTransitions(undefined, [queued]).labels;
+    expect(reviewTransitions(base, [findings]).transitions.map(t => t.label)).toEqual(['Findings to address']);
+    expect(reviewTransitions(base, [reviewed('reviewing')]).transitions).toEqual([]);
   });
 });

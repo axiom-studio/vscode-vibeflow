@@ -547,7 +547,13 @@ export type PRReviewPageClientMessage =
   | { type: 'prReviewRefresh' }
   /** Open a finding's location; `path` is repo-relative as Vera reports it. */
   | { type: 'prReviewOpenLocation'; payload: { path: string; line?: number } }
-  | { type: 'prReviewOpenPullRequest' };
+  | { type: 'prReviewOpenPullRequest' }
+  // Controls (#4041). The host adds request ids and the expected
+  // version/generation from the summary it last loaded.
+  | { type: 'prReviewRequest' }
+  | { type: 'prReviewControl'; payload: { action: 'pause' | 'resume'; additionalRounds: number; reason: string } }
+  | { type: 'prReviewRetryPublication' }
+  | { type: 'prReviewFindingControl'; payload: { findingId: string; action: 'dismiss' | 'reopen'; reason: string; evidence?: string } };
 
 // ============================================================
 // Cloud Runner Manage wizard (#2817)
