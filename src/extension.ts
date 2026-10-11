@@ -12,7 +12,7 @@ import { PullRequestsTreeProvider, pullRequestNodeId, resolveReviewTarget } from
 import { PRReviewPanel } from './views/prReview/PRReviewPanel.js';
 import { randomUUID } from 'crypto';
 import { cliNeedsWsl, showCliNeedsWsl } from './commands/cliPlatform.js';
-import { ProjectTreeProvider } from './views/surface/ProjectTreeProvider.js';
+import { ProjectSelectorView } from './views/surface/ProjectSelectorView.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
@@ -155,7 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // cloud-style table panels (TicketsPanel), reached from the Browse nav.
   // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
   const pullRequestsProvider = new PullRequestsTreeProvider();
-  const projectProvider = new ProjectTreeProvider();
+  const projectProvider = new ProjectSelectorView({ client, detector, onSwitched: connectToProject });
   const ticketsNavProvider = new TicketsNavTreeProvider(workItemsProvider);
 
   // --- Activity Feed empty/connection state controller ---
@@ -908,19 +908,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }));
 
-  // Project view (#4030): the scope line. Views below it are scoped to the
-  // selected project, so each carries the project name as its description;
-  // that stays visible when a section is collapsed.
-  const projectView = vscode.window.createTreeView('vibeflow.project', {
-    treeDataProvider: projectProvider,
-  });
+  // Project dropdown (#4030, #4044): the first pane picks the project; the
+  // scoped views carry its name as their description, which stays visible
+  // when a section is collapsed.
+  const projectView = vscode.window.registerWebviewViewProvider('vibeflow.projectPicker', projectProvider);
   const scopedViews = [workItemsView, browseView, pullRequestsView, documentsView];
   const applyProjectScope = () => {
     const name = projectProvider.getProject()?.projectName;
     for (const view of scopedViews) { view.description = name; }
   };
   applyProjectScope();
-  context.subscriptions.push(projectView, projectProvider, projectProvider.onDidChangeTreeData(applyProjectScope));
+  context.subscriptions.push(projectView, projectProvider, projectProvider.onDidChangeProject(applyProjectScope));
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),

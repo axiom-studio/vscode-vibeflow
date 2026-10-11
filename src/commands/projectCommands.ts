@@ -25,7 +25,7 @@ export async function pickProject(deps: {
   detector: ProjectDetector;
   onSwitched: (project: DetectedProject) => void;
 }): Promise<void> {
-  const { client, detector, onSwitched } = deps;
+  const { client, detector } = deps;
 
   if (!client.isAuthenticated()) {
     const choice = await vscode.window.showWarningMessage(
@@ -53,9 +53,7 @@ export async function pickProject(deps: {
   }
 
   const current = detector.getCachedProject();
-  const items: ProjectQuickPickItem[] = projects
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const items: ProjectQuickPickItem[] = sortProjects(projects)
     .map(p => {
       const isActive = current?.projectId === p.id;
       return {
@@ -82,6 +80,27 @@ export async function pickProject(deps: {
     vscode.window.showInformationMessage(`VibeFlow: "${picked.projectName}" is already active.`);
     return;
   }
+
+  await switchToProject(deps, picked);
+}
+
+/** Projects in the order every picker shows them: by name. */
+export function sortProjects<T extends { name: string }>(projects: readonly T[]): T[] {
+  return projects.slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Make `picked` the active project: the one switch path shared by the
+ * QuickPick and the sidebar project dropdown. Closes the old project's
+ * panels first, then caches the project and reconnects every view.
+ */
+export async function switchToProject(
+  deps: { detector: ProjectDetector; onSwitched: (project: DetectedProject) => void },
+  picked: { projectId: number; projectName: string; gitRemoteUrl: string },
+): Promise<void> {
+  const { detector, onSwitched } = deps;
+  const current = detector.getCachedProject();
+  if (current?.projectId === picked.projectId) { return; }
 
   await closeTabsForProjectSwitch(current, picked.projectId);
 
