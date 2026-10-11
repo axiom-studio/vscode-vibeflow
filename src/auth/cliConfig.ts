@@ -86,7 +86,8 @@ export function upsertCliConfigScalars(content: string, fields: CliConnectionFie
     const value = fields[field];
     if (value === undefined) { continue; }
     const line = `${key}: ${JSON.stringify(value)}`;
-    const index = lines.findIndex(l => l.startsWith(`${key}:`));
+    // Top-level only; YAML allows spaces before the colon (`api_token : x`).
+    const index = lines.findIndex(l => new RegExp(`^${key}\\s*:`).test(l));
     if (index >= 0) { lines[index] = line; } else { missing.push(line); }
   }
   return [...missing, ...lines].join('\n') + '\n';
@@ -105,6 +106,15 @@ export function writeCliConfig(configPath: string, fields: CliConnectionFields):
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
   }
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, upsertCliConfigScalars(existing, fields), { mode: 0o600 });
-  fs.chmodSync(configPath, 0o600);
+  // Atomic replace: write a sibling temp file, then rename over the original,
+  // so a failed write (full disk, size limit) never truncates the CLI's file.
+  const tmp = `${configPath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(tmp, upsertCliConfigScalars(existing, fields), { mode: 0o600 });
+    fs.chmodSync(tmp, 0o600);
+    fs.renameSync(tmp, configPath);
+  } catch (err) {
+    fs.rmSync(tmp, { force: true });
+    throw err;
+  }
 }

@@ -1572,7 +1572,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   console.log('[VibeFlow] Cached project on activation:', detector.getCachedProject());
 
   // Step 1: Ensure we have a token (force-import from CLI if not already set)
-  if (authService.getState() === 'unauthenticated' && cliConfig?.apiToken) {
+  // ...unless the user explicitly logged out: the CLI config may hold the
+  // token the Settings mirror wrote, and logging out must stick (#5761).
+  if (authService.getState() === 'unauthenticated' && !authService.wasSignedOut() && cliConfig?.apiToken) {
     console.log('[VibeFlow] Importing token from CLI config');
     await authService.setToken(cliConfig.apiToken);
   }
