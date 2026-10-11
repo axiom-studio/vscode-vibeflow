@@ -16,7 +16,7 @@ export function DisplayTab({ data, onUpdate }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <Card
         title="Refresh rate"
-        description="How often the extension refreshes from the VibeFlow API. The live tier (Activity Feed, open session chats & work-item panels, brainstorms) polls faster; background views (trees, status bar, dashboard, compliance, tickets) poll slower. Both pause while the window is unfocused."
+        description="How often the extension refreshes from the VibeFlow API. The live tier (Activity Feed, open session chats & work-item panels, brainstorms) polls faster; background views (trees, status bar, dashboard, compliance, tickets) poll slower. Both pause while the window is unfocused. A change applies to views opened afterwards; reload the window to apply it everywhere."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

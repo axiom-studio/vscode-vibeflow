@@ -94,7 +94,8 @@ export type ActivityFeedClientMessage =
 
 export type SettingsHostMessage =
   | { type: 'settingsData'; payload: unknown }
-  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } }
+  // Test Connection / Test Key outcome; `url` is the server URL that was tested.
+  | { type: 'validationResult'; payload: { field: 'serverUrl' | 'apiKey'; valid: boolean; message?: string; url?: string } }
   // Git Configuration tab (feature #603) — the list is fetched lazily and
   // pushed back on demand, kept out of the main settings snapshot so a slow
   // or failing network call never blocks the rest of Settings.
@@ -110,9 +111,6 @@ export type SettingsClientMessage =
   | { type: 'validateServerUrl'; payload: string }
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
-  | { type: 'selectProject'; payload: number }
-  | { type: 'refreshProjects' }
-  | { type: 'openCli'; payload: { mcpName: string; rootPath: string } }
   // Git Configuration tab (features #603 / #604). Per the #3389 design the
   // secret is entered inline in the form, so the create payload carries the
   // PAT `accessToken` or the `sshPrivateKey`. The host validates and forwards

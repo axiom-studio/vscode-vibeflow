@@ -1216,8 +1216,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         authService,
         client,
         detector,
-        secrets: context.secrets,
-        onProjectSwitched: connectToProject,
       });
     }),
     vscode.commands.registerCommand('vibeflow.clearActivityFeed', () => {

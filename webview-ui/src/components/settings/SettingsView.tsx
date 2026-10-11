@@ -1,6 +1,6 @@
 import { useState, useEffect, type ComponentType } from 'react';
 import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsTypes';
-import { ConnectionTab } from './ConnectionTab';
+import { ConnectionTab, type ConnectionChecks } from './ConnectionTab';
 import { DisplayTab } from './DisplayTab';
 import { AboutTab } from './AboutTab';
 import { GitConfigTab } from './GitConfigTab';
@@ -32,8 +32,6 @@ const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'notifications.agentPrompts': 'notifyAgentPrompts',
   'notifications.workItemComplete': 'notifyWorkComplete',
   'cli.binaryPath': 'cliBinaryPath',
-  'cli.mcpName': 'cliMcpName',
-  'cli.rootPath': 'cliRootPath',
   'chat.diffView': 'chatDiffView',
   'cloudRunners.debug': 'cloudRunnersDebug',
 };
@@ -53,12 +51,19 @@ type TabId = typeof TABS[number]['id'];
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<TabId>(TABS[0].id);
   const [data, setData] = useState<SettingsData | null>(null);
+  const [checks, setChecks] = useState<ConnectionChecks>({});
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<SettingsMessage>) {
       const msg = event.data;
       if (msg.type === 'settingsData') {
         setData(msg.payload);
+      }
+      if (msg.type === 'validationResult') {
+        const { field, valid, message, url } = msg.payload;
+        setChecks(c => field === 'serverUrl'
+          ? { ...c, serverUrl: { url: url ?? '', valid, message } }
+          : { ...c, apiKey: { valid, message } });
       }
     }
     window.addEventListener('message', handleMessage);
@@ -194,7 +199,7 @@ export function SettingsView() {
       }}>
         <div style={{ maxWidth: 580 }}>
           {activeTab === 'connection' && (
-            <ConnectionTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
+            <ConnectionTab data={data} checks={checks} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
           {activeTab === 'git' && (
             <GitConfigTab onCommand={sendCommand} cloudRunnersDebug={data.cloudRunnersDebug ?? false} onUpdate={updateSetting} />
