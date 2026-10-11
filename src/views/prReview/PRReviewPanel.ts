@@ -25,8 +25,10 @@ const MAX_FINDINGS = 500;
 export class PRReviewPanel {
   private static readonly instances = new Map<string, PRReviewPanel>();
   private lastFetchAt = 0;
-  /** The summary last shown: controls send its version/generation for CAS. */
-  private summary: PRReviewSummary | undefined;
+  /** The snapshot last posted to the webview; controls name it via `snapshot` and use its version/generation for CAS. */
+  private shown: { summary: PRReviewSummary; token: string } | undefined;
+  /** Bumped per load; only the latest load may post, so an earlier refresh never overwrites a newer one. */
+  private loadSeq = 0;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -104,8 +106,13 @@ export class PRReviewPanel {
    * changed; refresh"), so the panel always reloads afterwards.
    */
   private async control(msg: Extract<PRReviewPageClientMessage, { type: 'prReviewRequest' | 'prReviewControl' | 'prReviewRetryPublication' | 'prReviewFindingControl' }>): Promise<void> {
-    const summary = this.summary;
-    if (!summary) { return; }
+    if (!this.shown || msg.snapshot !== this.shown.token) {
+      // The user acted on a snapshot that a newer one has already replaced.
+      vscode.window.showWarningMessage('VibeFlow: this review changed while you were looking at it. Check the refreshed review and try again.');
+      await this.load();
+      return;
+    }
+    const summary = this.shown.summary;
     const job = summary.review;
     const request_id = randomUUID();
     try {
@@ -143,9 +150,9 @@ export class PRReviewPanel {
 
   private async load(): Promise<void> {
     this.lastFetchAt = Date.now();
+    const seq = ++this.loadSeq;
     try {
       const summary = await this.client.getPRReviewSummary(this.projectId, this.jobId);
-      this.summary = summary;
       const findings: PRReviewFinding[] = [];
       let after = '';
       do {
@@ -153,17 +160,16 @@ export class PRReviewPanel {
         findings.push(...page.items);
         after = page.nextAfterId;
       } while (after && findings.length < MAX_FINDINGS);
+      if (seq !== this.loadSeq) { return; }
+      // The token must be unique per post: two loads in the same millisecond must not share one.
+      const generatedAt = `${new Date().toISOString()}#${seq}`;
+      this.shown = { summary, token: generatedAt };
       this.post({
         type: 'prReviewData',
-        payload: {
-          summary,
-          findings,
-          findingsTruncated: !!after,
-          display: prReviewDisplayState(summary),
-          generatedAt: new Date().toISOString(),
-        },
+        payload: { summary, findings, findingsTruncated: !!after, display: prReviewDisplayState(summary), generatedAt },
       });
     } catch (err) {
+      if (seq !== this.loadSeq) { return; }
       this.post({ type: 'prReviewError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
   }

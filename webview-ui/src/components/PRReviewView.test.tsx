@@ -106,7 +106,7 @@ describe('PRReviewView controls (#4041)', () => {
     fireEvent.click(screen.getByText('Continue'));
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Ready for another pass' } });
     fireEvent.click(screen.getByText('Submit'));
-    expect(spy).toHaveBeenCalledWith({ type: 'prReviewControl', payload: { action: 'resume', additionalRounds: 1, reason: 'Ready for another pass' } });
+    expect(spy).toHaveBeenCalledWith({ type: 'prReviewControl', snapshot: '', payload: { action: 'resume', additionalRounds: 1, reason: 'Ready for another pass' } });
     spy.mockRestore();
   });
 
@@ -119,7 +119,7 @@ describe('PRReviewView controls (#4041)', () => {
     expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Evidence'), { target: { value: 'Ran it again on head' } });
     fireEvent.click(screen.getByText('Submit'));
-    expect(spy).toHaveBeenCalledWith({ type: 'prReviewFindingControl', payload: { findingId: 'f1', action: 'reopen', reason: 'Still reproduces', evidence: 'Ran it again on head' } });
+    expect(spy).toHaveBeenCalledWith({ type: 'prReviewFindingControl', snapshot: '', payload: { findingId: 'f1', action: 'reopen', reason: 'Still reproduces', evidence: 'Ran it again on head' } });
     spy.mockRestore();
   });
 });

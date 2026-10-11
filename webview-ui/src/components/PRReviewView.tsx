@@ -97,10 +97,10 @@ export function PRReviewView() {
           {summary.question_limit > 0 && <Meta name="Questions" value={`${summary.questions_asked} of ${summary.question_limit}`} />}
         </div>
         <RunnerLine summary={summary} waiting={display.label === 'Waiting for runner'} />
-        <ActionBar summary={summary} onForm={setForm} />
+        <ActionBar summary={summary} snapshot={data.generatedAt} onForm={setForm} />
         {form && (form.kind === 'pause' || form.kind === 'resume') && (
           <ReasonForm form={form} onCancel={() => setForm(undefined)} onSubmit={(reason, rounds) =>
-            vscode.postMessage({ type: 'prReviewControl', payload: { action: form.kind, additionalRounds: rounds, reason } })} />
+            vscode.postMessage({ type: 'prReviewControl', snapshot: data.generatedAt, payload: { action: form.kind, additionalRounds: rounds, reason } })} />
         )}
         <ol style={{ display: 'flex', gap: 8, listStyle: 'none', padding: 0, margin: '14px 0 0' }} aria-label="Review cycle">
           {CYCLE.map((name, i) => (
@@ -125,7 +125,7 @@ export function PRReviewView() {
       </div>
       {findings.length === 0 && <div style={{ fontSize: 12, color: 'var(--feed-muted)' }}>No findings.</div>}
       {[...blockers, ...advisories].map(f => (
-        <FindingCard key={f.id} finding={f} actions={summary.actions} form={form} onForm={setForm} />
+        <FindingCard key={f.id} finding={f} actions={summary.actions} snapshot={data.generatedAt} form={form} onForm={setForm} />
       ))}
       {data.findingsTruncated && (
         <div style={{ fontSize: 11, color: 'var(--feed-muted)' }}>Showing the first {findings.length} findings. Open the PR for the rest.</div>
@@ -149,7 +149,7 @@ function actionAllowed(summary: PRReviewSummary, name: PRReviewActionName): { al
 }
 
 /** Review controls, enabled exactly as the server allows (summary.actions). */
-function ActionBar({ summary, onForm }: { summary: PRReviewSummary; onForm: (f: Form) => void }) {
+function ActionBar({ summary, snapshot, onForm }: { summary: PRReviewSummary; snapshot: string; onForm: (f: Form) => void }) {
   const review = actionAllowed(summary, 'review');
   const pause = actionAllowed(summary, 'pause');
   const resume = actionAllowed(summary, 'resume');
@@ -159,7 +159,7 @@ function ActionBar({ summary, onForm }: { summary: PRReviewSummary; onForm: (f: 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
       <button style={{ ...button, ...off(review.allowed) }} disabled={!review.allowed} title={review.allowed ? '' : review.reason}
-        onClick={() => vscode.postMessage({ type: 'prReviewRequest' })}>
+        onClick={() => vscode.postMessage({ type: 'prReviewRequest', snapshot })}>
         {summary.review.rounds_started > 0 ? 'Re-run review' : 'Review this PR'}
       </button>
       <button style={{ ...ghost, ...off(pause.allowed) }} disabled={!pause.allowed} title={pause.allowed ? '' : pause.reason}
@@ -167,7 +167,7 @@ function ActionBar({ summary, onForm }: { summary: PRReviewSummary; onForm: (f: 
       <button style={{ ...ghost, ...off(resume.allowed) }} disabled={!resume.allowed} title={resume.allowed ? '' : resume.reason}
         onClick={() => onForm({ kind: 'resume', minimumRounds: summary.actions?.resume?.minimum_additional_rounds ?? 0 })}>Continue</button>
       {retry.allowed && (
-        <button style={ghost} onClick={() => vscode.postMessage({ type: 'prReviewRetryPublication' })}>Retry PR update</button>
+        <button style={ghost} onClick={() => vscode.postMessage({ type: 'prReviewRetryPublication', snapshot })}>Retry PR update</button>
       )}
     </div>
   );
@@ -212,9 +212,10 @@ function ReasonForm({ form, onCancel, onSubmit }: { form: Form; onCancel: () => 
   );
 }
 
-function FindingCard({ finding: f, actions, form, onForm }: {
+function FindingCard({ finding: f, actions, snapshot, form, onForm }: {
   finding: PRReviewFinding;
   actions: PRReviewSummary['actions'];
+  snapshot: string;
   form: Form | undefined;
   onForm: (f: Form | undefined) => void;
 }) {
@@ -255,7 +256,7 @@ function FindingCard({ finding: f, actions, form, onForm }: {
       )}
       {editing && (
         <ReasonForm form={editing} onCancel={() => onForm(undefined)} onSubmit={(reason, _rounds, evidence) =>
-          vscode.postMessage({ type: 'prReviewFindingControl', payload: { findingId: f.id, action: editing.kind, reason, ...(editing.kind === 'reopen' ? { evidence } : {}) } })} />
+          vscode.postMessage({ type: 'prReviewFindingControl', snapshot, payload: { findingId: f.id, action: editing.kind, reason, ...(editing.kind === 'reopen' ? { evidence } : {}) } })} />
       )}
     </article>
   );

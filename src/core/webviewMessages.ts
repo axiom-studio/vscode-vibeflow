@@ -548,12 +548,13 @@ export type PRReviewPageClientMessage =
   /** Open a finding's location; `path` is repo-relative as Vera reports it. */
   | { type: 'prReviewOpenLocation'; payload: { path: string; line?: number } }
   | { type: 'prReviewOpenPullRequest' }
-  // Controls (#4041). The host adds request ids and the expected
-  // version/generation from the summary it last loaded.
-  | { type: 'prReviewRequest' }
-  | { type: 'prReviewControl'; payload: { action: 'pause' | 'resume'; additionalRounds: number; reason: string } }
-  | { type: 'prReviewRetryPublication' }
-  | { type: 'prReviewFindingControl'; payload: { findingId: string; action: 'dismiss' | 'reopen'; reason: string; evidence?: string } };
+  // Controls (#4041). `snapshot` is the `generatedAt` of the prReviewData the
+  // user acted on; the host takes the expected version/generation from that
+  // exact snapshot and refuses the action if a newer one has replaced it.
+  | { type: 'prReviewRequest'; snapshot: string }
+  | { type: 'prReviewControl'; snapshot: string; payload: { action: 'pause' | 'resume'; additionalRounds: number; reason: string } }
+  | { type: 'prReviewRetryPublication'; snapshot: string }
+  | { type: 'prReviewFindingControl'; snapshot: string; payload: { findingId: string; action: 'dismiss' | 'reopen'; reason: string; evidence?: string } };
 
 // ============================================================
 // Cloud Runner Manage wizard (#2817)
