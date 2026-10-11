@@ -20,8 +20,13 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
   private prs: VibeFlowPullRequest[] = [];
   /** The project `prs` was fetched for, so a row is never acted on in another project. */
   private prsProjectId: number | undefined;
-  /** Bumped per fetch; only the latest fetch may replace `prs`. */
+  /** Bumped per fetch; only the latest fetch may replace `prs` or move the notification baseline. */
   private fetchSeq = 0;
+  /** Last review label seen per review job; undefined until the first load. */
+  private reviewLabels: Map<string, string> | undefined;
+  /** Fired with PRs whose review newly reached a state worth a toast (#4041). */
+  private readonly _onDidReviewChange = new vscode.EventEmitter<ReviewTransition[]>();
+  readonly onDidReviewChange = this._onDidReviewChange.event;
 
   connect(client: VibeFlowClient, projectId: number): void {
     this.client = client;
@@ -31,6 +36,7 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
       this.prsProjectId = undefined;
     }
     this.projectId = projectId;
+    this.reviewLabels = undefined; // a new project starts a new baseline
     void this.fetch();
   }
 
@@ -45,15 +51,22 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
     }
     const seq = ++this.fetchSeq;
     const projectId = this.projectId;
-    let prs: VibeFlowPullRequest[];
+    let prs: VibeFlowPullRequest[] | undefined;
     try {
       prs = await this.client.listPullRequests(projectId);
     } catch {
-      prs = [];
+      prs = undefined;
     }
     if (seq !== this.fetchSeq) { return; } // a newer fetch (or project) superseded this one
-    this.prs = prs;
+    this.prs = prs ?? [];
     this.prsProjectId = projectId;
+    if (prs) {
+      // Only the latest poll moves the notification baseline: a slower, older
+      // response would roll it back and re-announce a completion.
+      const { transitions, labels } = reviewTransitions(this.reviewLabels, prs);
+      this.reviewLabels = labels;
+      if (transitions.length) { this._onDidReviewChange.fire(transitions); }
+    }
     this._onDidChangeTreeData.fire();
   }
 
@@ -88,7 +101,40 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
 
   dispose(): void {
     this._onDidChangeTreeData.dispose();
+    this._onDidReviewChange.dispose();
   }
+}
+
+export interface ReviewTransition {
+  pr: VibeFlowPullRequest;
+  label: string;
+}
+
+/** Review outcomes worth interrupting for. */
+const NOTIFY_LABELS = new Set(['Reviewed', 'Findings to address']);
+
+/**
+ * Diff review labels between two loads of the PR list (#4041). Reports a PR
+ * only when its label CHANGES into Reviewed / Findings to address, never on
+ * the first load (no baseline) and never twice for the same label, so a
+ * refresh cadence cannot repeat a toast. O(n) in PRs.
+ */
+export function reviewTransitions(
+  previous: ReadonlyMap<string, string> | undefined,
+  prs: readonly VibeFlowPullRequest[],
+): { transitions: ReviewTransition[]; labels: Map<string, string> } {
+  const labels = new Map<string, string>();
+  const transitions: ReviewTransition[] = [];
+  for (const pr of prs) {
+    if (!pr.review_job_id || !pr.review_summary) { continue; }
+    const label = prReviewDisplayState(pr.review_summary).label;
+    labels.set(pr.review_job_id, label);
+    const before = previous?.get(pr.review_job_id);
+    if (previous && before !== label && NOTIFY_LABELS.has(label)) {
+      transitions.push({ pr, label });
+    }
+  }
+  return { transitions, labels };
 }
 
 export function pullRequestNodeId(pr: VibeFlowPullRequest): string {

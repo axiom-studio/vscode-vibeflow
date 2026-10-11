@@ -25,6 +25,14 @@ const summary = {
   },
   summary: 'Changes requested.\n\n<img src=x onerror=alert(1)>',
   unresolved_blockers: 1, questions_asked: 0, question_limit: 20,
+  runner: { user_id: 0, state: 'online', name: 'vera-mac', reason: '', checked_at: 0, last_seen_at: 0 },
+  actions: {
+    review: { allowed: false, reason: 'A review is already queued or running' },
+    pause: { allowed: true, reason: '' },
+    resume: { allowed: true, reason: '', minimum_additional_rounds: 1 },
+    dismiss: { allowed: true, reason: '' },
+    reopen: { allowed: true, reason: '' },
+  },
 } as unknown as PRReviewSummary;
 
 function push(findings: PRReviewFinding[], label = 'Fixes queued') {
@@ -79,5 +87,39 @@ describe('PRReviewView', () => {
     push([]);
     expect(container.querySelector('img')).toBeNull();
     expect(screen.getByText('No findings.')).toBeTruthy();
+  });
+});
+
+describe('PRReviewView controls (#4041)', () => {
+  it('disables a control the server refuses and shows its reason', () => {
+    render(<PRReviewView />);
+    push([]);
+    const rerun = screen.getByText('Re-run review') as HTMLButtonElement;
+    expect(rerun.disabled).toBe(true);
+    expect(rerun.title).toBe('A review is already queued or running');
+  });
+
+  it('continues with the rounds and reason the user enters', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<PRReviewView />);
+    push([]);
+    fireEvent.click(screen.getByText('Continue'));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Ready for another pass' } });
+    fireEvent.click(screen.getByText('Submit'));
+    expect(spy).toHaveBeenCalledWith({ type: 'prReviewControl', snapshot: '', payload: { action: 'resume', additionalRounds: 1, reason: 'Ready for another pass' } });
+    spy.mockRestore();
+  });
+
+  it('requires evidence to reopen a dismissed finding', () => {
+    const spy = vi.spyOn(getVsCodeApi(), 'postMessage');
+    render(<PRReviewView />);
+    push([finding({ state: 'dismissed' })]);
+    fireEvent.click(screen.getByText('Reopen with evidence'));
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Still reproduces' } });
+    expect((screen.getByText('Submit') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Evidence'), { target: { value: 'Ran it again on head' } });
+    fireEvent.click(screen.getByText('Submit'));
+    expect(spy).toHaveBeenCalledWith({ type: 'prReviewFindingControl', snapshot: '', payload: { findingId: 'f1', action: 'reopen', reason: 'Still reproduces', evidence: 'Ran it again on head' } });
+    spy.mockRestore();
   });
 });
