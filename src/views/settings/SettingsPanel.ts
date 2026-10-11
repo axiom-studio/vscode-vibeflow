@@ -240,11 +240,20 @@ export class SettingsPanel {
             vscode.window.showWarningMessage(`VibeFlow: ${schemeCheck.message}`);
             break;
           }
+          // Test saves what it tests, and finishes saving BEFORE probing, so
+          // the mirror below compares against the URL just tested rather than
+          // racing a separate save message (#5772).
+          try {
+            await persistEffectiveSetting(vscode.workspace.getConfiguration('vibeflow'), 'serverUrl', url);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            vscode.window.showWarningMessage(`VibeFlow: failed to save vibeflow.serverUrl — ${errMsg}`);
+            break;
+          }
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true, url } });
-            // Mirror only a verified URL: the field saves on every keystroke,
-            // so mirroring there would hand the CLI half-typed URLs.
+            // Mirror only a verified URL, never one that failed the probe.
             mirrorConnectionToCli(deps, url);
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {

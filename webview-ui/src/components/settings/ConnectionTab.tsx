@@ -32,12 +32,10 @@ export function ConnectionTab({ data, checks, onUpdate, onCommand }: Props) {
 }
 
 function AccountCard({ data, checks, onUpdate, onCommand }: Props) {
-  // The text being edited; tested as typed, saved on Enter/blur or on Test.
+  // The text being edited; saved on Enter/blur. Test Connection saves the
+  // typed URL itself, host-side, before probing it (#5772).
   const [draftUrl, setDraftUrl] = useState(data.serverUrl);
-  const testServer = () => {
-    if (draftUrl !== data.serverUrl) { onUpdate('serverUrl', draftUrl); }
-    onCommand({ type: 'validateServerUrl', payload: draftUrl });
-  };
+  const testServer = () => onCommand({ type: 'validateServerUrl', payload: draftUrl });
   const serverCheck = checks.serverUrl?.url === draftUrl ? checks.serverUrl : undefined;
 
   return (
