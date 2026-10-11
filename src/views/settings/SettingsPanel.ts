@@ -6,11 +6,12 @@ import type { CreateGitProviderRequest } from '../../api/types.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
-import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '../../commands/cliCommands.js';
+import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli, currentCliConfigPath } from '../../commands/cliCommands.js';
+import { writeCliConfig } from '../../auth/cliConfig.js';
 import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
-import { getProvider, launchableProviders, isProviderInstalled } from '../../providers/registry.js';
+import { cliNeedsWsl } from '../../commands/cliPlatform.js';
 import { closeTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
@@ -39,16 +40,30 @@ export interface SettingsPanelDeps {
   onProjectSwitched?: (project: DetectedProject) => void;
 }
 
+
 /**
- * Provider key → env-var name. Codex uses `MCP_TOKEN` (per the agent
- * binary's CLI contract); Gemini uses `GEMINI_API_KEY`. Read from
- * `providers/registry.ts` (issue #4633) so the message handlers and the
- * snapshot reader can't drift on the literal string. Returning undefined
- * means the provider has no env-token surface (claude, cursor) and the UI
- * hides the row.
+ * Mirror the Connection tab's server URL, API key and project into the CLI's
+ * config.yaml (#4033) so the extension and the CLI never hold diverging
+ * credentials. Writes nothing without a token, and never hands the CLI an
+ * insecure server URL alongside one. The token is never logged.
  */
-function providerEnvName(provKey: string): string | undefined {
-  return getProvider(provKey)?.envTokenName;
+function mirrorConnectionToCli(deps: SettingsPanelDeps, testedServerUrl?: string): void {
+  const apiToken = deps.authService?.getToken();
+  if (!apiToken) { return; }
+  const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+  if (!validateServerUrl(serverUrl).ok) { return; }
+  // A connection test only vouches for the URL it probed: if the field
+  // changed while the probe was in flight, don't mirror the untested one.
+  if (testedServerUrl !== undefined && testedServerUrl !== serverUrl) { return; }
+  const defaultProject = deps.detector?.getCachedProject()?.projectName;
+  const configPath = currentCliConfigPath();
+  try {
+    writeCliConfig(configPath, { serverUrl, apiToken, ...(defaultProject ? { defaultProject } : {}) });
+    logCli(`mirrored server URL, API key${defaultProject ? ' and project' : ''} into ${configPath}`);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    vscode.window.showWarningMessage(`VibeFlow: could not update the CLI config at ${configPath} — ${errMsg}`);
+  }
 }
 
 /**
@@ -163,11 +178,9 @@ export class SettingsPanel {
           // here silently no-op, which is what bit us on worktree.* and
           // notifications.workItemComplete during the settings audit.
           const settingsKeys = [
-            'serverUrl', 'defaultProvider', 'polling.interval', 'polling.liveInterval',
+            'serverUrl', 'polling.interval', 'polling.liveInterval',
             'notifications.agentPrompts', 'notifications.workItemComplete',
-            'session.terminalMode', 'session.headlessBacking',
-            'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
-            'cli.enabled', 'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
+            'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
             'chat.diffView',
           ];
 
@@ -223,53 +236,10 @@ export class SettingsPanel {
           });
           if (key && deps.authService) {
             await deps.authService.setToken(key);
+            mirrorConnectionToCli(deps);
             vscode.window.showInformationMessage('VibeFlow: API key updated');
             await pushSettings();
           }
-          break;
-        }
-        case 'setProviderToken': {
-          const provKey = msg.payload.provider;
-          const envName = providerEnvName(provKey);
-          if (!envName) {
-            vscode.window.showWarningMessage(`VibeFlow: provider ${provKey} has no env-token surface`);
-            break;
-          }
-          if (!deps.secrets) {
-            vscode.window.showWarningMessage('VibeFlow: secret storage unavailable — token not saved');
-            break;
-          }
-          const token = await vscode.window.showInputBox({
-            prompt: `Enter ${envName}`,
-            placeHolder: envName,
-            password: true,
-            ignoreFocusOut: true,
-          });
-          if (token === undefined) {
-            // User cancelled — don't touch storage.
-            break;
-          }
-          if (token === '') {
-            // Treat empty input as a clear to keep keyboard-only flows
-            // viable (Enter on empty == clear).
-            await deps.secrets.delete(envName);
-            vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
-          } else {
-            await deps.secrets.store(envName, token);
-            vscode.window.showInformationMessage(`VibeFlow: ${envName} saved`);
-          }
-          await pushSettings();
-          break;
-        }
-        case 'clearProviderToken': {
-          const provKey = msg.payload.provider;
-          const envName = providerEnvName(provKey);
-          if (!envName || !deps.secrets) {
-            break;
-          }
-          await deps.secrets.delete(envName);
-          vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
-          await pushSettings();
           break;
         }
         case 'validateServerUrl': {
@@ -289,6 +259,9 @@ export class SettingsPanel {
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
+            // Mirror only a verified URL: the field saves on every keystroke,
+            // so mirroring there would hand the CLI half-typed URLs.
+            mirrorConnectionToCli(deps, url);
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
@@ -354,6 +327,7 @@ export class SettingsPanel {
             };
             await deps.detector.cacheProject(detected);
             deps.onProjectSwitched?.(detected);
+            mirrorConnectionToCli(deps);
             vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
             await pushSettings();
           } catch (err) {
@@ -509,22 +483,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     }
   }
 
-  // Per-provider env-token presence — read from Secrets API. Empty (or
-  // missing) means "Not set"; any non-empty stored value flips to "Set".
-  // Only providers with an env-token surface are queried.
-  const providerRows = await Promise.all(
-    launchableProviders().map(async p => ({
-      key: p.key,
-      name: p.name,
-      binary: p.binary,
-      available: isProviderInstalled(p.key),
-      vibeflowIntegrated: p.vibeflowIntegrated,
-      ...(p.envTokenName ? { envTokenName: p.envTokenName } : {}),
-      envTokenSet: p.envTokenName
-        ? !!(deps.secrets && (await deps.secrets.get(p.envTokenName)))
-        : false,
-    })),
-  );
 
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
@@ -534,17 +492,10 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     projectId: cached?.projectId ?? null,
     projectName: cached?.projectName ?? null,
     projects,
-    defaultProvider: config.get('defaultProvider', 'claude'),
-    providers: providerRows,
-    worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
-    worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
-    worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
     pollInterval: config.get('polling.interval', 30),
     liveInterval: config.get('polling.liveInterval', 5),
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
-    sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
-    sessionHeadlessBacking: config.get<'auto' | 'tmux' | 'vscode'>('session.headlessBacking', 'auto'),
     chatDiffView: config.get<'unified' | 'split'>('chat.diffView', 'unified'),
     // Diagnostics (#3397/#3398): surfaced in the Settings webview because the
     // package.json declaration only registers on reinstall. State lives in
@@ -554,11 +505,11 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // the per-persona TerminalRegistry path or are delegated to the
     // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
     // can render install guidance without an extra round-trip.
-    cliEnabled: config.get('cli.enabled', true),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliMcpName: config.get('cli.mcpName', ''),
     cliRootPath: config.get('cli.rootPath', ''),
     cliInstalled: isVibeflowInstalled(),
+    cliNeedsWsl: cliNeedsWsl(process.platform, vscode.env.remoteName),
     cliVersion: getCliVersion() ?? null,
     cliBinaryPathStale: staleCliBinaryPath() ?? null,
     mcpAgents: mcpAgentStatuses(),

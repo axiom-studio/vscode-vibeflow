@@ -1,15 +1,5 @@
 // Settings data model — mirrors CLI config.go
 
-export interface ProviderConfig {
-  key: string;
-  name: string;
-  binary: string;
-  available: boolean;
-  vibeflowIntegrated: boolean;
-  envTokenName?: string; // e.g., "MCP_TOKEN" for codex, "GEMINI_API_KEY" for gemini
-  envTokenSet: boolean;
-}
-
 export interface SettingsData {
   // Connection
   serverUrl: string;
@@ -20,20 +10,9 @@ export interface SettingsData {
   projectName: string | null;
   projects: { id: number; name: string }[];
 
-  // Providers
-  defaultProvider: string;
-  providers: ProviderConfig[];
-
-  // Worktree
-  worktreeBaseDir: string;
-  worktreeAutoCreate: boolean;
-  worktreeCleanupOnKill: 'ask' | 'always' | 'never';
-
   // Session
   pollInterval: number;
   liveInterval: number;
-  sessionTerminalMode?: string;
-  sessionHeadlessBacking?: 'auto' | 'tmux' | 'vscode';
 
   // Notifications
   notifyAgentPrompts: boolean;
@@ -47,7 +26,6 @@ export interface SettingsData {
   cloudRunnersDebug?: boolean;
 
   // CLI Interface
-  cliEnabled: boolean;
   cliBinaryPath: string;
   cliMcpName: string;
   cliRootPath: string;
@@ -55,6 +33,9 @@ export interface SettingsData {
    *  if set). Computed host-side so the tab can render install guidance
    *  inline without round-tripping a child_process call. */
   cliInstalled: boolean;
+  /** Native Windows window: the CLI needs tmux, so it must run in WSL (#4035).
+   *  Optional so older host snapshots without the field don't break the tab. */
+  cliNeedsWsl?: boolean;
   /** Per-agent MCP wiring status — every supported coding agent paired with
    *  whether its config currently declares the VibeFlow MCP server. Computed
    *  host-side by scanning each agent's config file. */
