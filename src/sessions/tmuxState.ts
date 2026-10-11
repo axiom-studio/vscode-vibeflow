@@ -1,10 +1,12 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { currentCliTmuxSocket } from '../commands/cliCommands.js';
 
 /**
  * Local-tmux probe for the vibeflow CLI's session state.
  *
  * The CLI runs every agent in a tmux session under a custom socket
- * (`-L vibeflow`) — see vibeflow-cli/internal/vibeflowcli/tmux.go. Its
+ * (`-L vibeflow`, or a per-root socket; see cliTmuxSocket) — see
+ * vibeflow-cli/internal/vibeflowcli/tmux.go. Its
  * own status logic is purely local: pane alive → "running"; pane
  * exited → "exited". The backend's `session.active` flag, by contrast,
  * tracks Redis heartbeats from the agent's wait_for_work polls.
@@ -22,7 +24,6 @@ import { execSync } from 'child_process';
  * directly via TerminalRegistry — there's no tmux involvement.
  */
 
-const TMUX_SOCKET = 'vibeflow';
 
 /**
  * Returns the set of live VibeFlow tmux session names. Names follow
@@ -37,10 +38,10 @@ const TMUX_SOCKET = 'vibeflow';
  * Never throws — callers treat absent-from-set as "tmux dead" and the
  * UI degrades gracefully when tmux isn't available at all.
  */
-export function getLiveTmuxSessions(): Set<string> {
+export function getLiveTmuxSessions(socket: string = currentCliTmuxSocket()): Set<string> {
   try {
-    const out = execSync(
-      `tmux -L ${TMUX_SOCKET} list-sessions -F '#{session_name}'`,
+    const out = execFileSync(
+      'tmux', ['-L', socket, 'list-sessions', '-F', '#{session_name}'],
       {
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 2000,
@@ -81,10 +82,10 @@ export function buildTmuxName(provider: string, sessionId: string): string {
  * the alternative is to spam the user with errors when CLI mode is on
  * but no tmux session ever existed (e.g., agent crashed early).
  */
-export function killTmuxSession(provider: string, sessionId: string): boolean {
+export function killTmuxSession(provider: string, sessionId: string, socket: string = currentCliTmuxSocket()): boolean {
   const name = buildTmuxName(provider, sessionId);
   try {
-    execSync(`tmux -L ${TMUX_SOCKET} kill-session -t ${name}`, {
+    execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], {
       stdio: ['ignore', 'ignore', 'ignore'],
       timeout: 2000,
     });
