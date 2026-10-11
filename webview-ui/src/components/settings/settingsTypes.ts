@@ -3,12 +3,7 @@
 export interface SettingsData {
   // Connection
   serverUrl: string;
-  serverReachable: boolean | null; // null = not checked
   apiKeySet: boolean;
-  apiKeyValid: boolean | null;
-  projectId: number | null;
-  projectName: string | null;
-  projects: { id: number; name: string }[];
 
   // Session
   pollInterval: number;
@@ -27,8 +22,6 @@ export interface SettingsData {
 
   // CLI Interface
   cliBinaryPath: string;
-  cliMcpName: string;
-  cliRootPath: string;
   /** Whether the `vibeflow` binary was found on PATH (or at cliBinaryPath
    *  if set). Computed host-side so the tab can render install guidance
    *  inline without round-tripping a child_process call. */
@@ -67,7 +60,7 @@ export type { GitProviderView } from '../../../../src/api/types';
 // the shared SettingsHostMessage shape (same variants, tighter payload).
 export type SettingsMessage =
   | { type: 'settingsData'; payload: SettingsData }
-  | { type: 'validationResult'; payload: { field: string; valid: boolean; message?: string } }
+  | { type: 'validationResult'; payload: { field: 'serverUrl' | 'apiKey'; valid: boolean; message?: string; url?: string } }
   | { type: 'gitProvidersData'; payload: { providers: import('../../../../src/api/types').GitProviderView[]; loading?: boolean; error?: string } }
   | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } }
   | { type: 'projectSettingsData'; payload: import('../../../../src/core/webviewMessages').ProjectSettingsData };

@@ -15,7 +15,7 @@ export function AboutTab({ data }: Props) {
           <div style={{ marginTop: 8, fontSize: 11 }}>
             <a href="https://cloud.axiomstudio.ai" style={{ color: 'var(--feed-link)', textDecoration: 'none' }}>VibeFlow Cloud</a>
             {' · '}
-            <a href="https://bitbucket.org/axiom-studio/vscode-vibeflow" style={{ color: 'var(--feed-link)', textDecoration: 'none' }}>Source Code</a>
+            <a href="https://github.com/axiom-studio/vscode-vibeflow" style={{ color: 'var(--feed-link)', textDecoration: 'none' }}>Source Code</a>
             {' · '}
             <a href="https://www.apache.org/licenses/LICENSE-2.0" style={{ color: 'var(--feed-link)', textDecoration: 'none' }}>Apache 2.0 License</a>
           </div>

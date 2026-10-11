@@ -3,7 +3,7 @@ import { getNonce } from '../../utils/nonce.js';
 import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { CreateGitProviderRequest } from '../../api/types.js';
-import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
+import type { ProjectDetector } from '../../project/ProjectDetector.js';
 import { assertNever, type ProjectSettingsData, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli, currentCliConfigPath } from '../../commands/cliCommands.js';
@@ -12,7 +12,6 @@ import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { cliNeedsWsl } from '../../commands/cliPlatform.js';
-import { closeTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -24,20 +23,6 @@ export interface SettingsPanelDeps {
   authService?: AuthService;
   client?: VibeFlowClient;
   detector?: ProjectDetector;
-  /**
-   * Per-machine encrypted store (`vscode.ExtensionContext.secrets`). The
-   * Providers tab uses this to persist per-provider env tokens
-   * (`MCP_TOKEN`, `GEMINI_API_KEY`) so the launch wizard can pre-fill them
-   * instead of re-prompting on every spawn.
-   */
-  secrets?: vscode.SecretStorage;
-  /**
-   * Callback invoked after the user picks a different project from the
-   * Settings dropdown. extension.ts wires this to its connectToProject
-   * helper so trees, pollers, panels all rebind to the new id without a
-   * window reload.
-   */
-  onProjectSwitched?: (project: DetectedProject) => void;
 }
 
 
@@ -72,6 +57,16 @@ function mirrorConnectionToCli(deps: SettingsPanelDeps, testedServerUrl?: string
  */
 export class SettingsPanel {
   private static instance: vscode.WebviewPanel | undefined;
+  /** Re-sends the open panel's Project-tab data; set while the panel is open. */
+  private static refreshProject: (() => Promise<void>) | undefined;
+
+  /**
+   * The active project changed elsewhere (sidebar dropdown, QuickPick): show
+   * the new project's settings in an open Project tab instead of the old one.
+   */
+  static projectChanged(): void {
+    void SettingsPanel.refreshProject?.();
+  }
 
   static open(extensionUri: vscode.Uri, deps: SettingsPanelDeps = {}): void {
     // Reuse existing panel if open
@@ -189,8 +184,7 @@ export class SettingsPanel {
           const settingsKeys = [
             'serverUrl', 'polling.interval', 'polling.liveInterval',
             'notifications.agentPrompts', 'notifications.workItemComplete',
-            'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
-            'chat.diffView',
+            'cli.binaryPath', 'chat.diffView',
           ];
 
           if (settingsKeys.includes(key)) {
@@ -260,20 +254,29 @@ export class SettingsPanel {
           if (!schemeCheck.ok) {
             postToWebview({
               type: 'validationResult',
-              payload: { field: 'serverUrl', valid: false, message: schemeCheck.message },
+              payload: { field: 'serverUrl', valid: false, message: schemeCheck.message, url },
             });
             vscode.window.showWarningMessage(`VibeFlow: ${schemeCheck.message}`);
             break;
           }
+          // Test saves what it tests, and finishes saving BEFORE probing, so
+          // the mirror below compares against the URL just tested rather than
+          // racing a separate save message (#5772).
+          try {
+            await persistEffectiveSetting(vscode.workspace.getConfiguration('vibeflow'), 'serverUrl', url);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            vscode.window.showWarningMessage(`VibeFlow: failed to save vibeflow.serverUrl — ${errMsg}`);
+            break;
+          }
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
-            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
-            // Mirror only a verified URL: the field saves on every keystroke,
-            // so mirroring there would hand the CLI half-typed URLs.
+            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true, url } });
+            // Mirror only a verified URL, never one that failed the probe.
             mirrorConnectionToCli(deps, url);
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {
-            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
+            postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable', url } });
             vscode.window.showWarningMessage('VibeFlow: Server unreachable');
           }
           break;
@@ -298,75 +301,6 @@ export class SettingsPanel {
         case 'getSetting':
           await pushSettings();
           break;
-        case 'refreshProjects':
-          // Just rebuild the payload — buildSettingsPayload re-fetches the
-          // project list from the server on every call.
-          await pushSettings();
-          break;
-        case 'selectProject': {
-          if (!deps.client || !deps.detector) {
-            vscode.window.showWarningMessage('VibeFlow: not connected — sign in first');
-            break;
-          }
-          const projectId = msg.payload;
-          try {
-            const projects = await deps.client.listProjects();
-            const matched = projects.find(p => p.id === projectId);
-            if (!matched) {
-              vscode.window.showErrorMessage(`VibeFlow: project ${projectId} not found`);
-              break;
-            }
-            // Preserve the workspace's git remote/branch — we're switching
-            // the linked project, not the workspace itself.
-            //
-            // gitBranch must come from the live workspace, NOT from the
-            // cached DetectedProject: getCachedProject() always returns
-            // gitBranch: '' because the cache schema (ContextProxy
-            // GlobalStateSchema) doesn't persist the branch. Pre-fix this
-            // path passed '' to connectToProject, which silently kept the
-            // empty-state placeholder showing "main" forever.
-            const previous = deps.detector.getCachedProject();
-            await closeTabsForProjectSwitch(previous, matched.id);
-            const liveBranch = await deps.detector.getGitBranch();
-            const detected: DetectedProject = {
-              projectId: matched.id,
-              projectName: matched.name,
-              gitRemoteUrl: matched.git_remote_url ?? previous?.gitRemoteUrl ?? '',
-              gitBranch: liveBranch,
-            };
-            await deps.detector.cacheProject(detected);
-            deps.onProjectSwitched?.(detected);
-            mirrorConnectionToCli(deps);
-            vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
-            await pushSettings();
-            await pushProjectSettings();
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(`VibeFlow: project switch failed — ${errMsg}`);
-          }
-          break;
-        }
-        case 'openCli': {
-          const config = vscode.workspace.getConfiguration('vibeflow');
-          const launchOptions = {
-            mcpName: msg.payload.mcpName,
-            rootPath: msg.payload.rootPath,
-          };
-          try {
-            const cleared = [
-              ...await persistEffectiveSetting(config, 'cli.mcpName', launchOptions.mcpName),
-              ...await persistEffectiveSetting(config, 'cli.rootPath', launchOptions.rootPath),
-            ];
-            logCli(`persisted launch options before open (mcp=${JSON.stringify(launchOptions.mcpName)}, root=${JSON.stringify(launchOptions.rootPath)})${cleared.length ? ` — removed masking ${cleared.join(' + ')} override(s)` : ''}`);
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            logCli(`FAILED to persist launch options before open: ${errMsg}`);
-            vscode.window.showWarningMessage(`VibeFlow: Open CLI settings were not saved — ${errMsg}`);
-          }
-          await vscode.commands.executeCommand('vibeflow.openCli', launchOptions);
-          await pushSettings();
-          break;
-        }
         case 'gitProvidersList':
           await refreshGitProviders();
           break;
@@ -497,45 +431,24 @@ export class SettingsPanel {
 
     panel.onDidDispose(() => {
       SettingsPanel.instance = undefined;
+      SettingsPanel.refreshProject = undefined;
     });
 
     SettingsPanel.instance = panel;
+    SettingsPanel.refreshProject = pushProjectSettings;
   }
 }
 
 /**
- * Build the snapshot the SettingsView consumes. Reads project list from
- * the server when a client is wired so the dropdown actually populates;
- * otherwise returns an empty list and the UI degrades to "no project
- * selected".
+ * Build the snapshot the SettingsView consumes: local settings and CLI state
+ * only, no network call (project switching lives in the sidebar dropdown).
  */
 async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<string, unknown>> {
   const config = vscode.workspace.getConfiguration('vibeflow');
-  const cached = deps.detector?.getCachedProject();
-
-  let projects: { id: number; name: string }[] = [];
-  let apiKeyValid: boolean | null = null;
-  if (deps.client) {
-    try {
-      const list = await deps.client.listProjects();
-      projects = list.map(p => ({ id: p.id, name: p.name }));
-      apiKeyValid = true;
-    } catch {
-      // Network or auth failure — leave projects empty, surface as "API
-      // key not validated" rather than a hard error.
-      apiKeyValid = false;
-    }
-  }
-
 
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
-    serverReachable: null,
     apiKeySet: !!deps.authService?.getToken(),
-    apiKeyValid,
-    projectId: cached?.projectId ?? null,
-    projectName: cached?.projectName ?? null,
-    projects,
     pollInterval: config.get('polling.interval', 30),
     liveInterval: config.get('polling.liveInterval', 5),
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
@@ -550,8 +463,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
     // can render install guidance without an extra round-trip.
     cliBinaryPath: config.get('cli.binaryPath', ''),
-    cliMcpName: config.get('cli.mcpName', ''),
-    cliRootPath: config.get('cli.rootPath', ''),
     cliInstalled: isVibeflowInstalled(),
     cliNeedsWsl: cliNeedsWsl(process.platform, vscode.env.remoteName),
     cliVersion: getCliVersion() ?? null,

@@ -390,6 +390,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    */
   function connectToProject(project: DetectedProject) {
     projectProvider.setProject(project);
+    SettingsPanel.projectChanged();
     sessionsProvider.connect(client, project.projectId);
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
@@ -1237,8 +1238,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         authService,
         client,
         detector,
-        secrets: context.secrets,
-        onProjectSwitched: connectToProject,
       });
     }),
     vscode.commands.registerCommand('vibeflow.clearActivityFeed', () => {
