@@ -9,6 +9,7 @@ import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
+import { cliNeedsWsl, showCliNeedsWsl } from './commands/cliPlatform.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
@@ -907,10 +908,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.openCli', async (launchOptions?: CliLaunchOptions) => {
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       await runLaunchGuarded('Open CLI', () => openCli(root, launchOptions), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
       try {
         const installedPath = await installCli(context);
         // Configure the VibeFlow MCP server into the user's coding agents as

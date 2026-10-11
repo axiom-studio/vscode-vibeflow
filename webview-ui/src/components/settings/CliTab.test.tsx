@@ -50,6 +50,21 @@ describe('CliSettings', () => {
     expect(onUpdate).toHaveBeenCalledWith('cli.enabled', true);
   });
 
+  // #4035: on native Windows the CLI cannot run, so guide to WSL instead of
+  // offering an install that would fail.
+  it('replaces the install offer with WSL guidance on native Windows', () => {
+    render(
+      <CliSettings
+        data={settingsData({ cliEnabled: true, cliInstalled: false, cliNeedsWsl: true })}
+        onUpdate={vi.fn()}
+        onCommand={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/needs WSL on Windows/)).toBeTruthy();
+    expect(screen.getByText('How to Set Up WSL')).toBeTruthy();
+    expect(screen.queryByText(/vibeflow binary not found/)).toBeNull();
+  });
+
   it('offers a one-click install when enabled but the binary is missing', () => {
     const commands: SettingsCommand[] = [];
     render(

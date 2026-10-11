@@ -10,6 +10,7 @@ import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '
 import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
+import { cliNeedsWsl } from '../../commands/cliPlatform.js';
 import { getProvider, launchableProviders, isProviderInstalled } from '../../providers/registry.js';
 import { closeTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
@@ -559,6 +560,7 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     cliMcpName: config.get('cli.mcpName', ''),
     cliRootPath: config.get('cli.rootPath', ''),
     cliInstalled: isVibeflowInstalled(),
+    cliNeedsWsl: cliNeedsWsl(process.platform, vscode.env.remoteName),
     cliVersion: getCliVersion() ?? null,
     cliBinaryPathStale: staleCliBinaryPath() ?? null,
     mcpAgents: mcpAgentStatuses(),
