@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { randomUUID } from 'crypto';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PRReviewFinding, PRReviewSummary } from '../../api/prReviewTypes.js';
@@ -25,7 +26,9 @@ const MAX_FINDINGS = 500;
 export class PRReviewPanel {
   private static readonly instances = new Map<string, PRReviewPanel>();
   private lastFetchAt = 0;
-  /** Bumped per load; only the latest load may post data, so an earlier refresh never overwrites a newer one. */
+  /** The snapshot last posted to the webview; controls name it via `snapshot` and use its version/generation for CAS. */
+  private shown: { summary: PRReviewSummary; token: string } | undefined;
+  /** Bumped per load; only the latest load may post, so an earlier refresh never overwrites a newer one. */
   private loadSeq = 0;
   /** Clone URLs of the reviewed repository, from the last loaded summary. */
   private repoUrls: string[] = [];
@@ -97,9 +100,63 @@ export class PRReviewPanel {
       case 'prReviewOpenPullRequest':
         if (this.prUrl) { await vscode.env.openExternal(vscode.Uri.parse(this.prUrl)); }
         return;
+      case 'prReviewRequest':
+      case 'prReviewControl':
+      case 'prReviewRetryPublication':
+      case 'prReviewFindingControl':
+        await this.control(msg);
+        return;
       default:
         assertNever(msg);
     }
+  }
+
+  /**
+   * Run one control against the summary on screen. The server re-checks
+   * permission and state (and refuses a stale version with 409 "Review
+   * changed; refresh"), so the panel always reloads afterwards.
+   */
+  private async control(msg: Extract<PRReviewPageClientMessage, { type: 'prReviewRequest' | 'prReviewControl' | 'prReviewRetryPublication' | 'prReviewFindingControl' }>): Promise<void> {
+    if (!this.shown || msg.snapshot !== this.shown.token) {
+      // The user acted on a snapshot that a newer one has already replaced.
+      vscode.window.showWarningMessage('VibeFlow: this review changed while you were looking at it. Check the refreshed review and try again.');
+      await this.load();
+      return;
+    }
+    const summary = this.shown.summary;
+    const job = summary.review;
+    const request_id = randomUUID();
+    try {
+      switch (msg.type) {
+        case 'prReviewRequest':
+          await this.client.requestPRReview(this.projectId, { provider: job.provider, repository_link_id: job.repository_link_id, number: job.number, request_id });
+          vscode.window.showInformationMessage(`VibeFlow: review requested for #${job.number}.`);
+          break;
+        case 'prReviewControl':
+          await this.client.controlPRReview(this.projectId, job.id, {
+            request_id, expected_version: job.version, action: msg.payload.action,
+            additional_rounds: msg.payload.action === 'pause' ? 0 : msg.payload.additionalRounds, reason: msg.payload.reason,
+          });
+          vscode.window.showInformationMessage(`VibeFlow: review ${msg.payload.action === 'pause' ? 'paused' : 'continued'} for #${job.number}.`);
+          break;
+        case 'prReviewRetryPublication':
+          if (!summary.publication) { return; }
+          await this.client.retryPRReviewPublication(this.projectId, job.id, { request_id, expected_generation: summary.publication.generation });
+          vscode.window.showInformationMessage(`VibeFlow: PR update retried for #${job.number}.`);
+          break;
+        case 'prReviewFindingControl':
+          await this.client.controlPRReviewFinding(this.projectId, job.id, msg.payload.findingId, {
+            request_id, expected_version: job.version, action: msg.payload.action, reason: msg.payload.reason,
+            ...(msg.payload.action === 'reopen' ? { evidence: msg.payload.evidence ?? '' } : {}),
+          });
+          break;
+        default:
+          assertNever(msg);
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`VibeFlow: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    await this.load();
   }
 
   private async load(): Promise<void> {
@@ -115,16 +172,13 @@ export class PRReviewPanel {
         after = page.nextAfterId;
       } while (after && findings.length < MAX_FINDINGS);
       if (seq !== this.loadSeq) { return; }
+      // The token must be unique per post: two loads in the same millisecond must not share one.
+      const generatedAt = `${new Date().toISOString()}#${seq}`;
+      this.shown = { summary, token: generatedAt };
       this.repoUrls = reviewedRepoUrls(summary);
       this.post({
         type: 'prReviewData',
-        payload: {
-          summary,
-          findings,
-          findingsTruncated: !!after,
-          display: prReviewDisplayState(summary),
-          generatedAt: new Date().toISOString(),
-        },
+        payload: { summary, findings, findingsTruncated: !!after, display: prReviewDisplayState(summary), generatedAt },
       });
     } catch (err) {
       if (seq !== this.loadSeq) { return; }

@@ -8,7 +8,7 @@ import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.j
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
-import { PullRequestsTreeProvider, resolveReviewTarget } from './views/surface/PullRequestsTreeProvider.js';
+import { PullRequestsTreeProvider, pullRequestNodeId, resolveReviewTarget } from './views/surface/PullRequestsTreeProvider.js';
 import { PRReviewPanel } from './views/prReview/PRReviewPanel.js';
 import { randomUUID } from 'crypto';
 import { cliNeedsWsl, showCliNeedsWsl } from './commands/cliPlatform.js';
@@ -889,6 +889,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     treeDataProvider: pullRequestsProvider,
   });
   context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider, ticketsNavProvider);
+
+  // Keep PR review state current and announce finished reviews (#4041), at
+  // the background cadence; the coordinator pauses while the window is
+  // unfocused.
+  context.subscriptions.push(pollingCoordinator.subscribe(
+    vscode.workspace.getConfiguration('vibeflow').get<number>('polling.interval', 30) * 1000,
+    () => pullRequestsProvider.refresh(),
+    'pullRequests',
+  ));
+  context.subscriptions.push(pullRequestsProvider.onDidReviewChange(transitions => {
+    for (const { pr, label } of transitions) {
+      const open = 'Open Review';
+      void vscode.window.showInformationMessage(`VibeFlow: Vera — #${pr.pr_number ?? '?'} ${label}.`, open).then(choice => {
+        if (choice === open) { void vscode.commands.executeCommand('vibeflow.openPrReview', pullRequestNodeId(pr)); }
+      });
+    }
+  }));
 
   // Project view (#4030): the scope line. Views below it are scoped to the
   // selected project, so each carries the project name as its description;
