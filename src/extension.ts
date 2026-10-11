@@ -9,6 +9,7 @@ import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
 import { PullRequestsTreeProvider, resolveReviewTarget } from './views/surface/PullRequestsTreeProvider.js';
+import { PRReviewPanel } from './views/prReview/PRReviewPanel.js';
 import { randomUUID } from 'crypto';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
@@ -1359,6 +1360,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
+    }),
+    vscode.commands.registerCommand('vibeflow.openPrReview', (id?: string) => {
+      // Vera's review panel for a tracked PR (#4040).
+      const project = detector.getCachedProject();
+      const pr = id ? pullRequestsProvider.getPullRequest(id) : undefined;
+      if (!project || !pr?.review_job_id) { return; }
+      PRReviewPanel.open(context.extensionUri, client, project.projectId, pr.review_job_id, `Review · #${pr.pr_number ?? ''}`, pr.pr_url);
     }),
     vscode.commands.registerCommand('vibeflow.requestPrReview', async (node?: { id?: string }) => {
       // Ask Vera to review a PR from the Pull Requests view (#4039). Manual
