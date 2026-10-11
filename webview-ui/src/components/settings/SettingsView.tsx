@@ -89,6 +89,8 @@ export function SettingsView() {
   }
 
   function sendCommand(cmd: SettingsCommand) {
+    // A new key has not been tested: drop the previous key's result.
+    if (cmd.type === 'setApiKey') { setChecks(c => ({ ...c, apiKey: undefined })); }
     vscode.postMessage(cmd);
   }
 

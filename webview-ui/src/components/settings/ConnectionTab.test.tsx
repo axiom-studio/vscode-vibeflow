@@ -32,7 +32,7 @@ describe('ConnectionTab', () => {
     expect(screen.queryByRole('combobox')).toBeNull();
   });
 
-  it('saves the server URL only on Enter, then tests the URL that was typed', () => {
+  it('saves the server URL only on commit, and Test sends the typed URL in one message', () => {
     const onUpdate = vi.fn();
     const commands: SettingsCommand[] = [];
     render(<ConnectionTab data={settingsData()} checks={{}} onUpdate={onUpdate} onCommand={c => { commands.push(c); }} />);
@@ -40,8 +40,11 @@ describe('ConnectionTab', () => {
     fireEvent.change(input, { target: { value: 'https://vf.example.com' } });
     expect(onUpdate).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }));
+    // The host saves and then probes this URL in order (#5772); no separate save races it.
+    expect(commands).toEqual([{ type: 'validateServerUrl', payload: 'https://vf.example.com' }]);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
     expect(onUpdate).toHaveBeenCalledWith('serverUrl', 'https://vf.example.com');
-    expect(commands).toContainEqual({ type: 'validateServerUrl', payload: 'https://vf.example.com' });
   });
 
   it('shows the Test Connection result for the URL in the field', () => {
