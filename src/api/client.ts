@@ -233,6 +233,15 @@ export class VibeFlowClient {
 
   // --- Sessions ---
 
+  /**
+   * Every project's active sessions for this user (#4032, Agent Fleet).
+   * ListActiveSessions treats project_id as optional (vibeflow_sessions.go).
+   */
+  async listAllSessions(): Promise<VibeFlowSession[]> {
+    const data = await this.request<{ sessions: VibeFlowSession[] | null }>('/rest/v1/vibeflow/sessions/active');
+    return data.sessions ?? [];
+  }
+
   async listSessions(projectId: number): Promise<VibeFlowSession[]> {
     try {
       const data = await this.request<{ sessions: VibeFlowSession[] }>(
