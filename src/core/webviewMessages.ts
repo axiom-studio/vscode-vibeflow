@@ -12,6 +12,7 @@
  * a message from another panel's protocol.
  */
 
+import type { PRReviewFinding, PRReviewSummary } from '../api/prReviewTypes.js';
 import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView, CloudRunnerView, RunnerRepo } from '../api/types.js';
 
 /**
@@ -520,6 +521,33 @@ export type GitProvidersPageClientMessage =
   | { type: 'gitProvidersPageLoad' }
   | { type: 'gitProvidersPageRefresh' }
   | { type: 'gitProvidersPageDelete'; payload: { id: number; name: string } };
+
+// ============================================================
+// PR review panel (#4040)
+// ============================================================
+
+/** Host → webview: one review's full state, findings and derived label. */
+export type PRReviewPageHostMessage =
+  | {
+    type: 'prReviewData';
+    payload: {
+      summary: PRReviewSummary;
+      findings: PRReviewFinding[];
+      /** True when more findings exist than were loaded. */
+      findingsTruncated: boolean;
+      display: { label: string; tone: 'muted' | 'info' | 'warning' | 'success'; description: string };
+      generatedAt: string;
+    };
+  }
+  | { type: 'prReviewError'; payload: { message: string } };
+
+/** Webview → host. */
+export type PRReviewPageClientMessage =
+  | { type: 'prReviewLoad' }
+  | { type: 'prReviewRefresh' }
+  /** Open a finding's location; `path` is repo-relative as Vera reports it. */
+  | { type: 'prReviewOpenLocation'; payload: { path: string; line?: number } }
+  | { type: 'prReviewOpenPullRequest' };
 
 // ============================================================
 // Cloud Runner Manage wizard (#2817)
