@@ -29,7 +29,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { openCli, type CliLaunchOptions } from './commands/cliCommands.js';
+import { currentCliConfigPath, openCli, type CliLaunchOptions } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
 import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateCheck.js';
 import { registerIdeUsageReporting } from './ide/ideUsageReporter.js';
@@ -1574,13 +1574,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await authService.initialize();
 
   // Import credentials/project from vibeflow-cli config
-  const cliConfig = readCliConfig();
+  const cliConfig = readCliConfig(currentCliConfigPath());
   console.log('[VibeFlow] CLI config:', cliConfig ? `found (project=${cliConfig.defaultProject}, hasToken=${!!cliConfig.apiToken})` : 'not found');
   console.log('[VibeFlow] Auth state on activation:', authService.getState());
   console.log('[VibeFlow] Cached project on activation:', detector.getCachedProject());
 
   // Step 1: Ensure we have a token (force-import from CLI if not already set)
-  if (authService.getState() === 'unauthenticated' && cliConfig?.apiToken) {
+  // ...unless the user explicitly logged out: the CLI config may hold the
+  // token the Settings mirror wrote, and logging out must stick (#5761).
+  if (authService.getState() === 'unauthenticated' && !authService.wasSignedOut() && cliConfig?.apiToken) {
     console.log('[VibeFlow] Importing token from CLI config');
     await authService.setToken(cliConfig.apiToken);
   }

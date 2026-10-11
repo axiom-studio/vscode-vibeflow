@@ -6,7 +6,8 @@ import type { CreateGitProviderRequest } from '../../api/types.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
 import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
-import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli } from '../../commands/cliCommands.js';
+import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli, currentCliConfigPath } from '../../commands/cliCommands.js';
+import { writeCliConfig } from '../../auth/cliConfig.js';
 import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
@@ -39,6 +40,31 @@ export interface SettingsPanelDeps {
   onProjectSwitched?: (project: DetectedProject) => void;
 }
 
+
+/**
+ * Mirror the Connection tab's server URL, API key and project into the CLI's
+ * config.yaml (#4033) so the extension and the CLI never hold diverging
+ * credentials. Writes nothing without a token, and never hands the CLI an
+ * insecure server URL alongside one. The token is never logged.
+ */
+function mirrorConnectionToCli(deps: SettingsPanelDeps, testedServerUrl?: string): void {
+  const apiToken = deps.authService?.getToken();
+  if (!apiToken) { return; }
+  const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+  if (!validateServerUrl(serverUrl).ok) { return; }
+  // A connection test only vouches for the URL it probed: if the field
+  // changed while the probe was in flight, don't mirror the untested one.
+  if (testedServerUrl !== undefined && testedServerUrl !== serverUrl) { return; }
+  const defaultProject = deps.detector?.getCachedProject()?.projectName;
+  const configPath = currentCliConfigPath();
+  try {
+    writeCliConfig(configPath, { serverUrl, apiToken, ...(defaultProject ? { defaultProject } : {}) });
+    logCli(`mirrored server URL, API key${defaultProject ? ' and project' : ''} into ${configPath}`);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    vscode.window.showWarningMessage(`VibeFlow: could not update the CLI config at ${configPath} — ${errMsg}`);
+  }
+}
 
 /**
  * Manages the Settings Webview Panel in the editor area.
@@ -210,6 +236,7 @@ export class SettingsPanel {
           });
           if (key && deps.authService) {
             await deps.authService.setToken(key);
+            mirrorConnectionToCli(deps);
             vscode.window.showInformationMessage('VibeFlow: API key updated');
             await pushSettings();
           }
@@ -232,6 +259,9 @@ export class SettingsPanel {
           try {
             await fetch(url + '/rest/v1/vibeflow/projects', { method: 'HEAD', signal: AbortSignal.timeout(5000) });
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
+            // Mirror only a verified URL: the field saves on every keystroke,
+            // so mirroring there would hand the CLI half-typed URLs.
+            mirrorConnectionToCli(deps, url);
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });
@@ -297,6 +327,7 @@ export class SettingsPanel {
             };
             await deps.detector.cacheProject(detected);
             deps.onProjectSwitched?.(detected);
+            mirrorConnectionToCli(deps);
             vscode.window.showInformationMessage(`VibeFlow: Switched to project "${matched.name}"`);
             await pushSettings();
           } catch (err) {
