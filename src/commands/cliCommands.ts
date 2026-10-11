@@ -38,19 +38,35 @@ export function cliLaunchCwd(
 }
 
 /**
- * Path of the PID lock a CLI launched with `rootPath` in `cwd` would hold.
- * Mirrors vibeflow-cli's `PIDLockPath()` = `<RootDir()>/vibeflow.pid`, where
- * `RootDir()` is `--root` > `VIBEFLOW_ROOT` > `~/.vibeflow-cli`. A relative
- * root resolves against `cwd`, as it does in Go.
+ * The state directory a CLI launched with `rootPath` in `cwd` uses: config,
+ * sessions and PID lock. Mirrors vibeflow-cli's `RootDir()`: `--root` >
+ * `VIBEFLOW_ROOT` > `~/.vibeflow-cli`. A relative root resolves against
+ * `cwd`, as it does in Go.
  */
-export function cliPidLockPath(
+export function cliRootDir(
   rootPath: string | undefined,
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): string {
   const root = rootPath?.trim() || env.VIBEFLOW_ROOT || path.join(home, '.vibeflow-cli');
-  return path.resolve(cwd, root, 'vibeflow.pid');
+  return path.resolve(cwd, root);
+}
+
+/** The PID lock that CLI would hold: vibeflow-cli `PIDLockPath()`. */
+export function cliPidLockPath(
+  rootPath: string | undefined,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): string {
+  return path.join(cliRootDir(rootPath, cwd, env, home), 'vibeflow.pid');
+}
+
+/** The config.yaml the CLI opened from this window (Open CLI) would read. */
+export function currentCliConfigPath(): string {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return path.join(cliRootDir(readCliLaunchOptions().rootPath, cliLaunchCwd(workspaceRoot)), 'config.yaml');
 }
 
 /**
