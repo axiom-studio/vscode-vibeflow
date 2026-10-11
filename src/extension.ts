@@ -9,6 +9,8 @@ import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
 import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
+import { cliNeedsWsl, showCliNeedsWsl } from './commands/cliPlatform.js';
+import { ProjectTreeProvider } from './views/surface/ProjectTreeProvider.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
@@ -151,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // cloud-style table panels (TicketsPanel), reached from the Browse nav.
   // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
   const pullRequestsProvider = new PullRequestsTreeProvider();
+  const projectProvider = new ProjectTreeProvider();
   const ticketsNavProvider = new TicketsNavTreeProvider(workItemsProvider);
 
   // --- Activity Feed empty/connection state controller ---
@@ -384,6 +387,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * Called after successful setup or on activation with stored credentials.
    */
   function connectToProject(project: DetectedProject) {
+    projectProvider.setProject(project);
     sessionsProvider.connect(client, project.projectId);
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
@@ -884,6 +888,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
   context.subscriptions.push(browseView, pullRequestsView, pullRequestsProvider, ticketsNavProvider);
 
+  // Project view (#4030): the scope line. Views below it are scoped to the
+  // selected project, so each carries the project name as its description;
+  // that stays visible when a section is collapsed.
+  const projectView = vscode.window.createTreeView('vibeflow.project', {
+    treeDataProvider: projectProvider,
+  });
+  const scopedViews = [workItemsView, browseView, pullRequestsView, documentsView];
+  const applyProjectScope = () => {
+    const name = projectProvider.getProject()?.projectName;
+    for (const view of scopedViews) { view.description = name; }
+  };
+  applyProjectScope();
+  context.subscriptions.push(projectView, projectProvider, projectProvider.onDidChangeTreeData(applyProjectScope));
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
   );
@@ -911,6 +929,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await runLaunchGuarded('Open CLI', () => openCli(root, launchOptions), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
       try {
         const installedPath = await installCli(context);
         // Configure the VibeFlow MCP server into the user's coding agents as
@@ -953,24 +972,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', async () => {
-      // CLI mode owns session management — short-circuit and route to
-      // the TUI launcher so we don't spawn duplicate per-persona
-      // terminals that would race with the CLI's tmux-managed sessions.
-      const reportError = (msg: string) => vscode.window.showErrorMessage(msg);
-      const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', true);
-      if (cliEnabled) {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        await runLaunchGuarded('Open CLI', () => openCli(root), reportError);
-        return;
-      }
-      // Guard the launch so an un-try/caught throw inside the wizard
-      // (getGitBranch / ensureMcpConfig / ensureAllAgentDocs) surfaces a
-      // clear error instead of a silent unhandled rejection (issue #3195).
-      await runLaunchGuarded(
-        'Launch Session',
-        () => launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, contextProxy, streamRegistry, tmuxBacking, connectToProject),
-        reportError,
-      );
+      // The CLI is the only launch path (#4034, design doc #627 D1): route to
+      // the TUI. There is no cli.enabled toggle any more, so a leftover
+      // `false` in a user's settings.json cannot revive the in-extension
+      // launcher (removed outright by #4037).
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      await runLaunchGuarded('Open CLI', () => openCli(root), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
