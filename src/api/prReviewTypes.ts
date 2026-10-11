@@ -199,6 +199,22 @@ export interface PRReviewRepositorySummary {
   webhook_configured: boolean;
 }
 
+/**
+ * GET/PUT /projects/{id}/pr-review-policies/{provider}/{link} response:
+ * database.PRReviewRepositoryPolicy plus the handler's `can_manage`
+ * (summaries.go writePRReviewPolicy).
+ */
+export interface PRReviewRepositoryPolicy {
+  provider: PRReviewProvider;
+  repository_link_id: number;
+  policy: PRReviewPolicy;
+  version: number;
+  updated_by: number;
+  updated_at: number;
+  preferred_runner_id: string;
+  can_manage: boolean;
+}
+
 /** One page of a cursor-paged list (`after_id` → `next_after_id`). */
 export interface PRReviewPage<T> {
   items: T[];
@@ -239,4 +255,10 @@ export interface ControlPRReviewFindingBody {
 export interface RetryPRReviewPublicationBody {
   request_id: string;
   expected_generation: number;
+}
+
+/** One row of GET/PUT /projects/{id}/notifications (database.NotificationEventTypes). */
+export interface ProjectNotificationSetting {
+  event_type: string;
+  enabled: boolean;
 }
