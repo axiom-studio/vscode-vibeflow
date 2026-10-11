@@ -495,13 +495,16 @@ export class VibeFlowClient {
   //     unreliability entirely. See design doc #361.
 
   /**
-   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Robust to
-   * the response wrapper key — the server returns the rows under one of these.
+   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Paged on
+   * purpose (#4039): the legacy unpaged form keeps only PRs linked to a work
+   * item, dropping PRs that are tracked only for Vera review; the paged form
+   * returns both, each with its `review_summary`, under `pull_requests`.
+   * First page only (server max 100).
    */
   async listPullRequests(projectId: number): Promise<VibeFlowPullRequest[]> {
     const r = await this.request<
       { prs?: VibeFlowPullRequest[]; pull_requests?: VibeFlowPullRequest[]; results?: VibeFlowPullRequest[] } | VibeFlowPullRequest[]
-    >(`/rest/v1/vibeflow/projects/${projectId}/prs`);
+    >(`/rest/v1/vibeflow/projects/${projectId}/prs?page=1&limit=100`);
     if (Array.isArray(r)) {
       return r;
     }

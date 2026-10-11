@@ -8,7 +8,8 @@ import { WorkItemsTreeProvider } from './views/workItems/WorkItemsTreeProvider.j
 import { ActivityFeedProvider } from './views/activity/ActivityFeedProvider.js';
 import { DocumentsTreeProvider } from './views/documents/DocumentsTreeProvider.js';
 import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core/PollingCoordinator.js';
-import { PullRequestsTreeProvider } from './views/surface/PullRequestsTreeProvider.js';
+import { PullRequestsTreeProvider, resolveReviewTarget } from './views/surface/PullRequestsTreeProvider.js';
+import { randomUUID } from 'crypto';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
@@ -1358,6 +1359,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
+    }),
+    vscode.commands.registerCommand('vibeflow.requestPrReview', async (node?: { id?: string }) => {
+      // Ask Vera to review a PR from the Pull Requests view (#4039). Manual
+      // requests work in every trigger mode, including on drafts.
+      const project = detector.getCachedProject();
+      const pr = node?.id ? pullRequestsProvider.getPullRequest(node.id) : undefined;
+      if (!project || !pr) {
+        vscode.window.showWarningMessage('VibeFlow: pick a pull request in the Pull Requests view to request a review.');
+        return;
+      }
+      try {
+        const repositories = pr.review_summary ? [] : await client.listPRReviewRepositories(project.projectId);
+        const target = resolveReviewTarget(pr, repositories);
+        if (!target) {
+          vscode.window.showWarningMessage(`VibeFlow: ${pr.repo} is not linked for PR reviews. Link it under Settings → Integrations → Source Control in VibeFlow.`);
+          return;
+        }
+        await client.requestPRReview(project.projectId, {
+          provider: target.provider,
+          repository_link_id: target.repositoryLinkId,
+          number: target.number,
+          request_id: randomUUID(),
+        });
+        vscode.window.showInformationMessage(`VibeFlow: review requested for #${target.number}. Vera starts when a review runner picks it up.`);
+        pullRequestsProvider.refresh();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`VibeFlow: could not request a review — ${message}`);
+      }
     }),
     vscode.commands.registerCommand('vibeflow.pickProject', () => {
       void runProjectPickerCommand({ client, detector, onSwitched: connectToProject });
