@@ -5,9 +5,12 @@ import type {
   PRReviewFinding,
   PRReviewJob,
   PRReviewPage,
+  PRReviewPolicy,
+  PRReviewRepositoryPolicy,
   PRReviewRepositorySummary,
   PRReviewSummary,
   PRReviewSummaryPublication,
+  ProjectNotificationSetting,
   RequestPRReviewBody,
   RetryPRReviewPublicationBody,
 } from './prReviewTypes.js';
@@ -547,6 +550,42 @@ export class VibeFlowClient {
       `/rest/v1/vibeflow/projects/${projectId}/pr-review-repositories`,
     );
     return r.repositories ?? [];
+  }
+
+  /** A repository's review settings (GetPRReviewPolicy); `can_manage` says whether the caller may change them. */
+  async getPRReviewPolicy(projectId: number, provider: string, repositoryLinkId: number): Promise<PRReviewRepositoryPolicy> {
+    return this.request<PRReviewRepositoryPolicy>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-policies/${encodeURIComponent(provider)}/${repositoryLinkId}`,
+    );
+  }
+
+  /**
+   * Save a repository's review settings (UpdatePRReviewPolicy; owner or org
+   * admin). CAS on `expected_version`: a stale version is a 409. The server
+   * rejects unknown body fields, so only these two are sent.
+   */
+  async updatePRReviewPolicy(projectId: number, provider: string, repositoryLinkId: number, policy: PRReviewPolicy, expectedVersion: number): Promise<PRReviewRepositoryPolicy> {
+    return this.request<PRReviewRepositoryPolicy>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-policies/${encodeURIComponent(provider)}/${repositoryLinkId}`,
+      { method: 'PUT', body: JSON.stringify({ policy, expected_version: expectedVersion }) },
+    );
+  }
+
+  /**
+   * Project notification settings (GetProjectNotificationSettings,
+   * vibeflow_slack_webhooks.go). Gated by requireProjectSettingsAccess, so a
+   * 403 means the caller is neither the project owner nor an org admin.
+   */
+  async getProjectNotificationSettings(projectId: number): Promise<ProjectNotificationSetting[]> {
+    return (await this.request<ProjectNotificationSetting[] | null>(`/rest/v1/vibeflow/projects/${projectId}/notifications`)) ?? [];
+  }
+
+  /** Replace the project's notification settings (UpdateProjectNotificationSettings). */
+  async updateProjectNotificationSettings(projectId: number, settings: ProjectNotificationSetting[]): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/projects/${projectId}/notifications`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
   }
 
   /** Request a review (RequestPRReview). 409 = blocked (paused, disabled, closed…). */

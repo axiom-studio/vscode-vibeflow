@@ -4,7 +4,7 @@ import type { AuthService } from '../../auth/AuthService.js';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { CreateGitProviderRequest } from '../../api/types.js';
 import type { ProjectDetector, DetectedProject } from '../../project/ProjectDetector.js';
-import { assertNever, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
+import { assertNever, type ProjectSettingsData, type SettingsClientMessage, type SettingsHostMessage } from '../../core/webviewMessages.js';
 import { validateServerUrl } from '../../auth/serverUrl.js';
 import { isVibeflowInstalled, getCliVersion, staleCliBinaryPath, logCli, currentCliConfigPath } from '../../commands/cliCommands.js';
 import { writeCliConfig } from '../../auth/cliConfig.js';
@@ -434,6 +434,30 @@ export class SettingsPanel {
           await refreshGitProviders();
           break;
         }
+        case 'projectSettingsLoad':
+          postToWebview({ type: 'projectSettingsData', payload: await loadProjectSettings(deps) });
+          break;
+        case 'projectNotificationsSave':
+        case 'prReviewPolicySave': {
+          const projectId = deps.detector?.getCachedProject()?.projectId;
+          if (!deps.client || !projectId) { break; }
+          try {
+            if (msg.type === 'projectNotificationsSave') {
+              await deps.client.updateProjectNotificationSettings(projectId, msg.payload);
+              vscode.window.showInformationMessage('VibeFlow: project notifications saved.');
+            } else {
+              const { provider, repositoryLinkId, policy, expectedVersion } = msg.payload;
+              await deps.client.updatePRReviewPolicy(projectId, provider, repositoryLinkId, policy, expectedVersion);
+              vscode.window.showInformationMessage('VibeFlow: PR review settings saved.');
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`VibeFlow: could not save project settings — ${message}`);
+          }
+          // Re-read either way: a 409 means someone else changed it first.
+          postToWebview({ type: 'projectSettingsData', payload: await loadProjectSettings(deps) });
+          break;
+        }
         case 'runCommand':
           // Generic command passthrough — used by buttons in tabs that
           // shouldn't need their own wire shape (e.g. CLI tab "Open
@@ -515,4 +539,44 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     mcpAgents: mcpAgentStatuses(),
     version: vscode.extensions.getExtension('AxiomStudio.vscode-vibeflow')?.packageJSON?.version ?? 'unknown',
   };
+}
+
+/** Per-repository policies are fetched one by one; cap the fan-out. */
+const MAX_POLICY_REPOSITORIES = 10;
+
+/**
+ * Admin-only Project tab data (#4036). The notifications GET is gated by the
+ * server's project-settings check (owner or org admin), so its 403 decides
+ * whether the tab exists at all; no client copy of that rule to drift.
+ */
+async function loadProjectSettings(deps: SettingsPanelDeps): Promise<ProjectSettingsData> {
+  const project = deps.detector?.getCachedProject();
+  const empty: ProjectSettingsData = {
+    canManage: false, projectId: project?.projectId ?? null, projectName: project?.projectName ?? null,
+    webUrl: null, notifications: [], repositories: [],
+  };
+  if (!deps.client || !project) { return empty; }
+  const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
+  const webUrl = `${serverUrl.replace(/\/+$/, '')}/ai/vibeflow?project=${project.projectId}`;
+  let notifications;
+  try {
+    notifications = await deps.client.getProjectNotificationSettings(project.projectId);
+  } catch (err) {
+    if ((err as { status?: number }).status === 403) { return { ...empty, webUrl }; }
+    return { ...empty, webUrl, error: err instanceof Error ? err.message : String(err) };
+  }
+  let repositories: ProjectSettingsData['repositories'] = [];
+  try {
+    const repos = (await deps.client.listPRReviewRepositories(project.projectId)).slice(0, MAX_POLICY_REPOSITORIES);
+    repositories = await Promise.all(repos.map(async repository => {
+      try {
+        return { repository, policy: await deps.client!.getPRReviewPolicy(project.projectId, repository.provider, repository.repository_link_id) };
+      } catch (err) {
+        return { repository, policy: null, error: err instanceof Error ? err.message : String(err) };
+      }
+    }));
+  } catch (err) {
+    return { ...empty, canManage: true, webUrl, notifications, error: err instanceof Error ? err.message : String(err) };
+  }
+  return { ...empty, canManage: true, webUrl, notifications, repositories };
 }
