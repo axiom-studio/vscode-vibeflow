@@ -908,7 +908,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       vscode.window.showInformationMessage('VibeFlow: Logged out');
     }),
     vscode.commands.registerCommand('vibeflow.openCli', async (launchOptions?: CliLaunchOptions) => {
-      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       await runLaunchGuarded('Open CLI', () => openCli(root, launchOptions), msg => vscode.window.showErrorMessage(msg));
     }),
