@@ -58,11 +58,14 @@ function providerEnvName(provKey: string): string | undefined {
  * credentials. Writes nothing without a token, and never hands the CLI an
  * insecure server URL alongside one. The token is never logged.
  */
-function mirrorConnectionToCli(deps: SettingsPanelDeps): void {
+function mirrorConnectionToCli(deps: SettingsPanelDeps, testedServerUrl?: string): void {
   const apiToken = deps.authService?.getToken();
   if (!apiToken) { return; }
   const serverUrl = vscode.workspace.getConfiguration('vibeflow').get<string>('serverUrl', 'https://cloud.axiomstudio.ai');
   if (!validateServerUrl(serverUrl).ok) { return; }
+  // A connection test only vouches for the URL it probed: if the field
+  // changed while the probe was in flight, don't mirror the untested one.
+  if (testedServerUrl !== undefined && testedServerUrl !== serverUrl) { return; }
   const defaultProject = deps.detector?.getCachedProject()?.projectName;
   const configPath = currentCliConfigPath();
   try {
@@ -315,7 +318,7 @@ export class SettingsPanel {
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: true } });
             // Mirror only a verified URL: the field saves on every keystroke,
             // so mirroring there would hand the CLI half-typed URLs.
-            mirrorConnectionToCli(deps);
+            mirrorConnectionToCli(deps, url);
             vscode.window.showInformationMessage('VibeFlow: Server reachable');
           } catch {
             postToWebview({ type: 'validationResult', payload: { field: 'serverUrl', valid: false, message: 'Server unreachable' } });

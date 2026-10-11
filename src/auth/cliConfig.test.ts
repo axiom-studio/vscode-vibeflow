@@ -48,6 +48,12 @@ describe('upsertCliConfigScalars', () => {
       .toBe('server_url: "https://a.example"\napi_token: "t"\n');
   });
 
+  // #5762: YAML allows spaces before the colon; replace, never duplicate.
+  it('replaces a key written with whitespace before the colon', () => {
+    const out = upsertCliConfigScalars('api_token : old\nserver_url  :  https://old\n', { apiToken: 'new', serverUrl: 'https://new' });
+    expect(out).toBe('api_token: "new"\nserver_url: "https://new"\n');
+  });
+
   it('does not treat a nested key with the same name as the top-level key', () => {
     const out = upsertCliConfigScalars('nested:\n  api_token: inner\n', { apiToken: 'outer' });
     expect(out).toBe('api_token: "outer"\nnested:\n  api_token: inner\n');
@@ -80,6 +86,21 @@ describe('writeCliConfig', () => {
     const configPath = path.join(dir, 'config.yaml');
     fs.writeFileSync(configPath, 'providers:\n  x:\n    api_token: nested\napi_token: top\n');
     expect(readCliConfig(configPath)?.apiToken).toBe('top');
+  });
+
+  // #5759: a failed save must leave the CLI's existing config intact.
+  it('leaves the original file untouched and no temp file when the write fails', () => {
+    if (process.platform === 'win32' || process.getuid?.() === 0) { return; }
+    const configPath = path.join(dir, 'config.yaml');
+    fs.writeFileSync(configPath, CLI_CONFIG, { mode: 0o600 });
+    fs.chmodSync(dir, 0o500); // no new files can be created in the root
+    try {
+      expect(() => writeCliConfig(configPath, { apiToken: 'rotated' })).toThrow();
+    } finally {
+      fs.chmodSync(dir, 0o700);
+    }
+    expect(fs.readFileSync(configPath, 'utf-8')).toBe(CLI_CONFIG);
+    expect(fs.readdirSync(dir)).toEqual(['config.yaml']);
   });
 
   it('tightens an existing looser file to 0600 while preserving its other keys', () => {
