@@ -135,9 +135,12 @@ export function pullRequestNode(pr: VibeFlowPullRequest): SimpleNode {
     ...icon,
     collapsibleState: vscode.TreeItemCollapsibleState.None,
     contextValue: 'pullRequest',
-    command: pr.pr_url
-      ? { command: 'vscode.open', title: 'Open Pull Request', arguments: [vscode.Uri.parse(pr.pr_url)] }
-      : undefined,
+    // A PR Vera tracks opens its review panel (#4040); others open in the browser.
+    command: pr.review_job_id
+      ? { command: 'vibeflow.openPrReview', title: 'Open Review', arguments: [pullRequestNodeId(pr)] }
+      : pr.pr_url
+        ? { command: 'vscode.open', title: 'Open Pull Request', arguments: [vscode.Uri.parse(pr.pr_url)] }
+        : undefined,
   };
 }
 
