@@ -1,6 +1,5 @@
-import * as React from 'react';
-import { useEffect, useState } from 'react';
 import type { SettingsData, SettingsCommand } from './settingsTypes';
+import { BufferedTextInput, Btn, ButtonRow, Card, LinkBtn, Status } from './_shared';
 
 interface Props {
   data: SettingsData;
@@ -14,268 +13,73 @@ const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installat
 const WSL_SETUP_URL = 'https://learn.microsoft.com/windows/wsl/install';
 
 /**
- * VibeFlow CLI runtime settings — rendered inside the Connection tab (#3113).
- * The CLI is the only way agents are launched (design doc #627 D1/D2), so
- * there is no on/off toggle any more (#4034): this card only gets the binary
- * installed (or explains WSL on native Windows).
+ * VibeFlow CLI card in the Connection tab (#3113, #4045). The CLI is the only
+ * way agents are launched (design doc #627 D1/D2): this card shows whether it
+ * is installed, installs or updates it, and keeps the rarely needed binary
+ * path override under "Advanced".
  */
 export function CliSettings({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
+  const run = (command: string) => () => onCommand({ type: 'runCommand', payload: command });
 
   return (
-    <>
-      <Card
-        title="VibeFlow CLI"
-        description="Agents run in the VibeFlow CLI, which opens in a fullscreen editor terminal. The sidebar shows the same live state from the same backend."
-      >
-        {data.cliNeedsWsl && (
-          <Banner kind="warning">
-            <strong>The VibeFlow CLI needs WSL on Windows.</strong> It runs agents in tmux, which
-            Windows does not provide. Install WSL and the WSL extension, reopen this folder in
-            WSL, then install the CLI there.
-            <ButtonRow>
-              <LinkBtn href={WSL_SETUP_URL} label="How to Set Up WSL" secondary />
-            </ButtonRow>
-          </Banner>
-        )}
-        {!installed && !data.cliNeedsWsl && (
-          <Banner kind="warning">
-            <strong>vibeflow binary not found.</strong> Install the latest prebuilt binary in one
-            click — we download the matching asset from GitHub Releases into the extension's
-            local storage and wire its path into <code>vibeflow.cli.binaryPath</code> for you.
-            <ButtonRow>
-              <Btn
-                label="Install Latest"
-                onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.installCli' })}
-              />
-              <LinkBtn href={RELEASES_URL} label="Download Manually" secondary />
-              <LinkBtn href={INSTALL_DOCS_URL} label="Install Instructions" secondary />
-            </ButtonRow>
-          </Banner>
-        )}
-      </Card>
-
-      <Card
-        title="Binary Path Override"
-        description="Optional — leave empty to use PATH lookup. Set this if vibeflow is installed in a non-standard location and PATH doesn't include it (common for Homebrew on Apple Silicon under /opt/homebrew/bin)."
-      >
-        <BinaryPathInput
-          initial={data.cliBinaryPath}
-          onCommit={(v) => onUpdate('cli.binaryPath', v)}
-        />
-        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--feed-muted)' }}>
-          Status: {installed ? (
-            <span style={{ color: 'var(--feed-success)' }}>● binary detected{data.cliVersion ? ` · v${data.cliVersion}` : ''}</span>
-          ) : data.cliBinaryPathStale ? (
-            <span style={{ color: 'var(--feed-error)' }}>● configured path not found: {data.cliBinaryPathStale} — fix it with Browse… or Install Latest</span>
-          ) : (
-            <span style={{ color: 'var(--feed-error)' }}>● not found</span>
+    <Card
+      title="VibeFlow CLI"
+      description="Agents run in the VibeFlow CLI, which opens in a fullscreen editor terminal. The sidebar shows the same live state."
+    >
+      {data.cliNeedsWsl ? (
+        <>
+          <Status ok={false}>Needs WSL on Windows</Status>
+          <p style={hint}>
+            The CLI runs agents in tmux, which Windows does not provide. Install WSL and the WSL extension,
+            reopen this folder in WSL, then install the CLI there.
+          </p>
+          <ButtonRow><LinkBtn href={WSL_SETUP_URL} label="How to Set Up WSL" secondary /></ButtonRow>
+        </>
+      ) : (
+        <>
+          <Status ok={installed}>
+            {installed
+              ? `Installed${data.cliVersion ? ` · v${data.cliVersion}` : ''}`
+              : data.cliBinaryPathStale
+                ? `Configured path not found: ${data.cliBinaryPathStale}`
+                : 'Not installed'}
+          </Status>
+          <ButtonRow>
+            {installed ? (
+              <>
+                <Btn label="Check for Updates" onClick={run('vibeflow.checkCliUpdate')} />
+                <Btn label="Reinstall Latest" secondary onClick={run('vibeflow.installCli')} />
+              </>
+            ) : (
+              <>
+                <Btn label="Install Latest" onClick={run('vibeflow.installCli')} />
+                <LinkBtn href={RELEASES_URL} label="Download Manually" secondary />
+                <LinkBtn href={INSTALL_DOCS_URL} label="Install Instructions" secondary />
+              </>
+            )}
+          </ButtonRow>
+          {!installed && (
+            <p style={hint}>Install Latest downloads the prebuilt binary from GitHub Releases into the extension's storage and points the extension at it.</p>
           )}
-        </div>
-        <ButtonRow>
-          <Btn
-            label="Browse…"
-            secondary
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.browseCliBinary' })}
-          />
-          <Btn
-            label="Install Latest"
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.installCli' })}
-          />
-          <Btn
-            label="Check for Updates"
-            secondary
-            disabled={!installed}
-            onClick={() => onCommand({ type: 'runCommand', payload: 'vibeflow.checkCliUpdate' })}
-          />
-        </ButtonRow>
-        <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
-          Downloads the matching prebuilt asset from GitHub Releases, extracts it into the
-          extension's local storage, and points the path above at the result. Re-run any time
-          to upgrade.
-        </div>
-      </Card>
-
-    </>
-  );
-}
-
-/**
- * Text input that buffers locally and only commits to the host on blur
- * (or Enter). Without this, every keystroke fires onUpdate → host saves
- * config → host re-pushes settings snapshot → webview re-renders → the
- * snapshot can land mid-typing and overwrite the in-progress value
- * with a stale prefix (e.g. typing "~/Projects" left the user stuck on
- * "~"). Buffering decouples the two clocks.
- *
- * The `initial` prop syncs back to local state when the host pushes a
- * different value AND the user isn't currently editing — covers the
- * "another window changed the config" case without disturbing typing.
- */
-function BinaryPathInput({ initial, onCommit }: {
-  initial: string;
-  onCommit: (value: string) => void;
-}) {
-  return (
-    <BufferedTextInput
-      initial={initial}
-      placeholder="/usr/local/bin/vibeflow"
-      onCommit={onCommit}
-    />
-  );
-}
-
-function BufferedTextInput({ initial, placeholder, onCommit, onValueChange, resetToken }: {
-  initial: string;
-  placeholder: string;
-  onCommit: (value: string) => void;
-  onValueChange?: (value: string) => void;
-  resetToken?: number;
-}) {
-  const [value, setValue] = useState(initial);
-  const [focused, setFocused] = useState(false);
-  const lastResetToken = React.useRef(resetToken);
-
-  useEffect(() => {
-    if (!focused && initial !== value) { setValue(initial); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial]);
-
-  useEffect(() => {
-    if (resetToken === undefined || lastResetToken.current === resetToken) { return; }
-    lastResetToken.current = resetToken;
-    setValue('');
-    onValueChange?.('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resetToken]);
-
-  const commit = () => {
-    if (value !== initial) { onCommit(value); }
-  };
-
-  return (
-    <input
-      type="text"
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => {
-        setValue(e.target.value);
-        onValueChange?.(e.target.value);
-      }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => { setFocused(false); commit(); }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { commit(); (e.target as HTMLInputElement).blur(); }
-        if (e.key === 'Escape') { setValue(initial); (e.target as HTMLInputElement).blur(); }
-      }}
-      style={inputStyle}
-    />
-  );
-}
-
-// ===== Local primitives, kept private to this tab to match other tabs' style =====
-
-function Card({ title, description, children }: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div style={{
-      padding: '18px 20px',
-      borderRadius: 8,
-      border: '1px solid var(--feed-border)',
-      background: 'var(--vscode-editor-background)',
-    }}>
-      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>{title}</h3>
-      {description && (
-        <p style={{ margin: '4px 0 14px', fontSize: 11, color: 'var(--feed-muted)', lineHeight: 1.5 }}>
-          {description}
-        </p>
+        </>
       )}
-      {!description && <div style={{ height: 10 }} />}
-      {children}
-    </div>
+
+      <details open={!!data.cliBinaryPath || !!data.cliBinaryPathStale} style={{ marginTop: 14 }}>
+        <summary style={{ fontSize: 12, cursor: 'pointer', color: 'var(--feed-muted)' }}>Advanced: binary path override</summary>
+        <p style={hint}>Leave empty to find <code>vibeflow</code> on PATH. Set it if the binary lives elsewhere (for example /opt/homebrew/bin on Apple Silicon).</p>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+          <BufferedTextInput
+            ariaLabel="CLI binary path"
+            initial={data.cliBinaryPath}
+            placeholder="/usr/local/bin/vibeflow"
+            onCommit={v => onUpdate('cli.binaryPath', v)}
+          />
+          <Btn label="Browse…" secondary onClick={run('vibeflow.browseCliBinary')} />
+        </div>
+      </details>
+    </Card>
   );
 }
 
-function Banner({ kind, children }: { kind: 'warning' | 'info'; children: React.ReactNode }) {
-  const colors = {
-    warning: { bg: 'rgba(204,167,0,0.08)', border: 'var(--feed-warning)' },
-    info:    { bg: 'rgba(0,127,255,0.08)', border: 'var(--feed-link)' },
-  }[kind];
-  return (
-    <div style={{
-      marginTop: 12,
-      padding: 12,
-      background: colors.bg,
-      border: `1px solid ${colors.border}`,
-      borderRadius: 4,
-      fontSize: 11,
-      lineHeight: 1.6,
-      color: 'var(--feed-fg)',
-    }}>
-      {children}
-    </div>
-  );
-}
-
-function ButtonRow({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>{children}</div>;
-}
-
-function Btn({ label, onClick, secondary, disabled }: {
-  label: string; onClick: () => void; secondary?: boolean; disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        padding: '6px 14px',
-        fontSize: 12,
-        borderRadius: 4,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.5 : 1,
-        border: 'none',
-        background: secondary ? 'var(--vscode-button-secondaryBackground)' : 'var(--feed-button-bg)',
-        color: secondary ? 'var(--vscode-button-secondaryForeground)' : 'var(--feed-button-fg)',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function LinkBtn({ href, label, secondary }: { href: string; label: string; secondary?: boolean }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      style={{
-        textDecoration: 'none',
-        padding: '6px 14px',
-        fontSize: 12,
-        borderRadius: 4,
-        background: secondary ? 'var(--vscode-button-secondaryBackground)' : 'var(--feed-button-bg)',
-        color: secondary ? 'var(--vscode-button-secondaryForeground)' : 'var(--feed-button-fg)',
-      }}
-    >
-      {label}
-    </a>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '6px 10px',
-  fontSize: 12,
-  fontFamily: 'var(--vscode-editor-font-family)',
-  background: 'var(--feed-input-bg)',
-  color: 'var(--feed-fg)',
-  border: '1px solid var(--feed-input-border)',
-  borderRadius: 4,
-  outline: 'none',
-  boxSizing: 'border-box',
-};
+const hint = { margin: '8px 0 0', fontSize: 11, lineHeight: 1.55, color: 'var(--feed-muted)' } as const;

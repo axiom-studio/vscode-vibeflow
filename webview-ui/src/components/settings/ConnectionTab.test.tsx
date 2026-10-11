@@ -1,25 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ConnectionTab } from './ConnectionTab';
-import type { SettingsData } from './settingsTypes';
+import type { SettingsCommand, SettingsData } from './settingsTypes';
 
 function settingsData(overrides: Partial<SettingsData> = {}): SettingsData {
   return {
     serverUrl: 'https://cloud.axiomstudio.ai',
-    serverReachable: null,
     apiKeySet: true,
-    apiKeyValid: true,
-    projectId: 28,
-    projectName: 'vscode-vibeflow',
-    projects: [{ id: 28, name: 'vscode-vibeflow' }],
     pollInterval: 30,
     liveInterval: 5,
     notifyAgentPrompts: true,
     notifyWorkComplete: true,
     chatDiffView: 'unified',
     cliBinaryPath: '',
-    cliMcpName: '',
-    cliRootPath: '',
     cliInstalled: true,
     mcpAgents: [],
     cliVersion: '1.0.0',
@@ -29,15 +22,34 @@ function settingsData(overrides: Partial<SettingsData> = {}): SettingsData {
   };
 }
 
-// #3113 — the CLI setup cards moved OUT of a standalone "CLI Interface" tab
-// and now render inline within ConnectionTab (via <CliSettings/>). This pins
-// that integration point: CliTab.test.tsx only renders <CliSettings/> in
-// isolation, so without this a future accidental removal of the <CliSettings/>
-// line inside ConnectionTab would be caught by nothing. "Binary Path
-// Override" is a CliSettings card heading that nothing else renders.
-describe('ConnectionTab — CLI setup is folded in (#3113)', () => {
-  it('renders the CLI settings cards inline', () => {
-    render(<ConnectionTab data={settingsData()} onUpdate={vi.fn()} onCommand={vi.fn()} />);
-    expect(screen.getByText('Binary Path Override')).toBeTruthy();
+// #4045: the Connection tab is Account, VibeFlow CLI and MCP, in that order;
+// project switching lives in the sidebar dropdown.
+describe('ConnectionTab', () => {
+  it('shows the three setup cards in order and no project switcher', () => {
+    render(<ConnectionTab data={settingsData()} checks={{}} onUpdate={vi.fn()} onCommand={vi.fn()} />);
+    const headings = screen.getAllByRole('heading').map(h => h.textContent);
+    expect(headings).toEqual(['Account', 'VibeFlow CLI', 'MCP for coding agents']);
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('saves the server URL only on Enter, then tests the URL that was typed', () => {
+    const onUpdate = vi.fn();
+    const commands: SettingsCommand[] = [];
+    render(<ConnectionTab data={settingsData()} checks={{}} onUpdate={onUpdate} onCommand={c => { commands.push(c); }} />);
+    const input = screen.getByLabelText('Server URL');
+    fireEvent.change(input, { target: { value: 'https://vf.example.com' } });
+    expect(onUpdate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }));
+    expect(onUpdate).toHaveBeenCalledWith('serverUrl', 'https://vf.example.com');
+    expect(commands).toContainEqual({ type: 'validateServerUrl', payload: 'https://vf.example.com' });
+  });
+
+  it('shows the Test Connection result for the URL in the field', () => {
+    const data = settingsData();
+    const { rerender } = render(<ConnectionTab data={data} checks={{ serverUrl: { url: data.serverUrl, valid: false, message: 'Server unreachable' } }} onUpdate={vi.fn()} onCommand={vi.fn()} />);
+    expect(screen.getByText('Server unreachable')).toBeTruthy();
+    // A result for a different URL is not shown against this one.
+    rerender(<ConnectionTab data={data} checks={{ serverUrl: { url: 'https://other.example', valid: true } }} onUpdate={vi.fn()} onCommand={vi.fn()} />);
+    expect(screen.queryByText('Reachable')).toBeNull();
   });
 });
