@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { buildCliLaunchArgs, buildCliLaunchCommand, cliPidLockPath, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
 
 // Mirrors vibeflow-cli PIDLockPath(): <root>/vibeflow.pid with
 // --root > VIBEFLOW_ROOT > ~/.vibeflow-cli (issue #5742).
@@ -28,6 +28,29 @@ describe('cliPidLockPath', () => {
 
   it('resolves a relative root against the launch cwd', () => {
     expect(cliPidLockPath('.vf', cwd, {}, home)).toBe(path.join(cwd, '.vf', 'vibeflow.pid'));
+  });
+  // PR #2 finding: in a window with no folder the terminal starts in $HOME,
+  // so a relative root must resolve there, not in the extension host's cwd.
+  it('resolves a relative root in an empty window to the terminal home dir', () => {
+    const launchCwd = cliLaunchCwd(undefined, home);
+    expect(cliPidLockPath('.vibeflow-cli', launchCwd, {}, home)).toBe(path.join(home, '.vibeflow-cli', 'vibeflow.pid'));
+  });
+});
+
+describe('cliLaunchCwd', () => {
+  const home = path.resolve('/home/u');
+  const ws = path.resolve('/work/repo');
+
+  it('uses the workspace root when it exists', () => {
+    expect(cliLaunchCwd(ws, home, () => true)).toBe(ws);
+  });
+
+  it('falls back to home when there is no workspace folder', () => {
+    expect(cliLaunchCwd(undefined, home, () => true)).toBe(home);
+  });
+
+  it('falls back to home when the workspace root no longer exists', () => {
+    expect(cliLaunchCwd(ws, home, () => false)).toBe(home);
   });
 });
 
