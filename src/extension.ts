@@ -33,7 +33,7 @@ import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateC
 import { registerIdeUsageReporting } from './ide/ideUsageReporter.js';
 import { bootstrapMcp, uninstallMcp } from './commands/cliBootstrap.js';
 import {
-  confirmAndCloseTabsForProjectSwitch,
+  closeTabsForProjectSwitch,
   pickProject as runProjectPickerCommand,
 } from './commands/projectCommands.js';
 import { TerminalRegistry } from './sessions/TerminalRegistry.js';
@@ -636,7 +636,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       gitRemoteUrl: remoteUrl,
       gitBranch: branch,
     };
-    await confirmAndCloseTabsForProjectSwitch(cached, matched.id);
+    await closeTabsForProjectSwitch(cached, matched.id);
     await detector.cacheProject(detected);
     connectToProject(detected);
     vscode.window.showInformationMessage(`VibeFlow: Switched to "${matched.name}"`);
@@ -756,7 +756,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       gitRemoteUrl: remoteUrl ?? '',
       gitBranch,
     };
-    await confirmAndCloseTabsForProjectSwitch(previous, selectedProject.id);
+    await closeTabsForProjectSwitch(previous, selectedProject.id);
     await detector.cacheProject(detected);
     connectToProject(detected);
 
@@ -1604,7 +1604,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const matched = projects.find(p => p.name === cliConfig.defaultProject);
         if (matched) {
           console.log('[VibeFlow] Caching CLI default project:', matched.name, 'id:', matched.id);
-          await confirmAndCloseTabsForProjectSwitch(cached, matched.id);
+          await closeTabsForProjectSwitch(cached, matched.id);
           await detector.cacheProject({
             projectId: matched.id,
             projectName: matched.name,
