@@ -11,6 +11,8 @@ import { PollingCoordinator, intervalScheduler, vscodeFocusSource } from './core
 import { PullRequestsTreeProvider, pullRequestNodeId, resolveReviewTarget } from './views/surface/PullRequestsTreeProvider.js';
 import { PRReviewPanel } from './views/prReview/PRReviewPanel.js';
 import { randomUUID } from 'crypto';
+import { cliNeedsWsl, showCliNeedsWsl } from './commands/cliPlatform.js';
+import { ProjectTreeProvider } from './views/surface/ProjectTreeProvider.js';
 import { TicketsPanel } from './views/tickets/TicketsPanel.js';
 import { TicketsNavTreeProvider } from './views/tickets/TicketsNavTreeProvider.js';
 import { CloudRunnersPanel } from './views/cloudRunners/CloudRunnersPanel.js';
@@ -29,7 +31,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { openCli, type CliLaunchOptions } from './commands/cliCommands.js';
+import { currentCliConfigPath, openCli, type CliLaunchOptions } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
 import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateCheck.js';
 import { registerIdeUsageReporting } from './ide/ideUsageReporter.js';
@@ -153,6 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // cloud-style table panels (TicketsPanel), reached from the Browse nav.
   // Brainstorm Sessions removed — it lives in the brainstorm (bulb) panel.
   const pullRequestsProvider = new PullRequestsTreeProvider();
+  const projectProvider = new ProjectTreeProvider();
   const ticketsNavProvider = new TicketsNavTreeProvider(workItemsProvider);
 
   // --- Activity Feed empty/connection state controller ---
@@ -386,6 +389,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
    * Called after successful setup or on activation with stored credentials.
    */
   function connectToProject(project: DetectedProject) {
+    projectProvider.setProject(project);
     sessionsProvider.connect(client, project.projectId);
     workItemsProvider.connect(client, project.projectId);
     documentsProvider.connect(client, project.projectId);
@@ -903,6 +907,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }));
 
+  // Project view (#4030): the scope line. Views below it are scoped to the
+  // selected project, so each carries the project name as its description;
+  // that stays visible when a section is collapsed.
+  const projectView = vscode.window.createTreeView('vibeflow.project', {
+    treeDataProvider: projectProvider,
+  });
+  const scopedViews = [workItemsView, browseView, pullRequestsView, documentsView];
+  const applyProjectScope = () => {
+    const name = projectProvider.getProject()?.projectName;
+    for (const view of scopedViews) { view.description = name; }
+  };
+  applyProjectScope();
+  context.subscriptions.push(projectView, projectProvider, projectProvider.onDidChangeTreeData(applyProjectScope));
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('vibeflow.activityFeed', activityFeedProvider),
   );
@@ -930,6 +948,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await runLaunchGuarded('Open CLI', () => openCli(root, launchOptions), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.installCli', async () => {
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
       try {
         const installedPath = await installCli(context);
         // Configure the VibeFlow MCP server into the user's coding agents as
@@ -972,24 +991,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.commands.registerCommand('vibeflow.launchSession', async () => {
-      // CLI mode owns session management — short-circuit and route to
-      // the TUI launcher so we don't spawn duplicate per-persona
-      // terminals that would race with the CLI's tmux-managed sessions.
-      const reportError = (msg: string) => vscode.window.showErrorMessage(msg);
-      const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', true);
-      if (cliEnabled) {
-        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        await runLaunchGuarded('Open CLI', () => openCli(root), reportError);
-        return;
-      }
-      // Guard the launch so an un-try/caught throw inside the wizard
-      // (getGitBranch / ensureMcpConfig / ensureAllAgentDocs) surfaces a
-      // clear error instead of a silent unhandled rejection (issue #3195).
-      await runLaunchGuarded(
-        'Launch Session',
-        () => launchSession(client, detector, sessionsProvider, context.extensionUri, terminalRegistry, contextProxy, streamRegistry, tmuxBacking, connectToProject),
-        reportError,
-      );
+      // The CLI is the only launch path (#4034, design doc #627 D1): route to
+      // the TUI. There is no cli.enabled toggle any more, so a leftover
+      // `false` in a user's settings.json cannot revive the in-extension
+      // launcher (removed outright by #4037).
+      if (cliNeedsWsl(process.platform, vscode.env.remoteName)) { await showCliNeedsWsl(); return; }
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      await runLaunchGuarded('Open CLI', () => openCli(root), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.focusTerminal', (idOrNode: string | { id?: string }) => {
       const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
@@ -1380,28 +1388,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('vibeflow.openPrReview', (id?: string) => {
       // Vera's review panel for a tracked PR (#4040).
-      const project = detector.getCachedProject();
-      const pr = id ? pullRequestsProvider.getPullRequest(id) : undefined;
-      if (!project || !pr?.review_job_id) { return; }
-      PRReviewPanel.open(context.extensionUri, client, project.projectId, pr.review_job_id, `Review · #${pr.pr_number ?? ''}`, pr.pr_url);
+      // Open it in the project the row was listed in, like requestPrReview.
+      const row = id ? pullRequestsProvider.getPullRequest(id) : undefined;
+      if (!row?.pr.review_job_id) { return; }
+      const { pr, projectId } = row;
+      PRReviewPanel.open(context.extensionUri, client, projectId, pr.review_job_id!, `Review · #${pr.pr_number ?? ''}`, pr.pr_url);
     }),
     vscode.commands.registerCommand('vibeflow.requestPrReview', async (node?: { id?: string }) => {
       // Ask Vera to review a PR from the Pull Requests view (#4039). Manual
       // requests work in every trigger mode, including on drafts.
-      const project = detector.getCachedProject();
-      const pr = node?.id ? pullRequestsProvider.getPullRequest(node.id) : undefined;
-      if (!project || !pr) {
+      // The row carries the project it was listed in; request in that project,
+      // never the currently selected one, so a switch mid-load cannot misroute it.
+      const row = node?.id ? pullRequestsProvider.getPullRequest(node.id) : undefined;
+      if (!row) {
         vscode.window.showWarningMessage('VibeFlow: pick a pull request in the Pull Requests view to request a review.');
         return;
       }
+      const { pr, projectId } = row;
       try {
-        const repositories = pr.review_summary ? [] : await client.listPRReviewRepositories(project.projectId);
+        const repositories = pr.review_summary ? [] : await client.listPRReviewRepositories(projectId);
         const target = resolveReviewTarget(pr, repositories);
         if (!target) {
           vscode.window.showWarningMessage(`VibeFlow: ${pr.repo} is not linked for PR reviews. Link it under Settings → Integrations → Source Control in VibeFlow.`);
           return;
         }
-        await client.requestPRReview(project.projectId, {
+        await client.requestPRReview(projectId, {
           provider: target.provider,
           repository_link_id: target.repositoryLinkId,
           number: target.number,
@@ -1621,13 +1632,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await authService.initialize();
 
   // Import credentials/project from vibeflow-cli config
-  const cliConfig = readCliConfig();
+  const cliConfig = readCliConfig(currentCliConfigPath());
   console.log('[VibeFlow] CLI config:', cliConfig ? `found (project=${cliConfig.defaultProject}, hasToken=${!!cliConfig.apiToken})` : 'not found');
   console.log('[VibeFlow] Auth state on activation:', authService.getState());
   console.log('[VibeFlow] Cached project on activation:', detector.getCachedProject());
 
   // Step 1: Ensure we have a token (force-import from CLI if not already set)
-  if (authService.getState() === 'unauthenticated' && cliConfig?.apiToken) {
+  // ...unless the user explicitly logged out: the CLI config may hold the
+  // token the Settings mirror wrote, and logging out must stick (#5761).
+  if (authService.getState() === 'unauthenticated' && !authService.wasSignedOut() && cliConfig?.apiToken) {
     console.log('[VibeFlow] Importing token from CLI config');
     await authService.setToken(cliConfig.apiToken);
   }
