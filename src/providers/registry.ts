@@ -129,6 +129,21 @@ export const PROVIDER_REGISTRY = [
     vibeflowIntegrated: true,
     launchable: true,
   },
+  {
+    // Not launchable YET, for the same reason as qwen: Copilot has no
+    // positional prompt argument (it needs `-i '<prompt>'`, todo #3293) and
+    // an autonomous session needs `--yolo --autopilot --no-ask-user`
+    // (todo #3292). #3293 flips `launchable`. No `envTokenName`: Copilot
+    // authenticates to GitHub itself (`copilot login` / `GH_TOKEN`), which
+    // VibeFlow does not manage. Mirrors vibeflow-cli's built-in entry.
+    key: 'copilot',
+    name: 'GitHub Copilot CLI',
+    label: '$(github) Copilot',
+    binary: 'copilot',
+    docFile: 'AGENTS.md',
+    vibeflowIntegrated: true,
+    launchable: false,
+  },
 ] as const satisfies readonly ProviderDef[];
 
 /**

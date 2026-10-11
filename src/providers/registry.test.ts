@@ -105,6 +105,16 @@ describe('derived surfaces agree with the registry', () => {
     expect(getAdapter('qwen')).toBeDefined();
     expect(launchableProviders().map(p => p.key)).not.toContain('qwen');
   });
+
+  it('registers copilot for reattach but holds it out of the wizard', () => {
+    // TRIPWIRE like qwen's: copilot is not launchable until todo #3293 lands
+    // its `-i` prompt shape and #3292 its autopilot flags. Whoever flips it
+    // updates this assertion after confirming both.
+    expect(AGENT_BINARIES.copilot).toBe('copilot');
+    expect(getProvider('copilot')?.launchable).toBe(false);
+    expect(getProvider('copilot')?.envTokenName).toBeUndefined();
+    expect(launchableProviders().map(p => p.key)).not.toContain('copilot');
+  });
 });
 
 describe('agent docs', () => {
