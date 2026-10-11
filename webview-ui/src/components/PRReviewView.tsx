@@ -63,7 +63,7 @@ export function PRReviewView() {
   const advisories = findings.filter(f => f.severity !== 'blocker');
 
   return (
-    <div style={{ fontFamily: 'var(--vscode-font-family)', color: 'var(--feed-fg)', background: 'var(--feed-bg)', minHeight: '100vh', padding: '18px 28px 40px', boxSizing: 'border-box' }}>
+    <div style={{ fontFamily: 'var(--vscode-font-family)', color: 'var(--feed-fg)', background: 'var(--feed-bg)', height: '100vh', overflowY: 'auto', padding: '18px 28px 40px', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>#{job.number}: {job.details.title}</div>
@@ -103,7 +103,7 @@ export function PRReviewView() {
       {summary.summary && (
         <section style={card}>
           <div style={label}>Vera's summary</div>
-          <div style={{ fontSize: 12.5 }}><MarkdownRenderer content={summary.summary} /></div>
+          <div style={{ fontSize: 12.5 }}><MarkdownRenderer content={summary.summary} inline /></div>
         </section>
       )}
 
@@ -145,15 +145,15 @@ function FindingCard({ finding: f }: { finding: PRReviewFinding }) {
         </button>
       )}
       <div style={{ ...label, marginTop: 10 }}>Trigger</div>
-      <div style={{ fontSize: 12 }}><MarkdownRenderer content={f.trigger} /></div>
+      <div style={{ fontSize: 12 }}><MarkdownRenderer content={f.trigger} inline /></div>
       <div style={{ ...label, marginTop: 6 }}>Impact</div>
-      <div style={{ fontSize: 12 }}><MarkdownRenderer content={f.impact} /></div>
+      <div style={{ fontSize: 12 }}><MarkdownRenderer content={f.impact} inline /></div>
       <details style={{ marginTop: 6, fontSize: 12 }}>
         <summary style={{ cursor: 'pointer', color: 'var(--feed-muted)' }}>Evidence and verification</summary>
         <div style={{ ...label, marginTop: 8 }}>Evidence</div>
-        <MarkdownRenderer content={f.evidence} />
+        <MarkdownRenderer content={f.evidence} inline />
         <div style={{ ...label, marginTop: 6 }}>Verification</div>
-        <MarkdownRenderer content={f.verification} />
+        <MarkdownRenderer content={f.verification} inline />
       </details>
     </article>
   );

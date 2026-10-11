@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { PRReviewFinding } from '../../api/prReviewTypes.js';
+import type { PRReviewFinding, PRReviewSummary } from '../../api/prReviewTypes.js';
 import {
   assertNever,
   type PRReviewPageClientMessage,
   type PRReviewPageHostMessage,
 } from '../../core/webviewMessages.js';
 import { openWorkspaceRelativePath } from '../sessions/chatActions.js';
+import { sameRepo } from '../sessions/commitWebUrl.js';
 import { prReviewDisplayState } from './prReviewDisplayState.js';
 
 /** Findings are paged by the server (max 100 per page); stop after this many. */
@@ -24,6 +25,10 @@ const MAX_FINDINGS = 500;
 export class PRReviewPanel {
   private static readonly instances = new Map<string, PRReviewPanel>();
   private lastFetchAt = 0;
+  /** Bumped per load; only the latest load may post data, so an earlier refresh never overwrites a newer one. */
+  private loadSeq = 0;
+  /** Clone URLs of the reviewed repository, from the last loaded summary. */
+  private repoUrls: string[] = [];
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -77,10 +82,18 @@ export class PRReviewPanel {
       case 'prReviewRefresh':
         await this.load();
         return;
-      case 'prReviewOpenLocation':
-        // Same guard as chat links: workspace-relative only, no escapes.
-        await openWorkspaceRelativePath(msg.payload.path, msg.payload.line);
+      case 'prReviewOpenLocation': {
+        // Finding paths are relative to the reviewed repository's root, which
+        // may sit above the workspace folder (subfolder open). Same escape guard
+        // as chat links, bounded by that root.
+        const root = await localRepoRoot(this.repoUrls);
+        if (!root) {
+          vscode.window.showWarningMessage('VibeFlow: open the reviewed repository in VS Code to jump to this finding.');
+          return;
+        }
+        await openWorkspaceRelativePath(msg.payload.path, msg.payload.line, undefined, root);
         return;
+      }
       case 'prReviewOpenPullRequest':
         if (this.prUrl) { await vscode.env.openExternal(vscode.Uri.parse(this.prUrl)); }
         return;
@@ -91,6 +104,7 @@ export class PRReviewPanel {
 
   private async load(): Promise<void> {
     this.lastFetchAt = Date.now();
+    const seq = ++this.loadSeq;
     try {
       const summary = await this.client.getPRReviewSummary(this.projectId, this.jobId);
       const findings: PRReviewFinding[] = [];
@@ -100,6 +114,8 @@ export class PRReviewPanel {
         findings.push(...page.items);
         after = page.nextAfterId;
       } while (after && findings.length < MAX_FINDINGS);
+      if (seq !== this.loadSeq) { return; }
+      this.repoUrls = reviewedRepoUrls(summary);
       this.post({
         type: 'prReviewData',
         payload: {
@@ -111,12 +127,40 @@ export class PRReviewPanel {
         },
       });
     } catch (err) {
+      if (seq !== this.loadSeq) { return; }
       this.post({ type: 'prReviewError', payload: { message: err instanceof Error ? err.message : String(err) } });
     }
   }
 
   private post(msg: PRReviewPageHostMessage): void {
     void this.panel.webview.postMessage(msg);
+  }
+}
+
+function reviewedRepoUrls(summary: PRReviewSummary): string[] {
+  const d = summary.review.details;
+  return [d.base_clone_url, d.head_clone_url].filter((u): u is string => !!u);
+}
+
+interface GitRepoLike {
+  rootUri: { fsPath: string };
+  state?: { remotes?: Array<{ fetchUrl?: string; pushUrl?: string }> };
+}
+
+/** Root of the open Git repository whose remote is one of `urls`, if any. */
+export function findRepoRoot(repos: readonly GitRepoLike[], urls: readonly string[]): string | undefined {
+  return repos.find(r => (r.state?.remotes ?? []).some(rm =>
+    [rm.fetchUrl, rm.pushUrl].some(u => !!u && urls.some(url => sameRepo(u, url)))))?.rootUri.fsPath;
+}
+
+async function localRepoRoot(urls: readonly string[]): Promise<string | undefined> {
+  if (urls.length === 0) { return undefined; }
+  try {
+    const gitExt = vscode.extensions.getExtension('vscode.git');
+    const api = gitExt && (gitExt.isActive ? gitExt.exports : await gitExt.activate())?.getAPI?.(1);
+    return findRepoRoot(api?.repositories ?? [], urls);
+  } catch {
+    return undefined;
   }
 }
 
