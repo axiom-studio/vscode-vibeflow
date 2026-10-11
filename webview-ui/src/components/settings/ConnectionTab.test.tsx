@@ -12,19 +12,11 @@ function settingsData(overrides: Partial<SettingsData> = {}): SettingsData {
     projectId: 28,
     projectName: 'vscode-vibeflow',
     projects: [{ id: 28, name: 'vscode-vibeflow' }],
-    defaultProvider: 'claude',
-    providers: [],
-    worktreeBaseDir: '.claude/worktrees',
-    worktreeAutoCreate: false,
-    worktreeCleanupOnKill: 'ask',
     pollInterval: 30,
     liveInterval: 5,
-    sessionTerminalMode: 'hybrid',
-    sessionHeadlessBacking: 'auto',
     notifyAgentPrompts: true,
     notifyWorkComplete: true,
     chatDiffView: 'unified',
-    cliEnabled: true,
     cliBinaryPath: '',
     cliMcpName: '',
     cliRootPath: '',
@@ -41,13 +33,11 @@ function settingsData(overrides: Partial<SettingsData> = {}): SettingsData {
 // and now render inline within ConnectionTab (via <CliSettings/>). This pins
 // that integration point: CliTab.test.tsx only renders <CliSettings/> in
 // isolation, so without this a future accidental removal of the <CliSettings/>
-// line inside ConnectionTab would be caught by nothing. "Use VibeFlow CLI" is
-// the CliSettings card heading (distinct from the "VibeFlow CLI" status row),
-// and the toggle is the only role="switch" ConnectionTab renders.
+// line inside ConnectionTab would be caught by nothing. "Binary Path
+// Override" is a CliSettings card heading that nothing else renders.
 describe('ConnectionTab — CLI setup is folded in (#3113)', () => {
-  it('renders the "Use VibeFlow CLI" card and its toggle inline', () => {
+  it('renders the CLI settings cards inline', () => {
     render(<ConnectionTab data={settingsData()} onUpdate={vi.fn()} onCommand={vi.fn()} />);
-    expect(screen.getByText('Use VibeFlow CLI')).toBeTruthy();
-    expect(screen.getByRole('switch')).toBeTruthy();
+    expect(screen.getByText('Binary Path Override')).toBeTruthy();
   });
 });

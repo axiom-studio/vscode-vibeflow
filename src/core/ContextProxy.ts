@@ -69,6 +69,12 @@ export interface GlobalStateSchema {
    * reloads don't re-post. See ide/ideUsageReporter.ts.
    */
   'vibeflow.ide.lastReportedAt': number;
+  /**
+   * Set by an explicit Logout, cleared by any sign-in. While set, activation
+   * does not re-import the API token from the CLI's config.yaml, which the
+   * Settings mirror may have written (#5761): logging out must stick.
+   */
+  'vibeflow.auth.signedOut': boolean;
 }
 
 /**
@@ -150,6 +156,7 @@ export class ContextProxy {
       'vibeflow.cli.updateCheckedAt',
       'vibeflow.cli.updateNotifiedVersion',
       'vibeflow.ide.lastReportedAt',
+      'vibeflow.auth.signedOut',
     ] satisfies GlobalStateKey[];
     for (const key of globalKeys) {
       await this.context.globalState.update(key, undefined);

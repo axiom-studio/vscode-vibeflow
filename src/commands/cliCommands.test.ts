@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, cliRootDir, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
 
 // Mirrors vibeflow-cli PIDLockPath(): <root>/vibeflow.pid with
 // --root > VIBEFLOW_ROOT > ~/.vibeflow-cli (issue #5742).
@@ -34,6 +34,17 @@ describe('cliPidLockPath', () => {
   it('resolves a relative root in an empty window to the terminal home dir', () => {
     const launchCwd = cliLaunchCwd(undefined, home);
     expect(cliPidLockPath('.vibeflow-cli', launchCwd, {}, home)).toBe(path.join(home, '.vibeflow-cli', 'vibeflow.pid'));
+  });
+});
+
+// #4033: config.yaml and the PID lock live in the same root.
+describe('cliRootDir', () => {
+  it('is the directory the PID lock lives in', () => {
+    const home = path.resolve('/home/u');
+    const cwd = path.resolve('/work/repo');
+    for (const root of [undefined, '.vf', path.resolve('/opt/vf')]) {
+      expect(path.join(cliRootDir(root, cwd, {}, home), 'vibeflow.pid')).toBe(cliPidLockPath(root, cwd, {}, home));
+    }
   });
 });
 
