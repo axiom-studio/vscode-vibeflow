@@ -1047,6 +1047,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // session_id (from the dashboard Live topology click).
       const session = id ? (sessionsProvider.getSessionById(id) ?? sessionsProvider.getSessionBySessionId(id)) : undefined;
       if (session) { sessionPanelManager.open(session); }
+      // Another project's agent: switch to its project first (#5747).
+      else if (id && sessionsProvider.getAnySessionById(id)) { void vscode.commands.executeCommand('vibeflow.openSessionInProject', id); }
       else { vscode.window.showInformationMessage('VibeFlow: Session not found — it may have expired'); }
     }),
     vscode.commands.registerCommand('vibeflow.openAgentActivity', () => {
@@ -1362,7 +1364,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('vibeflow.openSessionInProject', async (id?: string) => {
       // Agent Fleet shows every project's agents (#4032); a session's chat
       // needs its own project's context, so switch first, then open it.
-      const session = id ? sessionsProvider.getSessionById(id) : undefined;
+      const session = id ? sessionsProvider.getAnySessionById(id) : undefined;
       if (!session || !id) { return; }
       const projects = await client.listProjects().catch(() => []);
       const target = projects.find(p => p.id === session.project_id);

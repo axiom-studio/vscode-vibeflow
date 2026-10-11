@@ -55,6 +55,8 @@ export function groupFleetByProject(
   cliSessions: readonly CliSessionMeta[],
   currentProjectId: number | undefined,
   projectNames: ReadonlyMap<number, string>,
+  /** Seed the current project's group even with no sessions (pending launches). */
+  ensureCurrent = false,
 ): FleetProjectGroup[] {
   const groups = new Map<string, FleetProjectGroup>();
   const group = (projectId: number | undefined, fallbackName: string): FleetProjectGroup => {
@@ -80,6 +82,10 @@ export function groupFleetByProject(
   for (const [id, name] of projectNames) {
     const k = name.toLowerCase();
     idByName.set(k, idByName.has(k) ? undefined : id);
+  }
+
+  if (ensureCurrent && currentProjectId) {
+    group(currentProjectId, projectNames.get(currentProjectId) ?? `Project #${currentProjectId}`);
   }
 
   const known = new Set(serverSessions.map(s => s.session_id));

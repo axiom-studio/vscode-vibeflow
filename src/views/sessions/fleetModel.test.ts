@@ -61,6 +61,12 @@ describe('groupFleetByProject', () => {
     expect(groups[0].localOnly.map(m => m.name)).toEqual(['dev-old']);
   });
 
+  // #5750: a first launch has no sessions yet but needs a parent group.
+  it('seeds the current project group for pending launches', () => {
+    expect(groupFleetByProject([], [], 28, names).length).toBe(0);
+    expect(groupFleetByProject([], [], 28, names, true).map(g => [g.projectName, g.current])).toEqual([['vscode-vibeflow', true]]);
+  });
+
   it('groups a CLI session with no project id under its project name', () => {
     const groups = groupFleetByProject([], [local('qa-1', 'old-project')], 28, names);
     expect(groups.map(g => [g.key, g.projectName, g.current])).toEqual([['name:old-project', 'old-project', false]]);

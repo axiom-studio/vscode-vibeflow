@@ -163,7 +163,20 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
    * Look up a session by its TreeItem id (e.g., "session-abc123").
    * Used by command handlers that receive serialized TreeItem arguments.
    */
+  /**
+   * Current-project sessions only. Every caller (kill, restart, delete,
+   * focus, open chat) acts in the current project's context, and terminals
+   * are keyed by persona + branch alone, so a session from another project
+   * must never reach them (#4032 review: #5746-#5748). Use
+   * {@link getAnySessionById} only to switch projects first.
+   */
   getSessionById(treeItemId: string): VibeFlowSession | undefined {
+    const session = this.sessionById.get(treeItemId);
+    return session && session.project_id === this.projectId ? session : undefined;
+  }
+
+  /** Any project's session, for the switch-then-open path only. */
+  getAnySessionById(treeItemId: string): VibeFlowSession | undefined {
     return this.sessionById.get(treeItemId);
   }
 
@@ -173,7 +186,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
    * dashboard Live topology click — which don't know the tree-item prefix.
    */
   getSessionBySessionId(sessionId: string): VibeFlowSession | undefined {
-    return this.sessions.find(s => s.session_id === sessionId);
+    return this.sessions.find(s => s.session_id === sessionId && s.project_id === this.projectId);
   }
 
   /**
@@ -293,8 +306,11 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     // locally but the server hasn't published yet.
     for (const pending of this.pendingSessions.values()) {
       if (pending.state !== 'starting') { continue; }
+      // Pending launches are project-local: another project's agent with the
+      // same persona and branch must not complete this one (#5749).
       const realLanded = this.sessions.some(s =>
-        s.persona_key === pending.personaKey
+        s.project_id === this.projectId
+        && s.persona_key === pending.personaKey
         && (s.git_branch || 'unknown') === pending.branch
         && s.active,
       );
@@ -387,7 +403,9 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
    * extension-launched pending rows belong to the current project.
    */
   private buildSessionTree(): SessionNode[] {
-    const groups = groupFleetByProject(this.sessions, this.cliSessions, this.projectId, this.projectNames);
+    // A pending launch needs its current-project group even when the project
+    // has no sessions yet (#5750).
+    const groups = groupFleetByProject(this.sessions, this.cliSessions, this.projectId, this.projectNames, this.pendingSessions.size > 0);
     return groups.map(g => {
       const branches = this.buildBranchNodes(g.key, g.sessions, g.current ? [...this.pendingSessions.values()] : []);
       // CLI sessions the server hasn't seen: running ones inline, stopped
@@ -632,7 +650,11 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       // could still have local resources (a backend record or a tmux
       // pane). Only the truly-dead `inactive` rows fall back to the
       // record-only delete menu.
-      contextValue: status === 'inactive' ? 'inactiveSession' : 'activeSession',
+      // Another project's agent gets no project-scoped actions; clicking it
+      // switches projects first (vibeflow.openSessionInProject).
+      contextValue: session.project_id !== this.projectId
+        ? 'foreignSession'
+        : status === 'inactive' ? 'inactiveSession' : 'activeSession',
       session,
     };
   }
