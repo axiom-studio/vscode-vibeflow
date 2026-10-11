@@ -23,19 +23,34 @@ export function logCli(line: string): void {
 }
 
 /**
- * Path of the PID lock a CLI launched with `rootPath` would hold. Mirrors
- * vibeflow-cli's `PIDLockPath()` = `<RootDir()>/vibeflow.pid`, where
+ * The directory the CLI terminal is spawned in: the workspace root when it
+ * exists, else the home directory (what VS Code itself uses for a terminal
+ * in a window with no folder). Passed explicitly to BOTH the PID-lock guard
+ * and the terminal so a relative CLI root resolves to the same lock file in
+ * each (PR #2 review finding: they used to diverge in an empty window).
+ */
+export function cliLaunchCwd(
+  workspaceRoot: string | undefined,
+  home: string = os.homedir(),
+  exists: (p: string) => boolean = fs.existsSync,
+): string {
+  return workspaceRoot && exists(workspaceRoot) ? workspaceRoot : home;
+}
+
+/**
+ * Path of the PID lock a CLI launched with `rootPath` in `cwd` would hold.
+ * Mirrors vibeflow-cli's `PIDLockPath()` = `<RootDir()>/vibeflow.pid`, where
  * `RootDir()` is `--root` > `VIBEFLOW_ROOT` > `~/.vibeflow-cli`. A relative
- * root resolves against the cwd the TUI is spawned in, as it does in Go.
+ * root resolves against `cwd`, as it does in Go.
  */
 export function cliPidLockPath(
   rootPath: string | undefined,
-  cwd: string | undefined,
+  cwd: string,
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): string {
   const root = rootPath?.trim() || env.VIBEFLOW_ROOT || path.join(home, '.vibeflow-cli');
-  return path.resolve(cwd ?? process.cwd(), root, 'vibeflow.pid');
+  return path.resolve(cwd, root, 'vibeflow.pid');
 }
 
 /**
@@ -242,8 +257,9 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   // because the user clicked "Launch Session" and expected a wizard.
   // Front-run that failure with a modal explaining how to recover. A CLI
   // on a different root holds a different lock and does not block us.
+  const cwd = cliLaunchCwd(workspaceRoot);
   const lockRoot = (launchOptions ?? readCliLaunchOptions()).rootPath;
-  const externalPid = getRunningCliPid(cliPidLockPath(lockRoot, workspaceRoot));
+  const externalPid = getRunningCliPid(cliPidLockPath(lockRoot, cwd));
   if (externalPid !== null) {
     logCli(`blocked: an external vibeflow-cli holds the PID lock (pid ${externalPid}) — no command sent.`);
     const choice = await vscode.window.showWarningMessage(
@@ -284,17 +300,13 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   // Spawn in the editor area so it occupies the main pane. The left
   // sidebar (Agent Fleet, Work Items, Documents) stays visible — that's
   // the deliberate "CLI mode" layout: TUI as the workhorse, panels as
-  // the live status board.
-  const cwd = workspaceRoot && fs.existsSync(workspaceRoot)
-    ? workspaceRoot
-    : undefined;
-
+  // the live status board. `cwd` is the one the lock guard checked.
   const options = launchOptions ?? readCliLaunchOptions();
   // Log and execution derive from the same buildCliLaunchArgs result
   // (#3342 invariant) — the display string is the argv, shell-quoted for
   // readability; the spawn takes the argv itself. Since #4995 the TUI is
   // the terminal process (no shell), so nothing can interleave with it.
-  logCli(`launching in editor terminal (argv spawn, no shell; cwd: ${cwd ?? '<none>'}): ${buildCliLaunchCommand(binary, options)}`);
+  logCli(`launching in editor terminal (argv spawn, no shell; cwd: ${cwd}): ${buildCliLaunchCommand(binary, options)}`);
 
   const terminal = createProcessTerminal({
     name: TERMINAL_NAME,
