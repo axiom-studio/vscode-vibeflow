@@ -10,6 +10,8 @@ interface Props {
 
 const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/latest';
 const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
+// Mirrors WSL_SETUP_URL in src/commands/cliPlatform.ts (the webview cannot import host modules).
+const WSL_SETUP_URL = 'https://learn.microsoft.com/windows/wsl/install';
 
 /**
  * VibeFlow CLI runtime settings — rendered inside the Connection tab (#3113),
@@ -30,12 +32,22 @@ export function CliSettings({ data, onUpdate, onCommand }: Props) {
         title="Use VibeFlow CLI"
         description="When enabled, session launches open the VibeFlow CLI (TUI) in a fullscreen editor terminal instead of spawning per-persona terminals from the extension. The left sidebar still shows live agent state — same backend, different lens."
       >
+        {data.cliNeedsWsl && (
+          <Banner kind="warning">
+            <strong>The VibeFlow CLI needs WSL on Windows.</strong> It runs agents in tmux, which
+            Windows does not provide. Install WSL and the WSL extension, reopen this folder in
+            WSL, then install the CLI there.
+            <ButtonRow>
+              <LinkBtn href={WSL_SETUP_URL} label="How to Set Up WSL" secondary />
+            </ButtonRow>
+          </Banner>
+        )}
         <Toggle
           checked={data.cliEnabled}
           onChange={(v) => onUpdate('cli.enabled', v)}
           label={data.cliEnabled ? 'Enabled' : 'Disabled'}
         />
-        {data.cliEnabled && !installed && (
+        {data.cliEnabled && !installed && !data.cliNeedsWsl && (
           <Banner kind="warning">
             <strong>vibeflow binary not found.</strong> Install the latest prebuilt binary in one
             click — we download the matching asset from GitHub Releases into the extension's
