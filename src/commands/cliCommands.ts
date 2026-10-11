@@ -339,9 +339,9 @@ function shellQuote(arg: string, platform: NodeJS.Platform): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
-// Helper for callers that want to detect-and-warn early (e.g. when the
-// user toggles `vibeflow.cli.enabled` to true). Exported separately so
-// settings UI can pre-validate before the user hits "Open CLI".
+// Helper for callers that want to detect-and-warn early. Exported
+// separately so settings UI can pre-validate before the user hits
+// "Open CLI".
 export function isVibeflowInstalled(): boolean {
   return resolveBinary() !== undefined;
 }
