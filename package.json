@@ -86,6 +86,12 @@
           "when": "vibeflow.configured"
         },
         {
+          "id": "vibeflow.project",
+          "name": "Project",
+          "type": "tree",
+          "when": "vibeflow.configured"
+        },
+        {
           "id": "vibeflow.workItems",
           "name": "Work Items",
           "type": "tree",
@@ -270,7 +276,7 @@
       {
         "command": "vibeflow.pickProject",
         "title": "VibeFlow: Switch Project…",
-        "icon": "$(folder)"
+        "icon": "$(arrow-swap)"
       },
       {
         "command": "vibeflow.reportIssue",
@@ -531,6 +537,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "vibeflow.pickProject",
+          "when": "view == vibeflow.project",
+          "group": "navigation@1"
+        },
         {
           "command": "vibeflow.openSettings",
           "when": "view == vibeflow.agentFleet",
