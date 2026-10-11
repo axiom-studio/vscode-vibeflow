@@ -62,4 +62,5 @@ export type SettingsMessage =
   | { type: 'settingsData'; payload: SettingsData }
   | { type: 'validationResult'; payload: { field: 'serverUrl' | 'apiKey'; valid: boolean; message?: string; url?: string } }
   | { type: 'gitProvidersData'; payload: { providers: import('../../../../src/api/types').GitProviderView[]; loading?: boolean; error?: string } }
-  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } };
+  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } }
+  | { type: 'projectSettingsData'; payload: import('../../../../src/core/webviewMessages').ProjectSettingsData };
