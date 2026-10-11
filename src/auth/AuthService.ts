@@ -43,6 +43,7 @@ export class AuthService implements vscode.Disposable {
   async setToken(token: string): Promise<void> {
     this.token = token;
     await this.context.setSecret('vibeflow.authToken', token);
+    await this.context.set('vibeflow.auth.signedOut', undefined);
     this._onDidChangeState.fire('authenticated');
   }
 
@@ -52,7 +53,13 @@ export class AuthService implements vscode.Disposable {
   async logout(): Promise<void> {
     this.token = undefined;
     await this.context.deleteSecret('vibeflow.authToken');
+    await this.context.set('vibeflow.auth.signedOut', true);
     this._onDidChangeState.fire('unauthenticated');
+  }
+
+  /** True after an explicit Logout until the next sign-in. */
+  wasSignedOut(): boolean {
+    return this.context.get('vibeflow.auth.signedOut') === true;
   }
 
   dispose(): void {
