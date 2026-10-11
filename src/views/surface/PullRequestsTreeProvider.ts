@@ -18,6 +18,7 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private prs: VibeFlowPullRequest[] = [];
+  private fetchSeq = 0;
   /** Last review label seen per review job; undefined until the first load. */
   private reviewLabels: Map<string, string> | undefined;
   /** Fired with PRs whose review newly reached a state worth a toast (#4041). */
@@ -40,12 +41,18 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
       this._onDidChangeTreeData.fire();
       return;
     }
+    // Only the latest poll may move the notification baseline: a slower, older
+    // response would roll it back and re-announce a completion.
+    const seq = ++this.fetchSeq;
     try {
-      this.prs = await this.client.listPullRequests(this.projectId);
+      const prs = await this.client.listPullRequests(this.projectId);
+      if (seq !== this.fetchSeq) { return; }
+      this.prs = prs;
       const { transitions, labels } = reviewTransitions(this.reviewLabels, this.prs);
       this.reviewLabels = labels;
       if (transitions.length) { this._onDidReviewChange.fire(transitions); }
     } catch {
+      if (seq !== this.fetchSeq) { return; }
       this.prs = [];
     }
     this._onDidChangeTreeData.fire();
