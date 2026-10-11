@@ -11,7 +11,7 @@ import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { getProvider, launchableProviders, isProviderInstalled } from '../../providers/registry.js';
-import { confirmAndCloseTabsForProjectSwitch } from '../../commands/projectCommands.js';
+import { closeTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
  * Optional dependencies the panel needs to wire interactive controls.
@@ -344,7 +344,7 @@ export class SettingsPanel {
             // path passed '' to connectToProject, which silently kept the
             // empty-state placeholder showing "main" forever.
             const previous = deps.detector.getCachedProject();
-            await confirmAndCloseTabsForProjectSwitch(previous, matched.id);
+            await closeTabsForProjectSwitch(previous, matched.id);
             const liveBranch = await deps.detector.getGitBranch();
             const detected: DetectedProject = {
               projectId: matched.id,

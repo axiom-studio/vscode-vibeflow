@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { DetectedProject } from '../project/ProjectDetector.js';
 import {
-  isVibeflowWebviewTabInput,
+  isProjectScopedWebviewTabInput,
+  isProjectSwitch,
   isVibeflowWebviewViewType,
-  shouldOfferCloseForProjectSwitch,
 } from './projectCommands.js';
 
 describe('project switch tab-close helpers', () => {
@@ -14,10 +14,10 @@ describe('project switch tab-close helpers', () => {
     gitBranch: 'main',
   };
 
-  it('only offers the tab-close prompt for a real project switch', () => {
-    expect(shouldOfferCloseForProjectSwitch(undefined, 28)).toBe(false);
-    expect(shouldOfferCloseForProjectSwitch(current, 28)).toBe(false);
-    expect(shouldOfferCloseForProjectSwitch(current, 66)).toBe(true);
+  it('only closes tabs for a real project switch', () => {
+    expect(isProjectSwitch(undefined, 28)).toBe(false);
+    expect(isProjectSwitch(current, 28)).toBe(false);
+    expect(isProjectSwitch(current, 66)).toBe(true);
   });
 
   it('recognizes VibeFlow webview view types even when VS Code prefixes them', () => {
@@ -30,11 +30,26 @@ describe('project switch tab-close helpers', () => {
   });
 
   it('classifies webview tab inputs structurally instead of relying on instanceof', () => {
-    expect(isVibeflowWebviewTabInput({ viewType: 'vibeflow.kanban' })).toBe(true);
-    expect(isVibeflowWebviewTabInput({ viewType: 'mainThreadWebview-vibeflow.compliance' })).toBe(true);
+    expect(isProjectScopedWebviewTabInput({ viewType: 'vibeflow.kanban' })).toBe(true);
+    expect(isProjectScopedWebviewTabInput({ viewType: 'mainThreadWebview-vibeflow.compliance' })).toBe(true);
 
-    expect(isVibeflowWebviewTabInput({ viewType: 'markdown.preview' })).toBe(false);
-    expect(isVibeflowWebviewTabInput({ viewType: 123 })).toBe(false);
-    expect(isVibeflowWebviewTabInput(undefined)).toBe(false);
+    expect(isProjectScopedWebviewTabInput({ viewType: 'markdown.preview' })).toBe(false);
+    expect(isProjectScopedWebviewTabInput({ viewType: 123 })).toBe(false);
+    expect(isProjectScopedWebviewTabInput(undefined)).toBe(false);
+  });
+
+  // #4031: the switch closes without a prompt, so what it may close is pinned.
+  it('never closes code editors or terminals, so the VibeFlow CLI survives a switch', () => {
+    // TabInputText / TabInputTextDiff carry uris, not a viewType.
+    expect(isProjectScopedWebviewTabInput({ uri: { fsPath: '/repo/src/a.ts' } })).toBe(false);
+    expect(isProjectScopedWebviewTabInput({ original: {}, modified: {} })).toBe(false);
+    // TabInputTerminal has no properties at all.
+    expect(isProjectScopedWebviewTabInput({})).toBe(false);
+  });
+
+  it('keeps the Settings panel open, since a switch can start from inside it', () => {
+    expect(isProjectScopedWebviewTabInput({ viewType: 'vibeflow.settings' })).toBe(false);
+    expect(isProjectScopedWebviewTabInput({ viewType: 'mainThreadWebview-vibeflow.settings' })).toBe(false);
+    expect(isProjectScopedWebviewTabInput({ viewType: 'mainThreadWebview-vibeflow.sessionPanel' })).toBe(true);
   });
 });

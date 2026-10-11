@@ -83,7 +83,7 @@ export async function pickProject(deps: {
     return;
   }
 
-  await confirmAndCloseTabsForProjectSwitch(current, picked.projectId);
+  await closeTabsForProjectSwitch(current, picked.projectId);
 
   // Match the Settings → Connection tab's switch path exactly: keep
   // the workspace's live git branch (the cache schema doesn't persist
@@ -108,60 +108,54 @@ export async function pickProject(deps: {
 }
 
 /**
- * On a project switch, offer to close the previous project's open tabs (#2717).
- * The extension is single-active-project, so every open VibeFlow webview panel
- * belongs to the project being left. Call this BEFORE applying the switch so
- * the `onSwitched` refresh doesn't repurpose the panels to the new project
- * first. No prompt when there are no open VibeFlow tabs.
+ * On a project switch, close the previous project's VibeFlow panels (#2717,
+ * #4031). The extension is single-active-project, so every open project-scoped
+ * VibeFlow webview belongs to the project being left. No prompt: a switch means
+ * the whole context changes (design doc #627 D3). Code editors and terminals,
+ * the VibeFlow CLI included, are never webviews, so they are never closed.
+ * Call this BEFORE applying the switch so the `onSwitched` refresh doesn't
+ * repurpose the panels to the new project first.
  */
-export async function confirmAndCloseOldProjectTabs(oldProjectName: string): Promise<void> {
-  const oldTabs = collectVibeflowWebviewTabs();
+export async function closeOldProjectTabs(): Promise<void> {
+  const oldTabs = collectProjectScopedWebviewTabs();
   if (oldTabs.length === 0) { return; }
-  const choice = await vscode.window.showWarningMessage(
-    `Close ${oldTabs.length} open tab${oldTabs.length === 1 ? '' : 's'} from "${oldProjectName}"?`,
-    { modal: true, detail: 'These VibeFlow panels are scoped to the project you are leaving.' },
-    'Close Tabs',
-  );
-  if (choice === 'Close Tabs') {
-    try {
-      const closed = await vscode.window.tabGroups.close(oldTabs, true);
-      if (!closed) {
-        vscode.window.showWarningMessage('VibeFlow: VS Code did not close all old project tabs.');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      vscode.window.showWarningMessage(`VibeFlow: could not close old project tabs — ${message}`);
+  try {
+    const closed = await vscode.window.tabGroups.close(oldTabs, true);
+    if (!closed) {
+      vscode.window.showWarningMessage('VibeFlow: VS Code did not close all old project tabs.');
     }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    vscode.window.showWarningMessage(`VibeFlow: could not close old project tabs — ${message}`);
   }
 }
 
-export async function confirmAndCloseTabsForProjectSwitch(
+export async function closeTabsForProjectSwitch(
   current: DetectedProject | undefined,
   nextProjectId: number,
 ): Promise<void> {
-  if (!shouldOfferCloseForProjectSwitch(current, nextProjectId)) { return; }
-  await confirmAndCloseOldProjectTabs(current.projectName);
+  if (!isProjectSwitch(current, nextProjectId)) { return; }
+  await closeOldProjectTabs();
 }
 
-export function shouldOfferCloseForProjectSwitch(
+export function isProjectSwitch(
   current: DetectedProject | undefined,
   nextProjectId: number,
-): current is DetectedProject {
+): boolean {
   return !!current && current.projectId !== nextProjectId;
 }
 
 /**
- * All open editor tabs backed by a VibeFlow webview panel (dashboard, kanban,
- * tickets, compliance, brainstorm, work-item, session chat, settings). VS Code
- * prefixes extension webview view types (e.g. `mainThreadWebview-vibeflow.…`),
- * so match on the `vibeflow.` segment. Excludes sidebar tree views and the
- * Activity Feed webview-view — those aren't editor tabs and never appear here.
+ * All open editor tabs backed by a project-scoped VibeFlow webview panel
+ * (dashboard, kanban, tickets, compliance, brainstorm, work-item, session
+ * chat). Excludes sidebar tree views and the Activity Feed webview-view —
+ * those aren't editor tabs and never appear here.
  */
-function collectVibeflowWebviewTabs(): vscode.Tab[] {
+function collectProjectScopedWebviewTabs(): vscode.Tab[] {
   const tabs: vscode.Tab[] = [];
   for (const group of vscode.window.tabGroups?.all ?? []) {
     for (const tab of group.tabs) {
-      if (isVibeflowWebviewTabInput(tab.input)) {
+      if (isProjectScopedWebviewTabInput(tab.input)) {
         tabs.push(tab);
       }
     }
@@ -169,10 +163,19 @@ function collectVibeflowWebviewTabs(): vscode.Tab[] {
   return tabs;
 }
 
-export function isVibeflowWebviewTabInput(input: unknown): boolean {
+const SETTINGS_VIEW_TYPE = 'vibeflow.settings';
+
+/**
+ * Structural check (no `instanceof`): webview tab inputs carry a `viewType`;
+ * text editors and terminals do not. Settings is a VibeFlow webview but is
+ * not project-scoped, and a project can be switched from inside it.
+ */
+export function isProjectScopedWebviewTabInput(input: unknown): boolean {
   if (!input || typeof input !== 'object') { return false; }
   const viewType = (input as { viewType?: unknown }).viewType;
-  return typeof viewType === 'string' && isVibeflowWebviewViewType(viewType);
+  return typeof viewType === 'string'
+    && isVibeflowWebviewViewType(viewType)
+    && !viewType.endsWith(SETTINGS_VIEW_TYPE);
 }
 
 export function isVibeflowWebviewViewType(viewType: string): boolean {
