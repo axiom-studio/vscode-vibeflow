@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
+import { randomUUID } from 'crypto';
 import { getNonce } from '../../utils/nonce.js';
 import type { VibeFlowClient } from '../../api/client.js';
-import type { PRReviewFinding } from '../../api/prReviewTypes.js';
+import type { PRReviewFinding, PRReviewSummary } from '../../api/prReviewTypes.js';
 import {
   assertNever,
   type PRReviewPageClientMessage,
@@ -24,6 +25,8 @@ const MAX_FINDINGS = 500;
 export class PRReviewPanel {
   private static readonly instances = new Map<string, PRReviewPanel>();
   private lastFetchAt = 0;
+  /** The summary last shown: controls send its version/generation for CAS. */
+  private summary: PRReviewSummary | undefined;
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
@@ -84,15 +87,65 @@ export class PRReviewPanel {
       case 'prReviewOpenPullRequest':
         if (this.prUrl) { await vscode.env.openExternal(vscode.Uri.parse(this.prUrl)); }
         return;
+      case 'prReviewRequest':
+      case 'prReviewControl':
+      case 'prReviewRetryPublication':
+      case 'prReviewFindingControl':
+        await this.control(msg);
+        return;
       default:
         assertNever(msg);
     }
+  }
+
+  /**
+   * Run one control against the summary on screen. The server re-checks
+   * permission and state (and refuses a stale version with 409 "Review
+   * changed; refresh"), so the panel always reloads afterwards.
+   */
+  private async control(msg: Extract<PRReviewPageClientMessage, { type: 'prReviewRequest' | 'prReviewControl' | 'prReviewRetryPublication' | 'prReviewFindingControl' }>): Promise<void> {
+    const summary = this.summary;
+    if (!summary) { return; }
+    const job = summary.review;
+    const request_id = randomUUID();
+    try {
+      switch (msg.type) {
+        case 'prReviewRequest':
+          await this.client.requestPRReview(this.projectId, { provider: job.provider, repository_link_id: job.repository_link_id, number: job.number, request_id });
+          vscode.window.showInformationMessage(`VibeFlow: review requested for #${job.number}.`);
+          break;
+        case 'prReviewControl':
+          await this.client.controlPRReview(this.projectId, job.id, {
+            request_id, expected_version: job.version, action: msg.payload.action,
+            additional_rounds: msg.payload.action === 'pause' ? 0 : msg.payload.additionalRounds, reason: msg.payload.reason,
+          });
+          vscode.window.showInformationMessage(`VibeFlow: review ${msg.payload.action === 'pause' ? 'paused' : 'continued'} for #${job.number}.`);
+          break;
+        case 'prReviewRetryPublication':
+          if (!summary.publication) { return; }
+          await this.client.retryPRReviewPublication(this.projectId, job.id, { request_id, expected_generation: summary.publication.generation });
+          vscode.window.showInformationMessage(`VibeFlow: PR update retried for #${job.number}.`);
+          break;
+        case 'prReviewFindingControl':
+          await this.client.controlPRReviewFinding(this.projectId, job.id, msg.payload.findingId, {
+            request_id, expected_version: job.version, action: msg.payload.action, reason: msg.payload.reason,
+            ...(msg.payload.action === 'reopen' ? { evidence: msg.payload.evidence ?? '' } : {}),
+          });
+          break;
+        default:
+          assertNever(msg);
+      }
+    } catch (err) {
+      vscode.window.showErrorMessage(`VibeFlow: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    await this.load();
   }
 
   private async load(): Promise<void> {
     this.lastFetchAt = Date.now();
     try {
       const summary = await this.client.getPRReviewSummary(this.projectId, this.jobId);
+      this.summary = summary;
       const findings: PRReviewFinding[] = [];
       let after = '';
       do {
