@@ -1074,6 +1074,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       // session_id (from the dashboard Live topology click).
       const session = id ? (sessionsProvider.getSessionById(id) ?? sessionsProvider.getSessionBySessionId(id)) : undefined;
       if (session) { sessionPanelManager.open(session); }
+      // Another project's agent: switch to its project first (#5747).
+      else if (id && sessionsProvider.getAnySessionById(id)) { void vscode.commands.executeCommand('vibeflow.openSessionInProject', id); }
       else { vscode.window.showInformationMessage('VibeFlow: Session not found — it may have expired'); }
     }),
     vscode.commands.registerCommand('vibeflow.openAgentActivity', () => {
@@ -1385,6 +1387,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       BrainstormPanel.open(context.extensionUri, client, project.projectId, project.projectName, pollingCoordinator);
+    }),
+    vscode.commands.registerCommand('vibeflow.openSessionInProject', async (id?: string) => {
+      // Agent Fleet shows every project's agents (#4032); a session's chat
+      // needs its own project's context, so switch first, then open it.
+      const session = id ? sessionsProvider.getAnySessionById(id) : undefined;
+      if (!session || !id) { return; }
+      const projects = await client.listProjects().catch(() => []);
+      const target = projects.find(p => p.id === session.project_id);
+      if (!target) {
+        vscode.window.showWarningMessage(`VibeFlow: project #${session.project_id} is not available to you.`);
+        return;
+      }
+      const choice = await vscode.window.showInformationMessage(
+        `This agent works on "${target.name}". Switch to that project to open its chat?`,
+        { modal: true },
+        'Switch Project',
+      );
+      if (choice !== 'Switch Project') { return; }
+      const previous = detector.getCachedProject();
+      await closeTabsForProjectSwitch(previous, target.id);
+      const detected = {
+        projectId: target.id,
+        projectName: target.name,
+        gitRemoteUrl: target.git_remote_url ?? previous?.gitRemoteUrl ?? '',
+        gitBranch: await detector.getGitBranch(),
+      };
+      await detector.cacheProject(detected);
+      connectToProject(detected);
+      await vscode.commands.executeCommand('vibeflow.openSessionPanel', id);
     }),
     vscode.commands.registerCommand('vibeflow.openPrReview', (id?: string) => {
       // Vera's review panel for a tracked PR (#4040).
