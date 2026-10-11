@@ -1,5 +1,58 @@
 import { describe, it, expect } from 'vitest';
-import { buildCliLaunchArgs, buildCliLaunchCommand, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+import * as path from 'path';
+import { buildCliLaunchArgs, buildCliLaunchCommand, cliLaunchCwd, cliPidLockPath, hasCliLaunchOptions, parseCliVersion } from './cliCommands.js';
+
+// Mirrors vibeflow-cli PIDLockPath(): <root>/vibeflow.pid with
+// --root > VIBEFLOW_ROOT > ~/.vibeflow-cli (issue #5742).
+describe('cliPidLockPath', () => {
+  const home = path.resolve('/home/u');
+  const cwd = path.resolve('/work/repo');
+
+  it('defaults to ~/.vibeflow-cli when no root is set', () => {
+    expect(cliPidLockPath(undefined, cwd, {}, home)).toBe(path.join(home, '.vibeflow-cli', 'vibeflow.pid'));
+  });
+
+  it('treats a blank root path as unset', () => {
+    expect(cliPidLockPath('   ', cwd, {}, home)).toBe(path.join(home, '.vibeflow-cli', 'vibeflow.pid'));
+  });
+
+  it('uses VIBEFLOW_ROOT when no root path is configured', () => {
+    const envRoot = path.resolve('/srv/vf');
+    expect(cliPidLockPath('', cwd, { VIBEFLOW_ROOT: envRoot }, home)).toBe(path.join(envRoot, 'vibeflow.pid'));
+  });
+
+  it('prefers the configured root path over VIBEFLOW_ROOT', () => {
+    const root = path.resolve('/opt/vf-root');
+    expect(cliPidLockPath(root, cwd, { VIBEFLOW_ROOT: path.resolve('/srv/vf') }, home)).toBe(path.join(root, 'vibeflow.pid'));
+  });
+
+  it('resolves a relative root against the launch cwd', () => {
+    expect(cliPidLockPath('.vf', cwd, {}, home)).toBe(path.join(cwd, '.vf', 'vibeflow.pid'));
+  });
+  // PR #2 finding: in a window with no folder the terminal starts in $HOME,
+  // so a relative root must resolve there, not in the extension host's cwd.
+  it('resolves a relative root in an empty window to the terminal home dir', () => {
+    const launchCwd = cliLaunchCwd(undefined, home);
+    expect(cliPidLockPath('.vibeflow-cli', launchCwd, {}, home)).toBe(path.join(home, '.vibeflow-cli', 'vibeflow.pid'));
+  });
+});
+
+describe('cliLaunchCwd', () => {
+  const home = path.resolve('/home/u');
+  const ws = path.resolve('/work/repo');
+
+  it('uses the workspace root when it exists', () => {
+    expect(cliLaunchCwd(ws, home, () => true)).toBe(ws);
+  });
+
+  it('falls back to home when there is no workspace folder', () => {
+    expect(cliLaunchCwd(undefined, home, () => true)).toBe(home);
+  });
+
+  it('falls back to home when the workspace root no longer exists', () => {
+    expect(cliLaunchCwd(ws, home, () => false)).toBe(home);
+  });
+});
 
 describe('parseCliVersion', () => {
   it('extracts the version from the first line of `vibeflow version`', () => {
