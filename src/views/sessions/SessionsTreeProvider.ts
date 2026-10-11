@@ -339,13 +339,11 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       });
     }
 
-    // Probe local tmux only when CLI mode is on. The probe is sync but
-    // tmux list-sessions on a non-server returns within milliseconds;
-    // capped at 2s in the helper so a hung tmux server can't block the
-    // poll loop. Outside CLI mode, set undefined so deriveStatus uses
-    // the legacy 3-state path.
-    const cliEnabled = vscode.workspace.getConfiguration('vibeflow').get<boolean>('cli.enabled', true);
-    this.liveTmuxSessions = cliEnabled ? getLiveTmuxSessions() : undefined;
+    // Probe the CLI's local tmux sessions (the CLI is the only launch path,
+    // #4034). The probe is sync but tmux list-sessions on a non-server
+    // returns within milliseconds; capped at 2s in the helper so a hung
+    // tmux server can't block the poll loop.
+    this.liveTmuxSessions = getLiveTmuxSessions();
 
     this._onDidChangeTreeData.fire();
   }
