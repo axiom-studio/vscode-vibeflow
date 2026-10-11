@@ -3,6 +3,8 @@ import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsT
 import { ConnectionTab, type ConnectionChecks } from './ConnectionTab';
 import { DisplayTab } from './DisplayTab';
 import { AboutTab } from './AboutTab';
+import { ProjectTab } from './ProjectTab';
+import type { ProjectSettingsData } from '../../../../src/core/webviewMessages';
 import { GitConfigTab } from './GitConfigTab';
 import { CLOUD_RUNNERS_BUILD_ENABLED } from '../../../../src/api/cloudRunners';
 import { getVsCodeApi } from '../../vscodeApi';
@@ -46,12 +48,19 @@ const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   { id: 'about',         label: 'About',            Icon: InfoIcon },
 ] as const;
 
-type TabId = typeof TABS[number]['id'];
+type TabId = string;
+
+/** Admin-only (#4036): inserted before About when the server says the caller can manage. */
+const PROJECT_TAB = { id: 'project', label: 'Project', Icon: LockIcon } as const;
 
 export function SettingsView() {
   const [activeTab, setActiveTab] = useState<TabId>(TABS[0].id);
   const [data, setData] = useState<SettingsData | null>(null);
   const [checks, setChecks] = useState<ConnectionChecks>({});
+  const [projectSettings, setProjectSettings] = useState<ProjectSettingsData | null>(null);
+  const tabs = projectSettings?.canManage
+    ? [...TABS.filter(t => t.id !== 'about'), PROJECT_TAB, ...TABS.filter(t => t.id === 'about')]
+    : TABS;
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<SettingsMessage>) {
@@ -65,9 +74,13 @@ export function SettingsView() {
           ? { ...c, serverUrl: { url: url ?? '', valid, message } }
           : { ...c, apiKey: { valid, message } });
       }
+      if (msg.type === 'projectSettingsData') {
+        setProjectSettings(msg.payload);
+      }
     }
     window.addEventListener('message', handleMessage);
     vscode.postMessage({ type: 'getSetting' });
+    vscode.postMessage({ type: 'projectSettingsLoad' });
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
@@ -162,7 +175,7 @@ export function SettingsView() {
         padding: '0 32px',
         flexShrink: 0,
       }}>
-        {TABS.map(tab => {
+        {tabs.map(tab => {
           const Icon = tab.Icon;
           const active = activeTab === tab.id;
           return (
@@ -208,6 +221,9 @@ export function SettingsView() {
           )}
           {activeTab === 'display' && (
             <DisplayTab data={data} onUpdate={updateSetting} />
+          )}
+          {activeTab === 'project' && projectSettings?.canManage && (
+            <ProjectTab key={projectSettings.projectId ?? 0} data={projectSettings} onCommand={sendCommand} />
           )}
           {activeTab === 'about' && (
             <AboutTab data={data} />

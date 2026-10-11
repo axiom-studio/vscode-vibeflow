@@ -1,6 +1,8 @@
 // Typed postMessage protocol for extension <-> webview communication.
 // This abstraction allows swapping transport (postMessage -> gRPC) without touching consumers.
 
+import type { PRReviewSummary } from './prReviewTypes.js';
+
 export type MessageType =
   | 'activityEntry'
   | 'activityEntries'
@@ -580,6 +582,10 @@ export interface VibeFlowPullRequest {
   deletions?: number;
   changed_files?: number;
   commits?: number;
+  draft?: boolean;
+  /** Set when Vera tracks this PR (ListProjectPRs embeds the review, #4039). */
+  review_job_id?: string;
+  review_summary?: PRReviewSummary;
 }
 
 /** A brainstorm session. `status`: setup | seeding | active | converging | done | cancelled. */
