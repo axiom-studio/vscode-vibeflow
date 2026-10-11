@@ -11,7 +11,6 @@ import { persistEffectiveSetting } from './settingsPersistence.js';
 import { setCloudRunnerDebug, isCloudRunnerDebugEnabled } from '../../util/cloudRunnerLog.js';
 import { mcpAgentStatuses } from '../../commands/cliBootstrap.js';
 import { cliNeedsWsl } from '../../commands/cliPlatform.js';
-import { getProvider, launchableProviders, isProviderInstalled } from '../../providers/registry.js';
 import { closeTabsForProjectSwitch } from '../../commands/projectCommands.js';
 
 /**
@@ -40,17 +39,6 @@ export interface SettingsPanelDeps {
   onProjectSwitched?: (project: DetectedProject) => void;
 }
 
-/**
- * Provider key → env-var name. Codex uses `MCP_TOKEN` (per the agent
- * binary's CLI contract); Gemini uses `GEMINI_API_KEY`. Read from
- * `providers/registry.ts` (issue #4633) so the message handlers and the
- * snapshot reader can't drift on the literal string. Returning undefined
- * means the provider has no env-token surface (claude, cursor) and the UI
- * hides the row.
- */
-function providerEnvName(provKey: string): string | undefined {
-  return getProvider(provKey)?.envTokenName;
-}
 
 /**
  * Manages the Settings Webview Panel in the editor area.
@@ -164,11 +152,9 @@ export class SettingsPanel {
           // here silently no-op, which is what bit us on worktree.* and
           // notifications.workItemComplete during the settings audit.
           const settingsKeys = [
-            'serverUrl', 'defaultProvider', 'polling.interval', 'polling.liveInterval',
+            'serverUrl', 'polling.interval', 'polling.liveInterval',
             'notifications.agentPrompts', 'notifications.workItemComplete',
-            'session.terminalMode', 'session.headlessBacking',
-            'worktree.baseDir', 'worktree.autoCreate', 'worktree.cleanupOnKill',
-            'cli.enabled', 'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
+            'cli.binaryPath', 'cli.mcpName', 'cli.rootPath',
             'chat.diffView',
           ];
 
@@ -227,50 +213,6 @@ export class SettingsPanel {
             vscode.window.showInformationMessage('VibeFlow: API key updated');
             await pushSettings();
           }
-          break;
-        }
-        case 'setProviderToken': {
-          const provKey = msg.payload.provider;
-          const envName = providerEnvName(provKey);
-          if (!envName) {
-            vscode.window.showWarningMessage(`VibeFlow: provider ${provKey} has no env-token surface`);
-            break;
-          }
-          if (!deps.secrets) {
-            vscode.window.showWarningMessage('VibeFlow: secret storage unavailable — token not saved');
-            break;
-          }
-          const token = await vscode.window.showInputBox({
-            prompt: `Enter ${envName}`,
-            placeHolder: envName,
-            password: true,
-            ignoreFocusOut: true,
-          });
-          if (token === undefined) {
-            // User cancelled — don't touch storage.
-            break;
-          }
-          if (token === '') {
-            // Treat empty input as a clear to keep keyboard-only flows
-            // viable (Enter on empty == clear).
-            await deps.secrets.delete(envName);
-            vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
-          } else {
-            await deps.secrets.store(envName, token);
-            vscode.window.showInformationMessage(`VibeFlow: ${envName} saved`);
-          }
-          await pushSettings();
-          break;
-        }
-        case 'clearProviderToken': {
-          const provKey = msg.payload.provider;
-          const envName = providerEnvName(provKey);
-          if (!envName || !deps.secrets) {
-            break;
-          }
-          await deps.secrets.delete(envName);
-          vscode.window.showInformationMessage(`VibeFlow: ${envName} cleared`);
-          await pushSettings();
           break;
         }
         case 'validateServerUrl': {
@@ -510,22 +452,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     }
   }
 
-  // Per-provider env-token presence — read from Secrets API. Empty (or
-  // missing) means "Not set"; any non-empty stored value flips to "Set".
-  // Only providers with an env-token surface are queried.
-  const providerRows = await Promise.all(
-    launchableProviders().map(async p => ({
-      key: p.key,
-      name: p.name,
-      binary: p.binary,
-      available: isProviderInstalled(p.key),
-      vibeflowIntegrated: p.vibeflowIntegrated,
-      ...(p.envTokenName ? { envTokenName: p.envTokenName } : {}),
-      envTokenSet: p.envTokenName
-        ? !!(deps.secrets && (await deps.secrets.get(p.envTokenName)))
-        : false,
-    })),
-  );
 
   return {
     serverUrl: config.get('serverUrl', 'https://cloud.axiomstudio.ai'),
@@ -535,17 +461,10 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     projectId: cached?.projectId ?? null,
     projectName: cached?.projectName ?? null,
     projects,
-    defaultProvider: config.get('defaultProvider', 'claude'),
-    providers: providerRows,
-    worktreeBaseDir: config.get('worktree.baseDir', '.claude/worktrees'),
-    worktreeAutoCreate: config.get<boolean>('worktree.autoCreate', false),
-    worktreeCleanupOnKill: config.get<'ask' | 'always' | 'never'>('worktree.cleanupOnKill', 'ask'),
     pollInterval: config.get('polling.interval', 30),
     liveInterval: config.get('polling.liveInterval', 5),
     notifyAgentPrompts: config.get('notifications.agentPrompts', true),
     notifyWorkComplete: config.get('notifications.workItemComplete', true),
-    sessionTerminalMode: config.get('session.terminalMode', 'hybrid'),
-    sessionHeadlessBacking: config.get<'auto' | 'tmux' | 'vscode'>('session.headlessBacking', 'auto'),
     chatDiffView: config.get<'unified' | 'split'>('chat.diffView', 'unified'),
     // Diagnostics (#3397/#3398): surfaced in the Settings webview because the
     // package.json declaration only registers on reinstall. State lives in
@@ -555,7 +474,6 @@ async function buildSettingsPayload(deps: SettingsPanelDeps): Promise<Record<str
     // the per-persona TerminalRegistry path or are delegated to the
     // vibeflow CLI's TUI. cliInstalled is computed eagerly so the tab
     // can render install guidance without an extra round-trip.
-    cliEnabled: config.get('cli.enabled', true),
     cliBinaryPath: config.get('cli.binaryPath', ''),
     cliMcpName: config.get('cli.mcpName', ''),
     cliRootPath: config.get('cli.rootPath', ''),

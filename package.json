@@ -548,13 +548,8 @@
           "group": "navigation@99"
         },
         {
-          "command": "vibeflow.launchSession",
-          "when": "view == vibeflow.agentFleet && !config.vibeflow.cli.enabled",
-          "group": "navigation@1"
-        },
-        {
           "command": "vibeflow.openCli",
-          "when": "view == vibeflow.agentFleet && config.vibeflow.cli.enabled",
+          "when": "view == vibeflow.agentFleet",
           "group": "navigation@1"
         },
         {
@@ -687,7 +682,7 @@
         },
         "key": "ctrl+q",
         "mac": "ctrl+q",
-        "when": "terminalFocus && config.vibeflow.cli.enabled"
+        "when": "terminalFocus"
       },
       {
         "command": "workbench.action.terminal.sendSequence",
@@ -696,7 +691,7 @@
         },
         "key": "ctrl+\\",
         "mac": "ctrl+\\",
-        "when": "terminalFocus && config.vibeflow.cli.enabled"
+        "when": "terminalFocus"
       }
     ],
     "walkthroughs": [
@@ -781,16 +776,6 @@
           "default": false,
           "description": "Log Cloud Runners API calls (method, path, status, and response shape — never request bodies or secrets) to the 'VibeFlow Cloud Runners' output channel. Use to diagnose Cloud Runner / git-provider failures."
         },
-        "vibeflow.defaultProvider": {
-          "type": "string",
-          "default": "claude",
-          "description": "Default agent provider"
-        },
-        "vibeflow.cli.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use the VibeFlow CLI (TUI) for session management instead of per-persona VS Code terminals. This is the default — the left sidebar still shows live agent state and clicking an agent opens its chat. Requires the `vibeflow` binary on PATH (the extension offers a one-click install). Turn this off to launch agents in per-persona VS Code terminals instead."
-        },
         "vibeflow.cli.binaryPath": {
           "type": "string",
           "default": "",
@@ -850,36 +835,6 @@
           "default": true,
           "description": "Show notifications when work items complete"
         },
-        "vibeflow.session.terminalMode": {
-          "type": "string",
-          "default": "hybrid",
-          "enum": [
-            "hybrid",
-            "all",
-            "none"
-          ],
-          "enumDescriptions": [
-            "Code agents (Dev/Arch/PE) visible, advisory agents hidden",
-            "All agent terminals visible",
-            "All agent terminals hidden (background only)"
-          ],
-          "description": "Controls terminal visibility when launching agent sessions"
-        },
-        "vibeflow.session.headlessBacking": {
-          "type": "string",
-          "default": "auto",
-          "enum": [
-            "auto",
-            "tmux",
-            "vscode"
-          ],
-          "enumDescriptions": [
-            "tmux when available (Mac / Linux with tmux installed), otherwise a hidden VS Code terminal. Recommended — tmux is the only backing that supports multi-turn chat today.",
-            "Always use tmux (Unix only; ignored on Windows). Agent survives IDE restart; attach via `tmux -L vibeflow-headless attach -t <name>`",
-            "Always use a hidden VS Code terminal — chat-first agent is tied to this IDE window's lifetime AND only handles a single chat turn before exiting"
-          ],
-          "description": "Runtime backing for chat-first / headless agent sessions. 'auto' picks tmux when available (multi-turn chat works) and falls back to a hidden VS Code terminal (single-turn only). 'tmux' lets the agent survive IDE restart and be observed via `tmux -L vibeflow-headless attach -t <name>` from any terminal. 'vscode' forces the IDE-tied single-turn backing."
-        },
         "vibeflow.chat.diffView": {
           "type": "string",
           "enum": [
@@ -893,26 +848,6 @@
           "type": "boolean",
           "default": true,
           "description": "Show a button in the chat-first Session Chat header that opens this session's tmux shell in a VSCode integrated terminal (tmux -L vibeflow-headless attach -t <name>), so you can watch or step through the raw agent exchange for debugging. Only appears for chat-first sessions backed by tmux. Enabled by default."
-        },
-        "vibeflow.worktree.baseDir": {
-          "type": "string",
-          "default": ".claude/worktrees",
-          "description": "Subdirectory (relative to the workspace root) where the extension creates git worktrees for cross-branch agent sessions."
-        },
-        "vibeflow.worktree.autoCreate": {
-          "type": "boolean",
-          "default": false,
-          "description": "Automatically create a git worktree when launching a session against a branch that doesn't already have one."
-        },
-        "vibeflow.worktree.cleanupOnKill": {
-          "type": "string",
-          "enum": [
-            "ask",
-            "always",
-            "never"
-          ],
-          "default": "ask",
-          "description": "Cleanup policy when an agent session ends. 'ask' prompts every time; 'always' deletes the worktree; 'never' keeps it for follow-up work."
         }
       }
     }

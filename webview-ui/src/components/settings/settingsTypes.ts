@@ -1,15 +1,5 @@
 // Settings data model — mirrors CLI config.go
 
-export interface ProviderConfig {
-  key: string;
-  name: string;
-  binary: string;
-  available: boolean;
-  vibeflowIntegrated: boolean;
-  envTokenName?: string; // e.g., "MCP_TOKEN" for codex, "GEMINI_API_KEY" for gemini
-  envTokenSet: boolean;
-}
-
 export interface SettingsData {
   // Connection
   serverUrl: string;
@@ -20,20 +10,9 @@ export interface SettingsData {
   projectName: string | null;
   projects: { id: number; name: string }[];
 
-  // Providers
-  defaultProvider: string;
-  providers: ProviderConfig[];
-
-  // Worktree
-  worktreeBaseDir: string;
-  worktreeAutoCreate: boolean;
-  worktreeCleanupOnKill: 'ask' | 'always' | 'never';
-
   // Session
   pollInterval: number;
   liveInterval: number;
-  sessionTerminalMode?: string;
-  sessionHeadlessBacking?: 'auto' | 'tmux' | 'vscode';
 
   // Notifications
   notifyAgentPrompts: boolean;
@@ -47,7 +26,6 @@ export interface SettingsData {
   cloudRunnersDebug?: boolean;
 
   // CLI Interface
-  cliEnabled: boolean;
   cliBinaryPath: string;
   cliMcpName: string;
   cliRootPath: string;

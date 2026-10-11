@@ -1,17 +1,14 @@
 import { useState, useEffect, type ComponentType } from 'react';
 import type { SettingsData, SettingsMessage, SettingsCommand } from './settingsTypes';
 import { ConnectionTab } from './ConnectionTab';
-import { ProvidersTab } from './ProvidersTab';
-import { SessionDefaultsTab } from './SessionDefaultsTab';
-import { WorktreesTab } from './WorktreesTab';
-import { NotificationsTab } from './NotificationsTab';
+import { DisplayTab } from './DisplayTab';
 import { AboutTab } from './AboutTab';
 import { GitConfigTab } from './GitConfigTab';
 import { CLOUD_RUNNERS_BUILD_ENABLED } from '../../../../src/api/cloudRunners';
 import { getVsCodeApi } from '../../vscodeApi';
 import {
-  PlugIcon, CpuIcon, SlidersIcon, GitBranchIcon,
-  BellIcon, InfoIcon, LockIcon,
+  PlugIcon, SlidersIcon,
+  InfoIcon, LockIcon,
 } from '../_shared/icons';
 
 const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void };
@@ -31,18 +28,12 @@ const vscode = getVsCodeApi() as { postMessage: (msg: SettingsCommand) => void }
 const CONFIG_KEY_TO_FIELD: Record<string, string> = {
   'polling.interval': 'pollInterval',
   'polling.liveInterval': 'liveInterval',
-  'session.terminalMode': 'sessionTerminalMode',
-  'session.headlessBacking': 'sessionHeadlessBacking',
   'session.reattachMode': 'sessionReattachMode',
   'notifications.agentPrompts': 'notifyAgentPrompts',
   'notifications.workItemComplete': 'notifyWorkComplete',
-  'cli.enabled': 'cliEnabled',
   'cli.binaryPath': 'cliBinaryPath',
   'cli.mcpName': 'cliMcpName',
   'cli.rootPath': 'cliRootPath',
-  'worktree.baseDir': 'worktreeBaseDir',
-  'worktree.autoCreate': 'worktreeAutoCreate',
-  'worktree.cleanupOnKill': 'worktreeCleanupOnKill',
   'chat.diffView': 'chatDiffView',
   'cloudRunners.debug': 'cloudRunnersDebug',
 };
@@ -51,12 +42,9 @@ type TabIcon = ComponentType<{ size?: number }>;
 
 const TABS: ReadonlyArray<{ id: string; label: string; Icon: TabIcon }> = [
   { id: 'connection',    label: 'Connection',       Icon: PlugIcon },
-  { id: 'providers',     label: 'Providers',        Icon: CpuIcon },
   // Git Configuration exists for Cloud Runners — hidden with the build switch (#2833).
   ...(CLOUD_RUNNERS_BUILD_ENABLED ? [{ id: 'git', label: 'Git Configuration', Icon: LockIcon }] : []),
-  { id: 'session',       label: 'Session Defaults', Icon: SlidersIcon },
-  { id: 'worktrees',     label: 'Worktrees',        Icon: GitBranchIcon },
-  { id: 'notifications', label: 'Notifications',    Icon: BellIcon },
+  { id: 'display',       label: 'Display',          Icon: SlidersIcon },
   { id: 'about',         label: 'About',            Icon: InfoIcon },
 ] as const;
 
@@ -208,20 +196,11 @@ export function SettingsView() {
           {activeTab === 'connection' && (
             <ConnectionTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
           )}
-          {activeTab === 'providers' && (
-            <ProvidersTab data={data} onUpdate={updateSetting} onCommand={sendCommand} />
-          )}
           {activeTab === 'git' && (
             <GitConfigTab onCommand={sendCommand} cloudRunnersDebug={data.cloudRunnersDebug ?? false} onUpdate={updateSetting} />
           )}
-          {activeTab === 'session' && (
-            <SessionDefaultsTab data={data} onUpdate={updateSetting} />
-          )}
-          {activeTab === 'worktrees' && (
-            <WorktreesTab data={data} onUpdate={updateSetting} />
-          )}
-          {activeTab === 'notifications' && (
-            <NotificationsTab data={data} onUpdate={updateSetting} />
+          {activeTab === 'display' && (
+            <DisplayTab data={data} onUpdate={updateSetting} />
           )}
           {activeTab === 'about' && (
             <AboutTab data={data} />

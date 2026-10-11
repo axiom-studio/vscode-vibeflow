@@ -129,8 +129,6 @@ export class ActivityFeedProvider implements vscode.WebviewViewProvider {
         case 'validateServerUrl':
         case 'validateApiKey':
         case 'setApiKey':
-        case 'setProviderToken':
-        case 'clearProviderToken':
         case 'selectProject':
         case 'refreshProjects':
           // Settings commands — delegated to extension host via event
