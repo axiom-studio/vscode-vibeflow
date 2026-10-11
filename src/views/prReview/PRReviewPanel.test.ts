@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { VibeFlowClient } from '../../api/client.js';
 import type { PRReviewSummary } from '../../api/prReviewTypes.js';
 import type { PRReviewPageHostMessage } from '../../core/webviewMessages.js';
-import { PRReviewPanel } from './PRReviewPanel.js';
+import { PRReviewPanel, findRepoRoot } from './PRReviewPanel.js';
 
-const summaryAt = (version: number) => ({ review: { id: 'job', version, number: 11, provider: 'github', repository_link_id: 46 } } as unknown as PRReviewSummary);
+const summaryAt = (version: number) => ({ review: { id: 'job', version, number: 11, provider: 'github', repository_link_id: 46, details: { head_clone_url: '' } } } as unknown as PRReviewSummary);
 
 /** A panel over a fake webview and a client whose summary/findings calls the test resolves by hand. */
 function harness() {
@@ -57,5 +57,21 @@ describe('PRReviewPanel controls', () => {
     void h.dismiss(stale);
     await h.tick();
     expect(h.decisions).toEqual([]);
+  });
+});
+
+describe('findRepoRoot', () => {
+  const repos = [
+    { rootUri: { fsPath: '/w/other' }, state: { remotes: [{ fetchUrl: 'git@github.com:acme/other.git' }] } },
+    { rootUri: { fsPath: '/w/repo' }, state: { remotes: [{ fetchUrl: 'git@github.com:Axiom-Studio/vscode-vibeflow.git' }] } },
+  ];
+
+  it('returns the root of the repository whose remote matches the reviewed clone URL', () => {
+    // A subfolder workspace (/w/repo/src) still resolves finding paths against /w/repo.
+    expect(findRepoRoot(repos, ['https://github.com/axiom-studio/vscode-vibeflow.git'])).toBe('/w/repo');
+  });
+
+  it('returns undefined when the reviewed repository is not open', () => {
+    expect(findRepoRoot(repos, ['https://github.com/acme/missing.git'])).toBeUndefined();
   });
 });

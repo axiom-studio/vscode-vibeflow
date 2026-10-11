@@ -80,8 +80,6 @@ export type ActivityFeedClientMessage =
   | { type: 'validateServerUrl'; payload: string }
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
-  | { type: 'setProviderToken'; payload: { provider: string } }
-  | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
   // Click-to-open from inside an activity entry's content text — same
@@ -113,8 +111,6 @@ export type SettingsClientMessage =
   | { type: 'validateServerUrl'; payload: string }
   | { type: 'validateApiKey'; payload: string }
   | { type: 'setApiKey'; payload: string }
-  | { type: 'setProviderToken'; payload: { provider: string } }
-  | { type: 'clearProviderToken'; payload: { provider: string } }
   | { type: 'selectProject'; payload: number }
   | { type: 'refreshProjects' }
   | { type: 'openCli'; payload: { mcpName: string; rootPath: string } }

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createProcessTerminal } from '../sessions/terminalLaunch.js';
+import { cliNeedsWsl, showCliNeedsWsl } from './cliPlatform.js';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
 
@@ -38,19 +39,35 @@ export function cliLaunchCwd(
 }
 
 /**
- * Path of the PID lock a CLI launched with `rootPath` in `cwd` would hold.
- * Mirrors vibeflow-cli's `PIDLockPath()` = `<RootDir()>/vibeflow.pid`, where
- * `RootDir()` is `--root` > `VIBEFLOW_ROOT` > `~/.vibeflow-cli`. A relative
- * root resolves against `cwd`, as it does in Go.
+ * The state directory a CLI launched with `rootPath` in `cwd` uses: config,
+ * sessions and PID lock. Mirrors vibeflow-cli's `RootDir()`: `--root` >
+ * `VIBEFLOW_ROOT` > `~/.vibeflow-cli`. A relative root resolves against
+ * `cwd`, as it does in Go.
  */
-export function cliPidLockPath(
+export function cliRootDir(
   rootPath: string | undefined,
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
   home: string = os.homedir(),
 ): string {
   const root = rootPath?.trim() || env.VIBEFLOW_ROOT || path.join(home, '.vibeflow-cli');
-  return path.resolve(cwd, root, 'vibeflow.pid');
+  return path.resolve(cwd, root);
+}
+
+/** The PID lock that CLI would hold: vibeflow-cli `PIDLockPath()`. */
+export function cliPidLockPath(
+  rootPath: string | undefined,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = os.homedir(),
+): string {
+  return path.join(cliRootDir(rootPath, cwd, env, home), 'vibeflow.pid');
+}
+
+/** The config.yaml the CLI opened from this window (Open CLI) would read. */
+export function currentCliConfigPath(): string {
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return path.join(cliRootDir(readCliLaunchOptions().rootPath, cliLaunchCwd(workspaceRoot)), 'config.yaml');
 }
 
 /**
@@ -227,6 +244,14 @@ export function buildCliLaunchCommand(
  * exit so the next run starts fresh.
  */
 export async function openCli(workspaceRoot: string | undefined, launchOptions?: CliLaunchOptions): Promise<void> {
+  // Every CLI launch route funnels through here (Open CLI, Launch Session,
+  // its keybinding and the chat button), so the native-Windows guard lives
+  // here rather than on one command (#4035, PR #4 review finding).
+  if (cliNeedsWsl(process.platform, vscode.env.remoteName)) {
+    logCli('blocked: native Windows window; the CLI needs WSL (tmux).');
+    await showCliNeedsWsl();
+    return;
+  }
   const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
   if (existing) {
     existing.show(false); // take focus
@@ -330,9 +355,9 @@ function shellQuote(arg: string, platform: NodeJS.Platform): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
-// Helper for callers that want to detect-and-warn early (e.g. when the
-// user toggles `vibeflow.cli.enabled` to true). Exported separately so
-// settings UI can pre-validate before the user hits "Open CLI".
+// Helper for callers that want to detect-and-warn early. Exported
+// separately so settings UI can pre-validate before the user hits
+// "Open CLI".
 export function isVibeflowInstalled(): boolean {
   return resolveBinary() !== undefined;
 }

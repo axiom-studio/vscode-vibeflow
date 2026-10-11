@@ -18,6 +18,9 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
   private client: VibeFlowClient | undefined;
   private projectId: number | undefined;
   private prs: VibeFlowPullRequest[] = [];
+  /** The project `prs` was fetched for, so a row is never acted on in another project. */
+  private prsProjectId: number | undefined;
+  /** Bumped per fetch; only the latest fetch may replace `prs` or move the notification baseline. */
   private fetchSeq = 0;
   /** Last review label seen per review job; undefined until the first load. */
   private reviewLabels: Map<string, string> | undefined;
@@ -27,6 +30,11 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
 
   connect(client: VibeFlowClient, projectId: number): void {
     this.client = client;
+    if (projectId !== this.projectId) {
+      // Drop the old project's rows now rather than when the new list lands.
+      this.prs = [];
+      this.prsProjectId = undefined;
+    }
     this.projectId = projectId;
     this.reviewLabels = undefined; // a new project starts a new baseline
     void this.fetch();
@@ -41,19 +49,23 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
       this._onDidChangeTreeData.fire();
       return;
     }
-    // Only the latest poll may move the notification baseline: a slower, older
-    // response would roll it back and re-announce a completion.
     const seq = ++this.fetchSeq;
+    const projectId = this.projectId;
+    let prs: VibeFlowPullRequest[] | undefined;
     try {
-      const prs = await this.client.listPullRequests(this.projectId);
-      if (seq !== this.fetchSeq) { return; }
-      this.prs = prs;
-      const { transitions, labels } = reviewTransitions(this.reviewLabels, this.prs);
+      prs = await this.client.listPullRequests(projectId);
+    } catch {
+      prs = undefined;
+    }
+    if (seq !== this.fetchSeq) { return; } // a newer fetch (or project) superseded this one
+    this.prs = prs ?? [];
+    this.prsProjectId = projectId;
+    if (prs) {
+      // Only the latest poll moves the notification baseline: a slower, older
+      // response would roll it back and re-announce a completion.
+      const { transitions, labels } = reviewTransitions(this.reviewLabels, prs);
       this.reviewLabels = labels;
       if (transitions.length) { this._onDidReviewChange.fire(transitions); }
-    } catch {
-      if (seq !== this.fetchSeq) { return; }
-      this.prs = [];
     }
     this._onDidChangeTreeData.fire();
   }
@@ -81,9 +93,10 @@ export class PullRequestsTreeProvider implements vscode.TreeDataProvider<SimpleN
     return pullRequestNode(pr);
   }
 
-  /** The PR behind a tree node, for context-menu commands. */
-  getPullRequest(nodeId: string): VibeFlowPullRequest | undefined {
-    return this.prs.find(pr => pullRequestNodeId(pr) === nodeId);
+  /** The PR behind a tree node and the project it was listed in, for context-menu commands. */
+  getPullRequest(nodeId: string): { pr: VibeFlowPullRequest; projectId: number } | undefined {
+    const pr = this.prs.find(p => pullRequestNodeId(p) === nodeId);
+    return pr && this.prsProjectId !== undefined ? { pr, projectId: this.prsProjectId } : undefined;
   }
 
   dispose(): void {

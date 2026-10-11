@@ -10,16 +10,14 @@ interface Props {
 
 const RELEASES_URL = 'https://github.com/axiom-studio/vibeflow-cli/releases/latest';
 const INSTALL_DOCS_URL = 'https://github.com/axiom-studio/vibeflow-cli#installation';
+// Mirrors WSL_SETUP_URL in src/commands/cliPlatform.ts (the webview cannot import host modules).
+const WSL_SETUP_URL = 'https://learn.microsoft.com/windows/wsl/install';
 
 /**
- * VibeFlow CLI runtime settings — rendered inside the Connection tab (#3113),
- * not a standalone tab anymore. When enabled, session management is delegated
- * to the vibeflow CLI in a fullscreen editor terminal; the left sidebar keeps
- * polling the same backend so the user still sees live state.
- *
- * The toggle just flips the config; the actual gating happens in extension.ts
- * (launchSession short-circuits to openCli) and via
- * `when: config.vibeflow.cli.enabled` clauses in package.json menus.
+ * VibeFlow CLI runtime settings — rendered inside the Connection tab (#3113).
+ * The CLI is the only way agents are launched (design doc #627 D1/D2), so
+ * there is no on/off toggle any more (#4034): this card only gets the binary
+ * installed (or explains WSL on native Windows).
  */
 export function CliSettings({ data, onUpdate, onCommand }: Props) {
   const installed = data.cliInstalled;
@@ -27,15 +25,20 @@ export function CliSettings({ data, onUpdate, onCommand }: Props) {
   return (
     <>
       <Card
-        title="Use VibeFlow CLI"
-        description="When enabled, session launches open the VibeFlow CLI (TUI) in a fullscreen editor terminal instead of spawning per-persona terminals from the extension. The left sidebar still shows live agent state — same backend, different lens."
+        title="VibeFlow CLI"
+        description="Agents run in the VibeFlow CLI, which opens in a fullscreen editor terminal. The sidebar shows the same live state from the same backend."
       >
-        <Toggle
-          checked={data.cliEnabled}
-          onChange={(v) => onUpdate('cli.enabled', v)}
-          label={data.cliEnabled ? 'Enabled' : 'Disabled'}
-        />
-        {data.cliEnabled && !installed && (
+        {data.cliNeedsWsl && (
+          <Banner kind="warning">
+            <strong>The VibeFlow CLI needs WSL on Windows.</strong> It runs agents in tmux, which
+            Windows does not provide. Install WSL and the WSL extension, reopen this folder in
+            WSL, then install the CLI there.
+            <ButtonRow>
+              <LinkBtn href={WSL_SETUP_URL} label="How to Set Up WSL" secondary />
+            </ButtonRow>
+          </Banner>
+        )}
+        {!installed && !data.cliNeedsWsl && (
           <Banner kind="warning">
             <strong>vibeflow binary not found.</strong> Install the latest prebuilt binary in one
             click — we download the matching asset from GitHub Releases into the extension's
@@ -192,43 +195,6 @@ function Card({ title, description, children }: {
       )}
       {!description && <div style={{ height: 10 }} />}
       {children}
-    </div>
-  );
-}
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        style={{
-          position: 'relative', width: 36, height: 20, borderRadius: 10, border: 'none',
-          flexShrink: 0, cursor: 'pointer',
-          // Off-state uses --feed-border (a visible separator color in light,
-          // dark, and high-contrast themes) rather than --vscode-input-background,
-          // which is near-white in light themes and made the OFF toggle vanish
-          // against the light card (#3198). Matches the shared Toggle in _shared.tsx.
-          background: checked ? 'var(--feed-link)' : 'var(--feed-border)',
-          transition: 'background 0.15s',
-        }}
-      >
-        <span style={{
-          position: 'absolute',
-          top: 2,
-          left: checked ? 18 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: '50%',
-          background: 'white',
-          // Drop shadow keeps the white thumb visible even on a light off-track
-          // (e.g. a high-contrast-light theme where --feed-border is faint) — #3198.
-          boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
-          transition: 'left 0.15s',
-        }} />
-      </button>
-      <span style={{ fontSize: 12, color: checked ? 'var(--feed-fg)' : 'var(--feed-muted)' }}>{label}</span>
     </div>
   );
 }
