@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createProcessTerminal } from '../sessions/terminalLaunch.js';
+import { cliNeedsWsl, showCliNeedsWsl } from './cliPlatform.js';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
 
@@ -227,6 +228,14 @@ export function buildCliLaunchCommand(
  * exit so the next run starts fresh.
  */
 export async function openCli(workspaceRoot: string | undefined, launchOptions?: CliLaunchOptions): Promise<void> {
+  // Every CLI launch route funnels through here (Open CLI, Launch Session,
+  // its keybinding and the chat button), so the native-Windows guard lives
+  // here rather than on one command (#4035, PR #4 review finding).
+  if (cliNeedsWsl(process.platform, vscode.env.remoteName)) {
+    logCli('blocked: native Windows window; the CLI needs WSL (tmux).');
+    await showCliNeedsWsl();
+    return;
+  }
   const existing = vscode.window.terminals.find(t => t.name === TERMINAL_NAME);
   if (existing) {
     existing.show(false); // take focus
