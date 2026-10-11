@@ -80,14 +80,15 @@
           "when": "!vibeflow.configured"
         },
         {
-          "id": "vibeflow.agentFleet",
-          "name": "Agent Fleet",
-          "type": "tree",
+          "id": "vibeflow.projectPicker",
+          "name": "Project",
+          "type": "webview",
+          "initialSize": 4,
           "when": "vibeflow.configured"
         },
         {
-          "id": "vibeflow.project",
-          "name": "Project",
+          "id": "vibeflow.agentFleet",
+          "name": "Agent Fleet",
           "type": "tree",
           "when": "vibeflow.configured"
         },
@@ -537,11 +538,6 @@
         }
       ],
       "view/title": [
-        {
-          "command": "vibeflow.pickProject",
-          "when": "view == vibeflow.project",
-          "group": "navigation@1"
-        },
         {
           "command": "vibeflow.openSettings",
           "when": "view == vibeflow.agentFleet",
