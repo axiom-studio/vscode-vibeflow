@@ -12,6 +12,7 @@
  * a message from another panel's protocol.
  */
 
+import type { PRReviewFinding, PRReviewPolicy, PRReviewRepositoryPolicy, PRReviewRepositorySummary, PRReviewSummary, ProjectNotificationSetting } from '../api/prReviewTypes.js';
 import type { ActivityEntry, VibeFlowComment, VibeFlowProgressSnapshot, GitProviderView, CloudRunnerView, RunnerRepo } from '../api/types.js';
 
 /**
@@ -101,7 +102,25 @@ export type SettingsHostMessage =
   | { type: 'gitProvidersData'; payload: { providers: GitProviderView[]; loading?: boolean; error?: string } }
   // Explicit outcome of an add-provider attempt (#3393) so the tab can show it
   // inline instead of relying on an easily-missed toast.
-  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } };
+  | { type: 'gitProviderCreateResult'; payload: { ok: boolean; error?: string } }
+  // Admin-only Project tab (#4036).
+  | { type: 'projectSettingsData'; payload: ProjectSettingsData };
+
+/**
+ * Project tab snapshot (#4036). `canManage` is the server's own answer: the
+ * notifications GET sits behind requireProjectSettingsAccess (owner or org
+ * admin), so a 403 there means the tab stays hidden.
+ */
+export interface ProjectSettingsData {
+  canManage: boolean;
+  projectId: number | null;
+  projectName: string | null;
+  /** Link to the full project settings page on the web. */
+  webUrl: string | null;
+  notifications: ProjectNotificationSetting[];
+  repositories: { repository: PRReviewRepositorySummary; policy: PRReviewRepositoryPolicy | null; error?: string }[];
+  error?: string;
+}
 
 export type SettingsClientMessage =
   | { type: 'closeSettings' }
@@ -122,6 +141,12 @@ export type SettingsClientMessage =
   | { type: 'gitProviderCreate'; payload: { name: string; gitUrl: string; authType: 'pat' | 'ssh'; userName?: string; accessToken?: string; sshPrivateKey?: string } }
   | { type: 'gitProviderRename'; payload: { id: number; name: string } }
   | { type: 'gitProviderDelete'; payload: { id: number; name: string } }
+  // Admin-only Project tab (#4036).
+  | { type: 'projectSettingsLoad' }
+  // Project-tab saves name the project whose settings were displayed; the host
+  // refuses them if the active project has changed since.
+  | { type: 'projectNotificationsSave'; payload: { projectId: number; settings: ProjectNotificationSetting[] } }
+  | { type: 'prReviewPolicySave'; payload: { projectId: number; provider: string; repositoryLinkId: number; policy: PRReviewPolicy; expectedVersion: number } }
   // Generic command-passthrough — the Settings panel uses this to fire
   // extension commands (like vibeflow.openCli) directly from a tab so we
   // don't need a one-off wire shape per button.
@@ -516,6 +541,40 @@ export type GitProvidersPageClientMessage =
   | { type: 'gitProvidersPageLoad' }
   | { type: 'gitProvidersPageRefresh' }
   | { type: 'gitProvidersPageDelete'; payload: { id: number; name: string } };
+
+// ============================================================
+// PR review panel (#4040)
+// ============================================================
+
+/** Host → webview: one review's full state, findings and derived label. */
+export type PRReviewPageHostMessage =
+  | {
+    type: 'prReviewData';
+    payload: {
+      summary: PRReviewSummary;
+      findings: PRReviewFinding[];
+      /** True when more findings exist than were loaded. */
+      findingsTruncated: boolean;
+      display: { label: string; tone: 'muted' | 'info' | 'warning' | 'success'; description: string };
+      generatedAt: string;
+    };
+  }
+  | { type: 'prReviewError'; payload: { message: string } };
+
+/** Webview → host. */
+export type PRReviewPageClientMessage =
+  | { type: 'prReviewLoad' }
+  | { type: 'prReviewRefresh' }
+  /** Open a finding's location; `path` is repo-relative as Vera reports it. */
+  | { type: 'prReviewOpenLocation'; payload: { path: string; line?: number } }
+  | { type: 'prReviewOpenPullRequest' }
+  // Controls (#4041). `snapshot` is the `generatedAt` of the prReviewData the
+  // user acted on; the host takes the expected version/generation from that
+  // exact snapshot and refuses the action if a newer one has replaced it.
+  | { type: 'prReviewRequest'; snapshot: string }
+  | { type: 'prReviewControl'; snapshot: string; payload: { action: 'pause' | 'resume'; additionalRounds: number; reason: string } }
+  | { type: 'prReviewRetryPublication'; snapshot: string }
+  | { type: 'prReviewFindingControl'; snapshot: string; payload: { findingId: string; action: 'dismiss' | 'reopen'; reason: string; evidence?: string } };
 
 // ============================================================
 // Cloud Runner Manage wizard (#2817)
