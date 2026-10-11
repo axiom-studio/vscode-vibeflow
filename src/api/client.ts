@@ -5,9 +5,12 @@ import type {
   PRReviewFinding,
   PRReviewJob,
   PRReviewPage,
+  PRReviewPolicy,
+  PRReviewRepositoryPolicy,
   PRReviewRepositorySummary,
   PRReviewSummary,
   PRReviewSummaryPublication,
+  ProjectNotificationSetting,
   RequestPRReviewBody,
   RetryPRReviewPublicationBody,
 } from './prReviewTypes.js';
@@ -495,17 +498,23 @@ export class VibeFlowClient {
   //     unreliability entirely. See design doc #361.
 
   /**
-   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Robust to
-   * the response wrapper key — the server returns the rows under one of these.
+   * Project pull requests (GET /projects/{id}/prs → ListProjectPRs). Paged on
+   * purpose (#4039): the legacy unpaged form keeps only PRs linked to a work
+   * item, dropping PRs that are tracked only for Vera review; the paged form
+   * returns both, each with its `review_summary`, under `pull_requests`.
+   * Walks every page (server max 100 per page) until `has_more` is false.
    */
   async listPullRequests(projectId: number): Promise<VibeFlowPullRequest[]> {
-    const r = await this.request<
-      { prs?: VibeFlowPullRequest[]; pull_requests?: VibeFlowPullRequest[]; results?: VibeFlowPullRequest[] } | VibeFlowPullRequest[]
-    >(`/rest/v1/vibeflow/projects/${projectId}/prs`);
-    if (Array.isArray(r)) {
-      return r;
+    const all: VibeFlowPullRequest[] = [];
+    for (let page = 1; ; page++) {
+      const r = await this.request<{ pull_requests?: VibeFlowPullRequest[] | null; has_more?: boolean }>(
+        `/rest/v1/vibeflow/projects/${projectId}/prs?page=${page}&limit=100`,
+      );
+      const rows = r.pull_requests ?? [];
+      all.push(...rows);
+      // An empty page ends the walk even if has_more is set, so a server bug cannot loop us.
+      if (!r.has_more || rows.length === 0) { return all; }
     }
-    return r.prs ?? r.pull_requests ?? r.results ?? [];
   }
 
   // --- Vera PR review (#4038) — REST via request() (Bearer). Routes and
@@ -541,6 +550,42 @@ export class VibeFlowClient {
       `/rest/v1/vibeflow/projects/${projectId}/pr-review-repositories`,
     );
     return r.repositories ?? [];
+  }
+
+  /** A repository's review settings (GetPRReviewPolicy); `can_manage` says whether the caller may change them. */
+  async getPRReviewPolicy(projectId: number, provider: string, repositoryLinkId: number): Promise<PRReviewRepositoryPolicy> {
+    return this.request<PRReviewRepositoryPolicy>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-policies/${encodeURIComponent(provider)}/${repositoryLinkId}`,
+    );
+  }
+
+  /**
+   * Save a repository's review settings (UpdatePRReviewPolicy; owner or org
+   * admin). CAS on `expected_version`: a stale version is a 409. The server
+   * rejects unknown body fields, so only these two are sent.
+   */
+  async updatePRReviewPolicy(projectId: number, provider: string, repositoryLinkId: number, policy: PRReviewPolicy, expectedVersion: number): Promise<PRReviewRepositoryPolicy> {
+    return this.request<PRReviewRepositoryPolicy>(
+      `/rest/v1/vibeflow/projects/${projectId}/pr-review-policies/${encodeURIComponent(provider)}/${repositoryLinkId}`,
+      { method: 'PUT', body: JSON.stringify({ policy, expected_version: expectedVersion }) },
+    );
+  }
+
+  /**
+   * Project notification settings (GetProjectNotificationSettings,
+   * vibeflow_slack_webhooks.go). Gated by requireProjectSettingsAccess, so a
+   * 403 means the caller is neither the project owner nor an org admin.
+   */
+  async getProjectNotificationSettings(projectId: number): Promise<ProjectNotificationSetting[]> {
+    return (await this.request<ProjectNotificationSetting[] | null>(`/rest/v1/vibeflow/projects/${projectId}/notifications`)) ?? [];
+  }
+
+  /** Replace the project's notification settings (UpdateProjectNotificationSettings). */
+  async updateProjectNotificationSettings(projectId: number, settings: ProjectNotificationSetting[]): Promise<void> {
+    await this.request(`/rest/v1/vibeflow/projects/${projectId}/notifications`, {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
   }
 
   /** Request a review (RequestPRReview). 409 = blocked (paused, disabled, closed…). */

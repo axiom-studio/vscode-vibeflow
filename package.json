@@ -274,6 +274,11 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "vibeflow.requestPrReview",
+        "title": "VibeFlow: Request Vera Review",
+        "icon": "$(eye)"
+      },
+      {
         "command": "vibeflow.pickProject",
         "title": "VibeFlow: Switch Project…",
         "icon": "$(arrow-swap)"
@@ -534,6 +539,11 @@
           "command": "vibeflow.deleteWorktreeFromTree",
           "when": "view == vibeflow.agentFleet && viewItem == worktreeItem",
           "group": "worktree@2"
+        },
+        {
+          "command": "vibeflow.requestPrReview",
+          "when": "view == vibeflow.pullRequests && viewItem == pullRequest",
+          "group": "inline"
         }
       ],
       "view/title": [

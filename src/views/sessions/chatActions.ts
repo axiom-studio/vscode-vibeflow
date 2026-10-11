@@ -208,9 +208,11 @@ export function openWorkItemFromChat(kind: unknown, id: unknown): void {
  * Rejects absolute paths + paths that escape the workspace. Used by
  * Session Chat and Activity Feed click handlers; the path is also
  * re-parsed via `parsePathReference` so the webview-side regex
- * doesn't get to dictate the host-side parse.
+ * doesn't get to dictate the host-side parse. `root` replaces the workspace
+ * folder as the base (and containment boundary) when the path is relative to
+ * a known repository instead, e.g. a PR review finding.
  */
-export async function openWorkspaceRelativePath(rel: string, line?: number, column?: number): Promise<void> {
+export async function openWorkspaceRelativePath(rel: string, line?: number, column?: number, root?: string): Promise<void> {
   // Re-parse via the canonical pattern. Allows the caller to pass either
   // a pre-split (path, line, col) OR a single string like `foo.ts:42:7` —
   // the latter happens when the webview reconstructs the raw label.
@@ -221,13 +223,13 @@ export async function openWorkspaceRelativePath(rel: string, line?: number, colu
     vscode.window.showWarningMessage(`Chat link rejected (absolute path): ${resolved.path}`);
     return;
   }
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
+  const base = root ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!base) {
     vscode.window.showWarningMessage('Open a folder to follow chat links.');
     return;
   }
-  const absolute = path.join(folder.uri.fsPath, resolved.path);
-  const relCheck = path.relative(folder.uri.fsPath, absolute);
+  const absolute = path.join(base, resolved.path);
+  const relCheck = path.relative(base, absolute);
   if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
     vscode.window.showWarningMessage(`Chat link rejected (escapes workspace): ${resolved.path}`);
     return;
