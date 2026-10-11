@@ -1,46 +1,19 @@
 import type { SettingsData } from './settingsTypes';
-import { Card, RadioGroup, inputStyle } from './_shared';
+import { Card, RadioGroup, ToggleRow, inputStyle } from './_shared';
 
 interface Props {
   data: SettingsData;
   onUpdate: (key: string, value: unknown) => void;
 }
 
-export function SessionDefaultsTab({ data, onUpdate }: Props) {
+/**
+ * Display settings (#4034): how the extension refreshes, renders chat diffs
+ * and notifies. The launch-era Terminal Mode and Headless Backing settings
+ * were removed with the CLI-first direction (design doc #627 D2).
+ */
+export function DisplayTab({ data, onUpdate }: Props) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
-      <Card
-        title="Terminal Mode"
-        description="When you launch agent sessions, this controls which terminals are visible in the Terminal panel. Code agents (Developer, Architect, Principal Engineer) modify files — you usually want to watch them. Advisory agents (QA, Security, PM) don't touch code — hiding them reduces clutter."
-      >
-        <RadioGroup
-          name="terminalMode"
-          value={data.sessionTerminalMode ?? 'hybrid'}
-          options={[
-            { value: 'hybrid', label: 'Hybrid (recommended)', desc: 'Code agents visible, advisory agents hidden' },
-            { value: 'all', label: 'All Visible', desc: 'Every agent gets a visible terminal tab' },
-            { value: 'none', label: 'All Hidden', desc: 'All terminals hidden — use Agent Fleet sidebar to inspect' },
-          ]}
-          onChange={v => onUpdate('session.terminalMode', v)}
-        />
-      </Card>
-
-      <Card
-        title="Headless Backing (chat-first)"
-        description="How chat-first / headless agent sessions are run under the hood. tmux backing keeps the agent alive across multiple chat turns and lets it survive an IDE restart (attachable from any terminal via `tmux -L vibeflow-headless attach -t <name>`). The VS Code terminal backing only handles a single turn before the agent exits — pick it only if you want the agent's lifetime tied to this IDE window."
-      >
-        <RadioGroup
-          name="sessionHeadlessBacking"
-          value={data.sessionHeadlessBacking ?? 'auto'}
-          options={[
-            { value: 'auto', label: 'Auto (recommended)', desc: 'tmux when available (Mac / Linux with tmux installed) — required for multi-turn chat. Falls back to a hidden VS Code terminal otherwise' },
-            { value: 'tmux', label: 'tmux (Unix only)', desc: 'Always use tmux. Agent survives IDE restart and supports multi-turn chat. Ignored on Windows; warns if tmux is missing' },
-            { value: 'vscode', label: 'VS Code terminal', desc: 'Force a hidden VS Code terminal — single-turn only, agent dies with the IDE window' },
-          ]}
-          onChange={v => onUpdate('session.headlessBacking', v)}
-        />
-      </Card>
-
       <Card
         title="Refresh rate"
         description="How often the extension refreshes from the VibeFlow API. The live tier (Activity Feed, open session chats & work-item panels, brainstorms) polls faster; background views (trees, status bar, dashboard, compliance, tickets) poll slower. Both pause while the window is unfocused."
@@ -85,6 +58,23 @@ export function SessionDefaultsTab({ data, onUpdate }: Props) {
             { value: 'split', label: 'Split / Side-by-side', desc: 'Before and after in two columns, aligned by hunk' },
           ]}
           onChange={v => onUpdate('chat.diffView', v)}
+        />
+      </Card>
+      <Card
+        title="Notifications"
+        description="Toast notifications that pop up in the corner of VS Code. Useful for staying aware of agent activity without watching the sidebar constantly."
+      >
+        <ToggleRow
+          label="Agent Prompts"
+          desc="Show a notification when an agent asks you a question and is waiting for your response"
+          checked={data.notifyAgentPrompts}
+          onChange={v => onUpdate('notifications.agentPrompts', v)}
+        />
+        <ToggleRow
+          label="Work Item Complete"
+          desc="Show a notification when a todo or issue transitions to done status"
+          checked={data.notifyWorkComplete}
+          onChange={v => onUpdate('notifications.workItemComplete', v)}
         />
       </Card>
     </div>
