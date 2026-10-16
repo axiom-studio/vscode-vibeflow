@@ -721,7 +721,7 @@
           {
             "id": "setup",
             "title": "Sign in",
-            "description": "Connect to your VibeFlow workspace with the API key from your **Account → API Keys** page. We remember it across restarts, and the CLI and extension share the same identity once you sign in here.\n\n[Run Setup](command:vibeflow.setup)",
+            "description": "Connect to your VibeFlow workspace with the API key from your **Account → API Keys** page. We remember it across restarts. To share it with the VibeFlow CLI, click **Test Connection** in Settings → Connection after installing the CLI.\n\n[Run Setup](command:vibeflow.setup)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Sign in"
@@ -733,7 +733,7 @@
           {
             "id": "launch",
             "title": "Launch your first agent",
-            "description": "Agents run in the **VibeFlow CLI** — a terminal app that manages your persona team. Open it below; if it isn't installed yet you'll be offered a one-click install. Your team boots there and starts polling for work.\n\nThe left **Agent Fleet** stays live either way, and clicking any agent opens its chat — you drive everything from the sidebar.\n\n[Open the VibeFlow CLI](command:vibeflow.openCli)\n\n_Prefer per-persona VS Code terminals? Turn off **Use VibeFlow CLI** in Settings → CLI Interface._",
+            "description": "Agents run in the **VibeFlow CLI** — a terminal app that manages your persona team. Open it below; if it isn't installed yet you'll be offered a one-click install. Your team boots there and starts polling for work.\n\nYour agents appear in the left **Agent Fleet**, and clicking any agent opens its chat — you drive everything from the sidebar.\n\n[Open the VibeFlow CLI](command:vibeflow.openCli)\n\n_On Windows, the CLI runs in WSL: reopen your folder in WSL first._",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Launch"
@@ -757,7 +757,7 @@
           {
             "id": "explore",
             "title": "Explore the workspace",
-            "description": "Click the VibeFlow icon in the Activity Bar to open four live views:\n\n- **Agent Fleet** — your running agents, grouped by branch\n- **Work Items** — todos and issues across your projects\n- **Activity Feed** — real-time stream of every agent action\n- **Documents** — PRDs, architecture, style guides, design system\n\n[Open Sidebar](command:vibeflow.viewSessions)",
+            "description": "Click the VibeFlow icon in the Activity Bar:\n\n- **Project** — switch projects from the dropdown at the top\n- **Agent Fleet** — the agents the VibeFlow CLI is running, across your projects\n- **Work Items** — todos and issues, grouped by status\n- **Pull Requests** — PRs with Vera's review state\n- **Activity Feed** — real-time stream of every agent action\n- **Documents** — PRDs, architecture, style guides, design system\n\n[Open Sidebar](command:vibeflow.viewSessions)",
             "media": {
               "image": "media/vibeflow-icon.svg",
               "altText": "Sidebar"

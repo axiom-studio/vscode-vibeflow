@@ -2,7 +2,13 @@
 
 **Who this is for**: You've seen a setting key and want the full story: what it does, valid values, default, when to change it.
 
-**TL;DR**: VibeFlow ships **16** settings. Most have sensible defaults. This is the authoritative list, pulled straight from `package.json`. If a setting isn't here, it doesn't exist.
+**TL;DR**: VibeFlow ships **14** settings.
+Most have sensible defaults.
+This is the authoritative list, pulled straight from `package.json`.
+If a setting isn't here, it doesn't exist.
+
+Agents launch only through the VibeFlow CLI, so the extension has no provider, terminal, or worktree settings: those choices are made in the CLI.
+Older keys such as `vibeflow.defaultProvider`, `vibeflow.session.terminalMode`, `vibeflow.session.headlessBacking`, and `vibeflow.worktree.*` are no longer read; leftover values in `settings.json` are ignored.
 
 ---
 
@@ -10,19 +16,28 @@
 
 Two options that write to the same place.
 
-**The VibeFlow Settings panel (friendlier).** Run **`VibeFlow: Settings`** (`Cmd/Ctrl+Shift+V S`) or click the **gear icon** in the title bar of any VibeFlow sidebar view (Agent Fleet, Work Items, etc.). Tabbed, with inline descriptions and dropdowns for enums.
+**The VibeFlow Settings panel (friendlier).** Run **`VibeFlow: Settings`** (`Cmd/Ctrl+Shift+V S`) or click the **gear icon** in the Agent Fleet title bar.
+Tabs:
+
+| Tab | What's on it |
+|---|---|
+| **Connection** | **Account** (server URL + Test Connection, API key + Test Key), **VibeFlow CLI** (install, update, binary path override), **MCP for coding agents** |
+| **Git Configuration** | Git providers for Cloud Runners (only in builds with Cloud Runners enabled) |
+| **Display** | Refresh rate (live + background), chat diff view, notifications |
+| **Project** | Project notifications and per-repository Vera review settings — only shown to the project owner and org admins |
+| **About** | Version, links |
 
 **VS Code's `settings.json`.** Run **`Preferences: Open User Settings (JSON)`** (or *Workspace* Settings for per-repo config):
 
 ```jsonc
 {
-  "vibeflow.defaultProvider": "codex",
   "vibeflow.polling.interval": 60,
-  "vibeflow.worktree.autoCreate": true
+  "vibeflow.chat.diffView": "split",
+  "vibeflow.notifications.workItemComplete": false
 }
 ```
 
-Workspace settings (`.vscode/settings.json`) override user settings. Changes apply immediately.
+Workspace settings (`.vscode/settings.json`) override user settings.
 
 ---
 
@@ -36,47 +51,19 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Type** | `string` |
 | **Default** | `https://cloud.axiomstudio.ai` |
 
-**What it does**: The URL of the VibeFlow Cloud server the extension talks to. Every MCP call, dashboard fetch, and login round-trip flows through here.
+**What it does**: The URL of the VibeFlow server the extension talks to.
+Every MCP call, dashboard fetch, and login round-trip flows through here.
 
 **When to change it**: You're on a self-hosted or staging VibeFlow deployment.
 
-**Gotchas**: Include the scheme; no trailing slash. Changes invalidate your stored API key, so re-run **`VibeFlow: Setup`**.
+**Gotchas**: Include the scheme; no trailing slash.
+HTTPS is required except for `localhost` / `127.0.0.1` / `[::1]`.
+In the Settings panel the field saves on Enter or when it loses focus, and **Test Connection** saves and tests what you typed.
+A successful Test Connection also writes the URL (with your API key and current project) into the CLI's `config.yaml`, so the CLI talks to the same server.
 
 ---
 
-## Providers
-
-### `vibeflow.defaultProvider`
-
-| Field | Value |
-|---|---|
-| **Key** | `vibeflow.defaultProvider` |
-| **Type** | `string` |
-| **Default** | `claude` |
-
-**What it does**: Which AI provider the **Launch Session** wizard pre-selects. You can still override per session; this just sets the default.
-
-**When to change it**: You don't have an Anthropic key but do have OpenAI, Google, or Cursor. Set this to your daily-driver provider so launches are one click less.
-
-**Gotchas**: Free-form string in `package.json`. The **Launch Session** wizard quick-pick lists four providers: **`claude`**, **`codex`**, **`gemini`**, **`cursor`**. A fifth value, **`qwen`**, is also a valid provider (it has a working stream-json adapter) but isn't surfaced in the wizard quick-pick — you can still set it here by hand. Unrecognized values fall back to `claude`.
-
----
-
-## CLI integration
-
-### `vibeflow.cli.enabled`
-
-| Field | Value |
-|---|---|
-| **Key** | `vibeflow.cli.enabled` |
-| **Type** | `boolean` |
-| **Default** | `false` |
-
-**What it does**: Hands session lifecycle off to the standalone **vibeflow CLI** (a terminal TUI) instead of per-persona VS Code terminals. The sidebar still shows live agent state either way.
-
-**When to change it**: You already use the `vibeflow` CLI and prefer its TUI.
-
-**Gotchas**: Requires the `vibeflow` binary on `PATH`. Install from [github.com/axiom-studio/vibeflow-cli/releases](https://github.com/axiom-studio/vibeflow-cli/releases), or run **`VibeFlow: Install Latest CLI`**. When enabled, the Agent Fleet launch button changes from "Launch Session" to "Open CLI".
+## VibeFlow CLI
 
 ### `vibeflow.cli.binaryPath`
 
@@ -86,11 +73,14 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Type** | `string` |
 | **Default** | `""` (empty, uses `PATH` lookup) |
 
-**What it does**: Absolute path to the `vibeflow` CLI binary. Overrides `PATH` lookup when set.
+**What it does**: Absolute path to the `vibeflow` CLI binary.
+Overrides `PATH` lookup when set.
 
-**When to change it**: You have multiple CLI versions or your CLI lives outside `PATH`.
+**When to change it**: Your CLI lives outside the `PATH` VS Code sees (for example `/opt/homebrew/bin` on Apple Silicon).
 
-**Gotchas**: Must be *absolute* (e.g. `/usr/local/bin/vibeflow`, not `~/bin/vibeflow`). Ignored unless `vibeflow.cli.enabled` is `true`. Typos fail at launch time, not save time.
+**Gotchas**: Must be *absolute* (e.g. `/usr/local/bin/vibeflow`, not `~/bin/vibeflow`).
+**Install Latest** (Settings → Connection → VibeFlow CLI) sets it for you.
+In the Settings panel it sits under **Advanced: binary path override**, with a **Browse…** button.
 
 ### `vibeflow.cli.mcpName`
 
@@ -100,11 +90,12 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Type** | `string` |
 | **Default** | `""` (empty, flag omitted) |
 
-**What it does**: An optional MCP name passed to the `vibeflow` CLI as `--mcp <value>` when you use **Open CLI**. Leave it blank and the flag is omitted entirely.
+**What it does**: An optional MCP name passed to the CLI as `--mcp <value>` when the extension opens it.
 
 **When to change it**: Your workflow needs the CLI pointed at a specific MCP server by name.
 
-**Gotchas**: Only used by **Open CLI** (so `vibeflow.cli.enabled` must be `true`). Set it via the Settings **CLI Interface** tab, or clear both this and `rootPath` with that tab's **Clear** button. Reopening a CLI while its terminal is still running warns that the new value can't apply until you close the old terminal.
+**Gotchas**: Not shown in the Settings panel; set it in `settings.json`.
+If the CLI terminal is already open, the extension reuses it and warns that the new value isn't applied until you close that terminal.
 
 ### `vibeflow.cli.rootPath`
 
@@ -114,36 +105,32 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Type** | `string` |
 | **Default** | `""` (empty, flag omitted) |
 
-**What it does**: An optional root path passed to the `vibeflow` CLI as `--root <value>` when you use **Open CLI**. Blank means the flag is omitted.
+**What it does**: An optional root path passed to the CLI as `--root <value>` when the extension opens it.
 
-**When to change it**: You want the CLI to treat a directory other than the current workspace as its project root.
+**When to change it**: You keep a separate CLI root (its own `config.yaml` and `sessions.json`).
 
-**Gotchas**: Same as `mcpName` — **Open CLI** only, cleared via the **CLI Interface** tab's **Clear** button, and blank values are dropped from the command line rather than passed as empty flags.
+**Gotchas**: Not shown in the Settings panel; set it in `settings.json`.
+The extension follows it everywhere: Agent Fleet reads `<root>/sessions.json`, the tmux probe uses the CLI's socket for that root, and the Connection mirror writes `<root>/config.yaml`.
+
+### `vibeflow.cli.updateCheckIntervalHours`
+
+| Field | Value |
+|---|---|
+| **Key** | `vibeflow.cli.updateCheckIntervalHours` |
+| **Type** | `number` (hours) |
+| **Default** | `12` |
+
+**What it does**: How often the extension checks GitHub for a newer VibeFlow CLI release.
+You are notified only when a newer version exists, never when you're up to date.
+
+**When to change it**: Set `0` to turn the check off (for example on an air-gapped machine).
+
+**Gotchas**: Values below 1 are raised to 1.
+**`VibeFlow: Check for CLI Updates`** (or **Check for Updates** in Settings) checks right away regardless.
 
 ---
 
 ## Sessions
-
-### `vibeflow.session.terminalMode`
-
-| Field | Value |
-|---|---|
-| **Key** | `vibeflow.session.terminalMode` |
-| **Type** | `string` (enum) |
-| **Default** | `hybrid` |
-| **Valid values** | `hybrid`, `all`, `none` |
-
-**What it does**: Controls which agent terminals are visible when sessions launch.
-
-| Value | Behavior |
-|---|---|
-| `hybrid` | Code agents (Dev/Arch/PE) visible; advisory agents hidden. |
-| `all` | Every agent terminal visible. |
-| `none` | All hidden; sessions run in the background only. |
-
-**When to change it**: Pick `all` to watch advisory agents (QA, Security, PM) live. Pick `none` if the chat panel + activity feed are enough.
-
-**Gotchas**: Affects *new* sessions only. Use **`VibeFlow: Show All Agent Terminals`** to unhide ad-hoc.
 
 ### `vibeflow.session.reattachMode`
 
@@ -154,37 +141,19 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Default** | `vanilla` |
 | **Valid values** | `vanilla`, `vibeflow` |
 
-**What it does**: When you reopen VS Code, the extension reattaches to still-alive sessions (via `.vibeflow-session-{persona}` files in your workspace root). This setting picks *which permission mode* the reattach uses.
+**What it does**: When you reopen VS Code, the extension can reattach to still-alive sessions it finds through `.vibeflow-session-{persona}` files in your workspace.
+This setting picks *which permission mode* the reattach uses when the session's own launch mode wasn't recorded.
 
 | Value | Behavior |
 |---|---|
 | `vanilla` | Safe per-action permission prompts. The agent asks before each file edit, shell command, git op. |
-| `vibeflow` | Reattach in **YOLO mode** (`--dangerously-skip-permissions`) with no prompts. |
+| `vibeflow` | Reattach in **YOLO mode** (skip-permissions) with no prompts. |
 
-**When to change it**: You routinely launch in YOLO mode and want restarts to preserve that.
+**When to change it**: You routinely run agents in YOLO mode and want reattaches to preserve that.
 
-**Gotchas**: `vibeflow` is **risky**. Reattached sessions get full permission with no prompts. Only set it if (a) your prior session was YOLO and (b) you trust the agent to keep running unattended. No per-session override on reattach: this applies to every session that comes back.
-
-### `vibeflow.session.headlessBacking`
-
-| Field | Value |
-|---|---|
-| **Key** | `vibeflow.session.headlessBacking` |
-| **Type** | `string` (enum) |
-| **Default** | `auto` |
-| **Valid values** | `auto`, `tmux`, `vscode` |
-
-**What it does**: Where a **chat-first** (headless) session physically runs when there's no visible terminal. The chat panel is just UI; the agent process needs a real process tree somewhere.
-
-| Value | Behavior |
-|---|---|
-| `auto` | tmux when available (Mac/Linux with tmux installed), otherwise hidden VS Code terminal. **Recommended**, since tmux is the only backing that supports multi-turn chat today. |
-| `tmux` | Always tmux. Agent survives IDE restart; attach via `tmux -L vibeflow-headless attach -t <name>`. |
-| `vscode` | Always hidden VS Code terminal. Agent dies with the IDE window AND handles only a single chat turn before exiting. |
-
-**When to change it**: Force `tmux` for guaranteed multi-turn + restart survival. Force `vscode` only for debugging.
-
-**Gotchas**: **tmux is Unix-only.** On Windows the `tmux` value is silently ignored and falls back to `vscode`. On Mac/Linux without tmux installed, install it (`brew install tmux` or your distro's package manager) before relying on chat-first.
+**Gotchas**: `vibeflow` is **risky**.
+Reattached sessions get full permission with no prompts.
+Only set it if (a) your prior session was YOLO and (b) you trust the agent to keep running unattended.
 
 ---
 
@@ -198,11 +167,14 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Type** | `boolean` |
 | **Default** | `true` |
 
-**What it does**: When an agent needs your input, VS Code shows a notification toast in addition to the activity feed entry and status-bar badge. This toggle controls the toast only.
+**What it does**: When an agent needs your input, VS Code shows a notification toast in addition to the Activity Feed entry and status-bar badge.
+This toggle controls the toast only.
 
-**When to change it**: Toasts are noisy and you'd rather poll the Activity Feed yourself.
+**When to change it**: Toasts are noisy and you'd rather watch the Activity Feed yourself.
 
-**Gotchas**: Turning this off does **not** hide prompts. They still appear in the Activity Feed, the Agent Fleet tree, and the status-bar item. You're only muting the OS-level toast.
+**Gotchas**: Turning this off does **not** hide prompts.
+They still appear in the Activity Feed and the status-bar item.
+You're only muting the toast.
 
 ### `vibeflow.notifications.workItemComplete`
 
@@ -214,9 +186,10 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 
 **What it does**: Shows a toast when an agent transitions a work item to `done`.
 
-**When to change it**: You run multiple agents and the drip of "todo #X done" toasts is distracting. Turn off; the Work Items view still updates live.
+**When to change it**: You run multiple agents and the drip of "todo #X done" toasts is distracting.
+Turn off; the Work Items view still updates.
 
-**Gotchas**: Doesn't affect prompts, errors, or security/QA review notifications, just the "work item complete" toast.
+**Gotchas**: Doesn't affect prompts, errors, or Vera review toasts, just the "work item complete" toast.
 
 ---
 
@@ -229,13 +202,31 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | **Key** | `vibeflow.polling.interval` |
 | **Type** | `number` (seconds) |
 | **Default** | `30` |
-| **Range** | `5`–`300` |
 
-**What it does**: How often the extension re-fetches data to refresh sidebar views. Lower means snappier UI; higher means less CPU and network.
+**What it does**: The background refresh interval: the sidebar trees (Agent Fleet, Work Items, Pull Requests, …), branch-review status, dashboard, compliance, and tickets.
+Polling pauses while the window is unfocused.
 
-**When to change it**: Bump up (`60`–`120`) on a low-powered laptop or metered connection. Bump down (`10`–`15`) when actively shepherding agents.
+**When to change it**: Bump up (`60`–`120`) on a low-powered laptop or metered connection.
+Bump down (`10`–`15`) when actively shepherding agents.
 
-**Gotchas**: Live events (agent prompts, your own actions) push instantly; this only governs full-list re-fetches. Minimum 5 seconds; lower values are rejected.
+**Gotchas**: The Settings panel accepts `5`–`300` (Display → Refresh rate → **Background**).
+A change applies to views opened afterwards; reload the window to apply it everywhere.
+
+### `vibeflow.polling.liveInterval`
+
+| Field | Value |
+|---|---|
+| **Key** | `vibeflow.polling.liveInterval` |
+| **Type** | `number` (seconds) |
+| **Default** | `5` |
+
+**What it does**: The live refresh interval: the Activity Feed, open session chats, work-item panels, and brainstorms.
+Lower is snappier and makes more API calls.
+
+**When to change it**: Raise it if many panels are open and you want fewer API calls.
+
+**Gotchas**: The Settings panel accepts `2`–`60` (Display → Refresh rate → **Live**).
+Like the background interval, it pauses while the window is unfocused and applies to views opened afterwards.
 
 ---
 
@@ -257,76 +248,67 @@ Workspace settings (`.vscode/settings.json`) override user settings. Changes app
 | `unified` | Added/removed lines stacked vertically with a `+`/`-` gutter. |
 | `split` | Before/after in two columns aligned by hunk. |
 
-**When to change it**: Personal preference. Try the other if the default feels cramped.
+**When to change it**: Personal preference.
+Try the other if the default feels cramped.
 
-**Gotchas**: **Purely cosmetic**. It changes the inline preview only. Each diff has an **Open in Editor** button that opens VS Code's native diff editor for proper review. Use that button when a diff matters.
+**Gotchas**: **Purely cosmetic**.
+Each diff has an **Open in Editor** button that opens VS Code's native diff editor for proper review.
+
+### `vibeflow.chat.showTmuxAttachButton`
+
+| Field | Value |
+|---|---|
+| **Key** | `vibeflow.chat.showTmuxAttachButton` |
+| **Type** | `boolean` |
+| **Default** | `true` |
+
+**What it does**: Shows a button in the header of a tmux-backed chat-first Session Chat that opens the session's tmux shell in a terminal (`tmux -L vibeflow-headless attach -t <name>`), so you can watch the raw agent exchange.
+
+**When to change it**: Turn off if you never debug chat-first sessions.
+
+**Gotchas**: Only appears for existing chat-first sessions backed by tmux; agents launched from the CLI don't use it.
 
 ---
 
-## Worktrees
+## Diagnostics
 
-### `vibeflow.worktree.baseDir`
-
-| Field | Value |
-|---|---|
-| **Key** | `vibeflow.worktree.baseDir` |
-| **Type** | `string` |
-| **Default** | `.claude/worktrees` |
-
-**What it does**: Where the extension creates git **worktrees** for cross-branch agent sessions. Path is *relative to your workspace root*.
-
-**When to change it**: The default lives under `.claude/` for historical reasons; you might prefer `.vibeflow/worktrees` or a path your `.gitignore` already covers.
-
-**Gotchas**: Must be relative; absolute paths are rejected. Created on demand. Make sure the path is git-ignored or outside the tracked tree, otherwise `git status` floods with nested-working-tree noise.
-
-### `vibeflow.worktree.autoCreate`
+### `vibeflow.debug.polling`
 
 | Field | Value |
 |---|---|
-| **Key** | `vibeflow.worktree.autoCreate` |
+| **Key** | `vibeflow.debug.polling` |
 | **Type** | `boolean` |
 | **Default** | `false` |
 
-**What it does**: When you launch against a branch without a worktree, auto-create one at `<workspace>/<worktree.baseDir>/<branch>` instead of prompting.
+**What it does**: Logs each refresh, plus pause/resume on window focus, to the **VibeFlow Polling** output channel.
 
-**When to change it**: You run agents on multiple branches and want to skip the "create worktree?" dialog.
+**When to change it**: A view isn't refreshing when you expect it to.
 
-**Gotchas**: Off by default, since worktrees consume disk and clutter `git worktree list`. Pair with `vibeflow.worktree.cleanupOnKill = always` for fully automatic lifecycle.
-
-### `vibeflow.worktree.cleanupOnKill`
+### `vibeflow.cloudRunners.debug`
 
 | Field | Value |
 |---|---|
-| **Key** | `vibeflow.worktree.cleanupOnKill` |
-| **Type** | `string` (enum) |
-| **Default** | `ask` |
-| **Valid values** | `ask`, `always`, `never` |
+| **Key** | `vibeflow.cloudRunners.debug` |
+| **Type** | `boolean` |
+| **Default** | `false` |
 
-**What it does**: What happens to a worktree when the session inside it ends (killed, completed, or crashed).
+**What it does**: Logs Cloud Runners API calls (method, path, status, and response shape) to the **VibeFlow Cloud Runners** output channel.
+Request bodies and secrets are never logged.
 
-| Value | Behavior |
-|---|---|
-| `ask` | Prompts every time; you decide per-session. |
-| `always` | Deletes the worktree automatically. |
-| `never` | Keeps the worktree for follow-up work. |
-
-**When to change it**: `always` if worktrees are ephemeral (launch, get diff, move on). `never` if you resume work in the same branch after the agent exits.
-
-**Gotchas**: `always` permanently deletes the worktree *including any uncommitted changes the agent left behind*. Cleanup uses `git worktree remove` (destructive). If you might want the diff later, stick with `ask`.
+**When to change it**: Diagnosing a Cloud Runner or git-provider failure.
 
 ---
 
 ## Settings I rarely touch
 
-The average user opens **`VibeFlow: Settings`** once during setup and never comes back. These six can sit at their defaults forever:
+The average user opens **`VibeFlow: Settings`** once during setup and never comes back.
+These can sit at their defaults forever:
 
 - `vibeflow.serverUrl`: only matters on a self-hosted server.
-- `vibeflow.cli.enabled`: most people use the extension's built-in session management.
-- `vibeflow.cli.binaryPath`: only meaningful when `cli.enabled` is on.
-- `vibeflow.cli.mcpName` / `vibeflow.cli.rootPath`: only meaningful when `cli.enabled` is on and you use **Open CLI**.
+- `vibeflow.cli.binaryPath`, `vibeflow.cli.mcpName`, `vibeflow.cli.rootPath`: only for non-standard CLI installs.
 - `vibeflow.session.reattachMode`: `vanilla` is the right answer unless you have a specific reason.
 - `vibeflow.chat.diffView`: try the default, switch once if you don't like it, then forget about it.
-- `vibeflow.worktree.baseDir`: the default path is fine for most repos.
+- The two debug settings: only while diagnosing a problem.
 
 ---
 
@@ -334,11 +316,7 @@ The average user opens **`VibeFlow: Settings`** once during setup and never come
 
 The changes most users make in their first week:
 
-1. **Switch `vibeflow.defaultProvider` from `claude` to `codex` / `gemini` / `cursor`** if you don't have an Anthropic key. Saves a click on every launch.
-2. **Bump `vibeflow.polling.interval` from `30` to `60`+** if background CPU/network is more than you want for a non-focus tool.
-3. **Turn on `vibeflow.worktree.autoCreate`** once you use cross-branch sessions seriously. Removes the "create worktree?" dialog.
-4. **Turn off `vibeflow.notifications.workItemComplete`** once you have three or more concurrent agents. Toasts get noisy; the Work Items view shows the same info silently.
-
----
-
-*Last updated: 2026-07-03*
+1. **Bump `vibeflow.polling.interval` from `30` to `60`+** if background CPU/network is more than you want for a non-focus tool.
+2. **Turn off `vibeflow.notifications.workItemComplete`** once you have three or more concurrent agents.
+   Toasts get noisy; the Work Items view shows the same info silently.
+3. **Set `vibeflow.cli.binaryPath`** (or click **Install Latest**) if **Launch Session** says the CLI can't be found.
