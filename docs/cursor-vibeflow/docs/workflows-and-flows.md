@@ -2,7 +2,8 @@
 
 **Who this is for**: Anyone who's installed the extension and wants to understand *how the pieces fit together*. What happens in what order, what calls what, what state moves where. This is the doc for "but **why** is it asking me that?"
 
-**TL;DR**: Six end-to-end flows that cover ~95% of VibeFlow usage. Sequence and state diagrams in Mermaid (GitHub and Cursor render them natively).
+**TL;DR**: Seven end-to-end flows that cover most VibeFlow usage. Sequence and state diagrams in Mermaid (GitHub and Cursor render them natively).
+Agents run in the VibeFlow CLI; the extension manages the project, shows the agents, and reviews their work.
 
 > See [glossary.md](glossary.md) for any unfamiliar term.
 
@@ -15,15 +16,16 @@ You install the extension. Cursor reloads. Here's what happens next, in order:
 ```mermaid
 sequenceDiagram
     actor User
-    participant VSCode as Cursor
+    participant Editor as Cursor
     participant Ext as VibeFlow Extension
     participant Server as VibeFlow Cloud
     participant Secrets as Cursor Secrets API
+    participant CLI as VibeFlow CLI config
 
-    User->>VSCode: Install extension
-    VSCode->>Ext: activate()
-    Ext->>VSCode: Register 5 views (Agent Fleet, Work Items, Project Items,<br/>Documents, Activity Feed)
-    Ext->>VSCode: Show "Get Started with VibeFlow" walkthrough
+    User->>Editor: Install extension
+    Editor->>Ext: activate()
+    Ext->>Editor: Register views (Project dropdown, Agent Fleet, Work Items,<br/>Browse, Pull Requests, Documents, Activity Feed)
+    Ext->>Editor: Show "Get Started with VibeFlow" walkthrough
     User->>Ext: Click "Sign in" step
     Ext->>Ext: Run VibeFlow: Setup wizard
     Note over Ext: 3 steps: Server URL → API Key → Project
@@ -33,137 +35,96 @@ sequenceDiagram
     Ext->>Ext: validateServerUrl() — HTTPS required
     Ext->>User: Step 2 — Paste API key
     User->>Ext: ak_live_…
-    Ext->>Secrets: store("vibeflow.apiKey")
+    Ext->>Secrets: store API key
     Ext->>Server: GET /projects (auth check)
     Server-->>Ext: list of projects
     Ext->>User: Step 3 — Pick a project
     User->>Ext: vscode-vibeflow
     Ext->>Ext: ProjectDetector caches project_id<br/>(also reads git remote URL for auto-detect next time)
     Ext-->>User: ✅ "Connected to vscode-vibeflow"
+
+    User->>Ext: Settings → Connection → Install Latest (CLI)
+    User->>Ext: Settings → Connection → Test Connection
+    Ext->>Server: probe the saved server URL
+    Ext->>CLI: write server_url, api_token, default_project<br/>into config.yaml (atomic, mode 0600)
 ```
 
-**What you see**: walkthrough, then "Sign in" link, then three Quick Picks, then a "Connected" toast. About 90 seconds total.
+**What you see**: walkthrough, then "Sign in" link, then three Quick Picks, then a "Connected" toast; then the CLI install and a "Reachable" result in Settings. A few minutes total.
 
-**What can go wrong**: an invalid API key returns 401 from the server. The wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl` (security guard from issue #1947). See [troubleshooting.md](troubleshooting.md) for symptoms and fixes.
+**What can go wrong**: an invalid API key returns 401 from the server; the wizard surfaces the error and lets you re-paste. A non-HTTPS server URL is rejected by `validateServerUrl`. See [troubleshooting.md](troubleshooting.md) for symptoms and fixes.
 
 ---
 
-## 2. Launch a session (the most common action)
+## 2. Launch agents (the most common action)
 
-You click **Launch Session** in the Agent Fleet view (or run `VibeFlow: Launch Session` from the Command Palette). Inside, the **Launch Wizard** asks you up to 7 questions before spawning the agent:
+Agents launch only through the VibeFlow CLI.
+**VibeFlow: Launch Session** (`Cmd/Ctrl+Shift+V L`), **Open CLI** in the Agent Fleet title bar, and the empty-fleet row all open it:
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant Wiz as Launch Wizard
-    participant Detector as ProjectDetector
-    participant Reg as TerminalRegistry
-    participant FS as Filesystem
+    participant Ext as VibeFlow Extension
     participant Term as Cursor Terminal
-    participant Agent as Agent binary<br/>(claude / codex / etc.)
-
-    User->>Wiz: Launch Session
-    Wiz->>Wiz: Preflight: check binary on PATH + API key shape
-    Note over Wiz: From issues #2174/#2179: blocks bad config<br/>before showing a half-broken wizard
-    Wiz->>Detector: Which project? (cached or auto-detect)
-    Wiz->>User: Step 1 — Branch?
-    User->>Wiz: main
-    Wiz->>User: Step 2 — Persona?
-    User->>Wiz: Developer
-    Wiz->>User: Step 3 — Provider?
-    User->>Wiz: claude
-    Wiz->>Wiz: Need provider key?
-    alt Key already in Secrets
-        Wiz-->>Wiz: skip step
-    else No key yet
-        Wiz->>User: Step 4 — Provider key
-        User->>Wiz: sk-ant-…
-        Wiz->>FS: Secrets.store("CLAUDE_API_KEY")
-    end
-    Wiz->>User: Step 5 — Session mode?<br/>(Vanilla / VibeFlow / Chat-First)
-    User->>Wiz: Vanilla
-    Wiz->>User: Step 6 — Terminal mode?<br/>(Hybrid / All / None)
-    User->>Wiz: Hybrid
-    Wiz->>User: Step 7 — Worktree?<br/>(only if vibeflow.worktree.autoCreate=true)
-    User->>Wiz: skip
-    Wiz->>FS: ensureMcpConfig(workdir) — writes .mcp.json
-    Note over FS: Verifies .mcp.json is git-ignored first<br/>(security guard from issue #1948)
-    Wiz->>Term: Open terminal "VibeFlow: Developer · main"
-    Term->>Agent: spawn (with VIBEFLOW_SERVER_URL + provider key in env)
-    Agent->>Agent: session_init via MCP
-    Agent-->>Reg: session_id registered
-    Reg-->>User: row appears in Agent Fleet ▸ active sessions
-```
-
-**The session-mode choice matters**:
-- **Vanilla**: agent asks permission for every file edit, shell command, git op. Safe. Default.
-- **VibeFlow (YOLO)**: agent skips permission prompts. Faster. You consent via a modal once per session.
-- **Chat-First**: agent runs hidden, you interact through the Session Chat panel. YOLO is required (atomic bundle since issue #1611). Best for "talk to the agent like Cursor's own chat" workflows.
-
-**What you see**: 5-7 Quick Pick / Input Box prompts, then a new terminal opens (in hybrid mode) or a chat panel opens (in chat-first mode), and a row appears in the Agent Fleet view.
-
----
-
-## 3. Multi-turn chat: Vanilla session vs Chat-First session
-
-The chat panel looks the same in both, but the plumbing underneath is fundamentally different. Knowing why prevents confusion when chat hangs at "Working…" forever (see issue #2305).
-
-### 3a. Vanilla session: terminal-driven
-
-In vanilla mode, the agent's primary surface is the terminal. The Session Chat panel is *read-only-ish*: it streams the agent's output, but the agent reads its instructions from the work items it pulls via `wait_for_work`, not from the chat panel.
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant Term as Terminal
-    participant Agent
+    participant CLI as VibeFlow CLI
+    participant Agent as Agent (tmux pane)
     participant Server as VibeFlow Cloud
 
-    Agent->>Server: wait_for_work (polls work item queue)
-    Server-->>Agent: ready_todo: #123 "Add login button"
-    Agent->>Server: claim #123
-    Agent->>Term: prints reasoning + diffs
-    Agent->>Server: publish_todo_log (progress)
-    User-->>Term: reads, occasionally responds to permission prompts
-    Note over Agent: Vanilla agents work from work items.<br/>Chat is a viewport, not the input.
-    Agent->>Server: mark #123 done
-    Agent->>Server: wait_for_work (next item)
+    User->>Ext: Launch Session
+    alt Native Windows window
+        Ext-->>User: "VibeFlow CLI needs WSL on Windows" + Reopen Folder in WSL
+    else macOS / Linux / Remote-WSL
+        Ext->>Term: open "VibeFlow CLI" (reuse it if already open)
+        Term->>CLI: vibeflow [--mcp …] [--root …]
+        User->>CLI: pick persona(s), provider, branch, permissions
+        CLI->>Agent: start the agent in tmux
+        Agent->>Server: session_init + session_register
+        CLI->>CLI: record the session in sessions.json
+    end
+    loop every background poll
+        Ext->>CLI: read sessions.json + list live tmux sessions
+        Ext->>Server: GET /sessions/active (all projects)
+        Ext-->>User: Agent Fleet rows = live CLI agents,<br/>enriched with server status
+    end
 ```
 
-**The Session Chat panel for vanilla sessions** shows a transcript, but typing into the input box is **disabled**, with an upfront banner ("This agent reads work items only. Type your request and convert it into a tracked todo or issue"). The "Convert to work item" button opens the ad-hoc work-item Quick Pick.
+**What you see**: the CLI opens in an editor-area terminal; once an agent starts, it appears in Agent Fleet under its project — the same list the CLI shows.
 
-### 3b. Chat-First session: chat-driven
+**Why the CLI**: one launcher for every editor and the terminal, with sessions that survive closing Cursor (they live in tmux).
+Provider, branch, worktree, and permission choices all live in the CLI.
 
-In chat-first mode, the chat panel **is** the input. The agent runs hidden (under `tmux` if available, otherwise a hidden Cursor terminal), and you steer it by typing.
+---
+
+## 3. Talking to an agent
+
+Click an agent in Agent Fleet to open its **Session Chat** panel.
 
 ```mermaid
 sequenceDiagram
     actor User
     participant Panel as Session Chat Panel
-    participant Reg as SessionStreamRegistry
-    participant Agent as Agent (hidden)
     participant Server as VibeFlow Cloud
+    participant Agent as Agent (in the CLI)
 
     User->>Panel: Type "Add a login button" + Enter
-    Panel->>Server: createPrompt(session_id, text)
-    Panel->>Reg: sendUserMessage(handleId, text)
-    Reg->>Agent: spawn agent with --resume <session_id><br/>(per-turn respawn — turn 1 just opens fresh)
-    Agent->>Agent: read prompt + workspace
-    Agent->>Panel: stream-json: tokens, tool calls, diffs
-    Panel-->>User: live transcript renders
-    Agent->>Server: createPrompt response (the answer)
-    Agent-->>Reg: process exits
-    Note over Reg: Per-turn respawn pattern (issue #2305 fix):<br/>each user message starts a fresh agent process<br/>that resumes from session_id
-
-    User->>Panel: Type follow-up
-    Panel->>Reg: sendUserMessage(handleId, text)
-    Reg->>Agent: spawn with --resume <captured session_id>
-    Agent->>Panel: stream-json again
+    Panel->>Server: create prompt for this session
+    Agent->>Server: wait_for_work (next poll)
+    Server-->>Agent: pending_prompts: "Add a login button"
+    alt Question or status check
+        Agent->>Server: respond_to_prompt (the answer)
+    else Change request
+        Agent->>Server: create_issue / create_todo, then claim it
+        Agent->>Server: publish_todo_log (progress, diffs)
+        Agent->>Server: respond_to_prompt (summary + commit)
+    end
+    Server-->>Panel: transcript updates on the live poll
+    Panel-->>User: reasoning, tool calls, diffs, commit links
 ```
 
-**The Session Chat panel for chat-first sessions** has an enabled input, a textarea, an @mention picker (`@symbol:`, `@document:`, `@todo:`, etc.), file-drop attachments, and renders agent diffs / commit hashes / file paths as clickable.
+Agents work from tracked work items, so a change you ask for in chat becomes an issue or todo first — you'll see it in **Work Items** and can follow its execution log.
+When an agent needs *your* decision, its message turns amber with an inline **Respond** form and the status bar badge counts it.
 
-**Why two patterns**: vanilla means "agents work autonomously on tracked work items"; chat-first means "agent is like Cursor's own chat but with file-edit powers." Different use cases, different UI, intentional.
+> **Chat-first sessions**: sessions started in the extension's older chat-first mode run hidden and treat the chat as their only input, with a fresh agent process per message.
+> New agents launch from the CLI instead; see [chat-first-mode.md](chat-first-mode.md) if you still have chat-first sessions.
 
 ---
 
@@ -182,10 +143,10 @@ stateDiagram-v2
     planning --> ready_to_implement: Plan written, ready for impl
     ready_to_implement --> implementing: Agent claims it
     implementing --> done: Code committed, tests green
-    done --> security_review: enters review pipeline<br/>(security_reviewed=false)
-    security_review --> qa_review: Security Lead approved<br/>(security_reviewed=true)
+    done --> security_review: enters review pipeline
+    security_review --> qa_review: Security Lead approved
     security_review --> ready_to_implement: Security Lead rejected
-    qa_review --> closed: QA Lead approved<br/>(qa_verified=true)
+    qa_review --> closed: QA Lead approved
     qa_review --> ready_to_implement: QA Lead rejected
     closed --> [*]
 ```
@@ -202,7 +163,7 @@ stateDiagram-v2
 - `ready_to_implement → implementing → done` (developer agents)
 - `done → security_review → qa_review` (security/QA agents auto-poll for items needing their gate)
 
-**The review gates exist on purpose**: silent regressions caught in production are the worst kind. Two recent incidents (commit `e0ef3ad` silently deleting #1947's three-layer HTTPS guard; commit `7a3d3be` silently deleting #1614's @mention picker) are exactly what the gates are meant to prevent going forward.
+**The review gates exist on purpose**: silent regressions caught in production are the worst kind.
 
 ---
 
@@ -213,12 +174,12 @@ A real workflow often touches multiple personas. Example: you ask for a new feat
 ```mermaid
 sequenceDiagram
     actor User
-    participant Chat as Chat (UI or @vibeflow)
-    participant PM as Product Manager<br/>(Aria)
-    participant Arch as Architect<br/>(Morgan)
-    participant Dev as Developer<br/>(Alex)
-    participant Sec as Security Lead<br/>(Sophie)
-    participant QA as QA Lead<br/>(Quinn)
+    participant Chat as Chat (Session Chat or @vibeflow)
+    participant PM as PM (Aria)
+    participant Arch as Architect (Morgan)
+    participant Dev as Developer (Alex)
+    participant Sec as Security (Sophie)
+    participant QA as QA (Quinn)
     participant Server as VibeFlow Cloud
 
     User->>Chat: "I want a Slack notification when a build fails"
@@ -232,74 +193,76 @@ sequenceDiagram
     Server-->>Dev: wait_for_work returns it
     Dev->>Dev: implement + write tests + commit
     Dev->>Server: status → done + commit hash
-    Server-->>Sec: wait_for_work returns it<br/>(security_reviewed=false)
+    Server-->>Sec: wait_for_work returns it (security_reviewed=false)
     Sec->>Sec: walk the diff
     Sec->>Server: security_reviewed=true (or reject)
-    Server-->>QA: wait_for_work returns it<br/>(qa_verified=false)
+    Server-->>QA: wait_for_work returns it (qa_verified=false)
     QA->>QA: verify acceptance criteria
     QA->>Server: qa_verified=true (or reject)
     Server-->>User: notification — work item closed
 ```
 
-**Each persona is its own session** (one agent per persona on your machine, polling independently). They never talk to each other directly. Coordination happens through the work item's status field and execution log on the server.
+**Each persona is its own session** (one agent per persona, launched from the CLI, polling independently). They never talk to each other directly. Coordination happens through the work item's status field and execution log on the server.
 
 **You can collapse this**: not every team needs all 9 personas active. A minimal team is *Architect + Developer + QA*: three sessions, the rest implicit (you act as the PM and Security yourself).
 
 ---
 
-## 6. Worktree workflow (multi-branch parallelism)
+## 6. Vera code review on a pull request
 
-When you want a Developer agent working on `feature/foo` while you keep working on `main`, you've got two options:
-
-### Option A: switch branches yourself
-
-Stash your changes, `git checkout feature/foo`, launch the Developer agent, watch it work. When you want to come back to `main`, kill the session, `git checkout main`, unstash. Friction-heavy.
-
-### Option B: git worktree (the VibeFlow way)
+When a developer agent (or you) opens a PR on a repository linked for Vera reviews, the extension shows the review and lets you drive it:
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant Wiz as Launch Wizard
-    participant WT as Worktree Manager
-    participant Git
-    participant Dev as Developer Agent
+    participant PRs as Pull Requests view
+    participant Panel as Vera review panel
+    participant Server as VibeFlow Cloud
+    participant Vera as Vera (Code Reviewer in the CLI)
+    participant Dev as Coding agent
 
-    User->>Wiz: Launch Session, branch=feature/foo
-    Wiz->>Wiz: Check vibeflow.worktree.autoCreate
-    alt autoCreate=true (or user confirms)
-        Wiz->>Git: git worktree add .claude/worktrees/feature-foo feature/foo
-        Git-->>Wiz: worktree path
-        Wiz->>Dev: spawn agent with cwd=.claude/worktrees/feature-foo
-    else No worktree
-        Wiz->>Dev: spawn agent with cwd=workspace root
+    User->>PRs: eye icon → Request Vera Review
+    PRs->>Server: request review (the repo's linked review settings)
+    Server-->>Vera: review job (needs a runner: Vera running in the CLI)
+    Vera->>Server: findings + summary for round 1
+    PRs-->>User: row shows "Findings to address · round 1/3"
+    Server-->>User: toast "Open Review"
+    User->>Panel: open the review
+    Panel-->>User: summary, review cycle, findings (blockers first)
+    User->>Panel: click a finding's file:line → opens in the editor
+    alt Coding agents may fix blockers
+        Server-->>Dev: repair batch for the PR
+        Dev->>Server: one commit + push, then complete the batch
+        Server-->>Vera: next round
+    else You fix it, or dismiss with evidence
+        User->>Panel: Dismiss / Reopen a finding
     end
-    Dev->>Dev: edit files in the worktree
-    Dev->>Git: commit + push from the worktree
-    Note over User,Dev: Your main workspace stays on main.<br/>You can browse / edit there independently.
-
-    User->>WT: Kill session
-    WT->>WT: vibeflow.worktree.cleanupOnKill?
-    alt cleanupOnKill="always"
-        WT->>Git: git worktree remove
-    else cleanupOnKill="ask"
-        WT->>User: modal: keep or delete?
-        User->>WT: delete
-        WT->>Git: git worktree remove
-    else cleanupOnKill="never"
-        WT-->>User: leave it (you'll see it in Agent Fleet ▸ Worktrees)
-    end
+    Vera->>Server: round N clean
+    PRs-->>User: row shows "Reviewed"
 ```
 
-**Why this matters**: you can have 3 Developer sessions running in parallel on 3 different branches, each in its own worktree, none of them stepping on each other or on your main checkout. The Agent Fleet view groups them under their respective branches.
+**What you see**: Vera's state on each PR row, a toast when a review finishes, and a review panel whose controls (Re-run, Pause, Continue, Retry PR update, Dismiss/Reopen) are enabled exactly when the server allows them.
+Project owners and org admins set each repository's review policy (trigger, rounds, skip drafts, whether coding agents may fix blockers) in Settings → **Project**.
 
-**Cleanup gotcha**: the default `cleanupOnKill="ask"` modal does NOT surface dirty state (uncommitted changes). If you delete a worktree with uncommitted work, the work is gone. Recommended: leave `cleanupOnKill="ask"` and review the worktree's git status manually before clicking delete.
+---
+
+## 7. Worktrees (multi-branch parallelism)
+
+When you want a Developer agent working on `feature/foo` while you keep working on `main`, run it in a **git worktree**: a second checkout of the repo on another branch, sharing the same `.git`.
+
+The CLI creates and runs agents in worktrees; the extension shows them:
+
+- **Agent Fleet ▸ Worktrees** lists every worktree with its branch, path, current marker, and dirty status.
+- Right-click a worktree to **Open in New Window** (browse or edit it in a separate Cursor window) or **Delete** it (`git worktree remove`, with a confirmation that warns about uncommitted changes).
+- Agents running in a worktree show their branch in Agent Fleet like any other agent.
+
+**Why this matters**: you can have 3 Developer agents running in parallel on 3 different branches, each in its own worktree, none of them stepping on each other or on your main checkout.
+
+**Cleanup gotcha**: deleting a worktree with uncommitted work loses that work. Check the dirty marker first.
 
 ---
 
 ## Putting it all together: a realistic day
-
-Here's a representative day with VibeFlow active:
 
 ```mermaid
 gantt
@@ -308,41 +271,37 @@ gantt
     axisFormat %H:%M
 
     section You
-    Open Cursor, walk Activity Feed   :a1, 09:00, 5m
+    Open Cursor, walk Activity Feed :a1, 09:00, 5m
     Review overnight QA results       :a2, 09:05, 10m
-    Type a new feature idea in chat   :a3, 09:15, 5m
-    Click Convert to Work Item        :a4, 09:20, 1m
-    Read PM-clarification prompt      :a5, 09:30, 5m
-    Approve security review           :a6, 11:15, 10m
+    Ask for a feature in Session Chat :a3, 09:15, 5m
+    Answer the PM's clarification     :a5, 09:30, 5m
+    Read Vera's review in the panel   :a6, 11:10, 10m
 
     section PM Agent (Aria)
-    Refines scope                     :p1, 09:25, 15m
-    Pings you for clarification       :p2, 09:40, 1m
+    Files and refines the item        :p1, 09:20, 15m
+    Pings you for clarification       :p2, 09:35, 1m
 
     section Architect (Morgan)
-    Plans architecture                :ar1, 09:50, 25m
-    Files implementation todos        :ar2, 10:15, 5m
+    Plans architecture                :ar1, 09:45, 25m
+    Files implementation todos        :ar2, 10:10, 5m
 
     section Developer (Alex)
-    Implements first todo             :d1, 10:25, 35m
-    Commits + pushes                  :d2, 11:00, 5m
-    Marks done                        :d3, 11:05, 1m
+    Implements first todo             :d1, 10:20, 35m
+    Commits, pushes, opens PR         :d2, 10:55, 5m
 
-    section Security (Sophie)
-    Reviews diff                      :s1, 11:06, 8m
-    Approves                          :s2, 11:14, 1m
+    section Vera (Code Reviewer)
+    Reviews the PR                    :v1, 11:00, 10m
 ```
 
-You spend ~35 minutes of human attention; the agents do ~75 minutes of work in parallel. The Activity Feed is your single pane of glass. It shows every transition above.
+You spend ~35 minutes of human attention; the agents do the rest in parallel. The Activity Feed and the Pull Requests view show every transition above.
 
 ---
 
 ## What this doc deliberately doesn't cover
 
-- **Compliance findings** workflow: see the **Compliance** panel and [chat-first-mode.md](chat-first-mode.md) for the Security Lead persona's tools.
-- **Pull request creation**: see `VibeFlow: Create Pull Request` and the branch-review status workflow. Single command; not a multi-step flow worth diagramming.
-- **CLI handoff** (when `vibeflow.cli.enabled=true`): relevant for ~5% of users; out of the common-flow scope. See [settings-reference.md](settings-reference.md).
-- **Document comments + persona handoff** workflow: the comments feature is its own subsystem; see the Documents view's right-click menu.
+- **The CLI's own screens and keys**: see the [VibeFlow CLI README](https://github.com/axiom-studio/vibeflow-cli).
+- **Compliance findings** workflow: see the **Compliance** panel.
+- **Document comments + persona handoff** workflow: the comments feature is its own subsystem; see the Documents view.
 
 ---
 

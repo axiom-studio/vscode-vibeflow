@@ -4,6 +4,8 @@
 
 **TL;DR**: Chat-First Mode lets you talk to a VibeFlow agent the way you talk to Copilot Chat or Cursor. Type a message, the agent answers, type a follow-up, it keeps going. No work item required to start a conversation. Under the hood it always runs in YOLO (skip-permissions) mode and prefers `tmux` as its runtime backing. It's the most powerful way to use the extension, and also the most opinionated.
 
+> **Chat-first is no longer how agents launch.** Agents now launch only through the VibeFlow CLI, and **VibeFlow: Launch Session** opens the CLI, so new chat-first sessions can't be started from the extension. You talk to CLI-launched agents in the same Session Chat panel; see the [workflows guide](03-workflows-and-flows.md#3-talking-to-an-agent). This page remains as a reference for chat-first sessions you already have.
+
 > Unfamiliar term? See [07-glossary.md](07-glossary.md).
 
 ---
@@ -56,7 +58,7 @@ Chat-First Mode **always** implies YOLO. There is no chat-first-with-permission-
 
 ## 4. Headless backing: tmux vs vscode
 
-The chat-first agent runs *headless*. There's no visible terminal you can type into. So it has to live somewhere. The `vibeflow.session.headlessBacking` setting picks that "somewhere." Three values:
+The chat-first agent runs *headless*. There's no visible terminal you can type into. So it has to live somewhere. The extension picks that "somewhere" itself, using the `auto` behavior below (the setting that used to override it was removed with the CLI-first change). The three behaviors:
 
 ### `auto` (default, recommended)
 
@@ -110,18 +112,7 @@ From your perspective: you type, agent responds, you type again, agent responds 
 
 ## 6. How to launch chat-first
 
-1. Open the Command Palette (`Cmd/Ctrl+Shift+P`) and run **VibeFlow: Launch Session**. (Equivalent: click **Launch Session** in the Agent Fleet view.)
-2. Step through the wizard:
-   - **Branch**: the git branch this session targets (defaults to current).
-   - **Persona**: Developer, Architect, etc.
-   - **Provider**: Claude, Codex, Gemini, Cursor, Qwen.
-   - **Provider key**: only if you haven't already stored one.
-   - **Session Mode**: choose **Chat-First**.
-3. If this is the first chat-first launch for the `{persona, branch, workDir}` triple, the **YOLO consent modal** appears. Click **I understand, continue**.
-4. The **Session Chat** panel opens immediately in the editor area. **No terminal opens.** That's the whole point. There is no terminal.
-5. The first agent process spawns in the background (on `tmux` or hidden VS Code terminal, per `vibeflow.session.headlessBacking`). When it's ready, the panel renders an empty transcript with a focused input box.
-
-You're now in chat. Type.
+New chat-first sessions can no longer be launched: **VibeFlow: Launch Session** opens the VibeFlow CLI. Start the agent from the CLI instead and talk to it in Session Chat.
 
 ---
 
@@ -179,11 +170,7 @@ Rule of thumb: chat-first for *conversation*; vanilla for *production*.
 
 ## 9. Switching back from chat-first
 
-There's no in-place "switch this session to vanilla" toggle. Sessions are immutable in terms of mode. To switch:
-
-1. Kill the chat-first session from the **Agent Fleet** view (right-click → **Kill Session**).
-2. Run **VibeFlow: Launch Session** again.
-3. Pick the same persona and branch; pick **Vanilla** or **VibeFlow** as the session mode.
+Kill the chat-first session from the **Agent Fleet** view (right-click → **Kill Session**), then start the same persona from the VibeFlow CLI (**VibeFlow: Launch Session**).
 
 Work items the chat-first session created persist on the server. They aren't tied to the session's lifetime.
 
@@ -193,12 +180,12 @@ Work items the chat-first session created persist on the server. They aren't tie
 
 Detailed failure modes live in [06-troubleshooting.md](06-troubleshooting.md). Quick pointers:
 
-- **"Chat says 'Working…' forever."** Almost always issue **#2305**. `vibeflow.session.headlessBacking` is `vscode` and you've sent a second turn. Switch the setting to `auto` (or `tmux`), kill the session, relaunch.
+- **"Chat says 'Working…' forever."** Almost always issue **#2305**. The session has no tmux backing (tmux isn't installed) and you've sent a second turn. Start the agent from the VibeFlow CLI instead.
 - **"Agent didn't see my second message."** Same root cause.
 - **"The panel is empty / nothing happens when I type."** The underlying session isn't active. Check the **Agent Fleet** view. If the row is missing or marked dead, relaunch.
-- **"Agent forgot what we were discussing mid-conversation."** Failed `--resume` between turns. Kill and relaunch; if it persists, check that your provider key is still valid.
+- **"Agent forgot what we were discussing mid-conversation."** Failed `--resume` between turns. Kill the session and start the agent from the VibeFlow CLI.
 - **"Consent modal keeps reappearing for the same session."** You're launching against a different `{persona, branch, workDir}` triple each time. Each combination has its own consent state.
 
 ---
 
-*Chat-First Mode is the newest first-class workflow in VibeFlow and the one with the most moving parts. If something is unexpected, the answer is almost always in one of four places: the YOLO consent state, `headlessBacking`, the per-turn respawn, or the provider's `--resume`.*
+*Chat-First Mode is the newest first-class workflow in VibeFlow and the one with the most moving parts. If something is unexpected, the answer is almost always in one of four places: the YOLO consent state, the backing (tmux or not), the per-turn respawn, or the provider's `--resume`.*

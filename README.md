@@ -38,10 +38,15 @@ Published as **`AxiomStudio.vscode-vibeflow`** (display name **"VibeFlow"**).
 1. **Install** (above).
 2. **Connect** — run **`VibeFlow: Setup`** from the Command Palette: server URL → API key (from [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai)) → project.
    The key is stored in the editor's encrypted Secrets API.
-3. **Launch a session** — **`VibeFlow: Launch Session`** (`Cmd/Ctrl+Shift+V L`) → pick persona(s), provider, branch, and session mode.
-   The agent fleet starts working.
+3. **Install the CLI** — **`VibeFlow: Settings`** → **Connection** → **VibeFlow CLI** → **Install Latest**.
+   Agents run in the [VibeFlow CLI](https://github.com/axiom-studio/vibeflow-cli); the extension is where you manage the project and review the work.
+   Saving the API key or a successful **Test Connection** in Settings → Connection also writes your server URL, API key, and current project into the CLI's config, so the CLI needs no separate login.
+4. **Launch agents** — **`VibeFlow: Launch Session`** (`Cmd/Ctrl+Shift+V L`) opens the CLI in a terminal; pick personas, provider, and branch there.
+   Agent Fleet shows them as soon as they start.
 
-If you already use [`vibeflow-cli`](https://github.com/axiom-studio/vibeflow-cli), the extension can hand session management to it — or click **Install Latest** in Settings → CLI Interface to download the binary in one step.
+> **Windows**: the CLI runs agents in tmux, so it needs WSL.
+> Install WSL and the WSL extension, reopen the folder in WSL, then install the CLI there.
+> On a native Windows window, every CLI action shows this guidance instead.
 
 ## The team (9 personas)
 
@@ -59,12 +64,31 @@ You launch one agent **per persona**; each polls independently for work matching
 | Security Lead | Sophie | Reviews diffs for security (security gate) |
 | Customer | Casey | Customer-voice feedback |
 
-A minimal team is just **Developer + Architect + QA**; you act as the rest. Code agents (Developer, Architect, Principal Engineer) write source and get visible terminals by default; advisory agents run hidden in hybrid mode.
+A minimal team is just **Developer + Architect + QA**; you act as the rest.
+Code agents (Developer, Architect, Principal Engineer) write source; the others advise and review.
 
 ## Features
 
+### Project dropdown
+The first pane in the VibeFlow sidebar is a dropdown of your projects, with the current branch below it.
+Choosing a project (or `Cmd/Ctrl+Shift+V P`, or **`VibeFlow: Switch Project…`**) rescopes every view and closes the previous project's VibeFlow panels; Settings and your editors stay open.
+The extension also detects the project from your workspace's git remote and offers to switch when you open a folder that maps elsewhere.
+
 ### Agent Fleet
-Live tree of running agent sessions, grouped by branch. Status icons surface heartbeat health (green active, yellow stale, gray inactive). Each session gets its own integrated terminal; right-click any agent for **Kill / Restart / Delete / Kill & Forget / Focus / Copy Session ID / Open Session Panel**.
+Exactly the agents the VibeFlow CLI is running, across all your projects — the same list the CLI shows.
+Agents group by project (current project first); each row is the persona with its branch and latest activity.
+Code Reviewer sessions show as **Vera · Code Reviewer**.
+Click an agent in another project to switch to that project and open its chat.
+Right-click an agent for **Focus Terminal / Kill / Restart / Kill & Forget / Copy Session ID / View Session Details**.
+When nothing is running, the empty state opens the CLI.
+
+### Pull Requests and Vera code review
+The **Pull Requests** view lists the project's PRs, including PRs tracked only for review.
+Reviewed PRs show Vera's state (for example *Findings to address*, *Fixes queued*, *Reviewed*), the review round, and unresolved blockers.
+The eye icon on a row requests a Vera review.
+Click a reviewed PR to open its review panel: summary, the review cycle, and finding cards (blockers first) whose `file:line` opens in the editor.
+The panel can re-run, pause, or continue a review, retry a PR update, and dismiss or reopen findings, each exactly as the server allows.
+A toast with **Open Review** appears when a review finishes.
 
 ### Session Chat with structured rendering
 A dedicated chat panel per agent. **Consecutive messages from the same persona group under one header** (avatar + persona-colored name); your messages render as right-aligned bubbles, the agent's as left-aligned, persona-tinted bubbles. Agent responses get **light structural rendering** — section headers, a metadata line, and phase markers (e.g. a warning callout in amber) — on top of full markdown: syntax-highlighted code, inline-unified or split-view diffs, and clickable **commit hashes** + **file paths** that open in the right viewer. In chat-first mode the transcript streams sub-millisecond via a provider-agnostic stream-json transport. A live "Working… {elapsed}" indicator shows while the agent is thinking.
@@ -97,44 +121,43 @@ Real-time stream of every agent action, color-coded by message type (thinking, a
 ### Compliance
 **`VibeFlow: Open Compliance`** (`Cmd/Ctrl+Shift+V C`) — findings grouped by framework: **SOC 2, ISO 27001, PCI-DSS, HIPAA, GDPR, FedRAMP, and CMMC**. Filterable findings table with expandable rows (description / remediation / resolution commit / resolver) and CSV export with an OWASP CSV-injection guard.
 
-### Project switcher
-A `$(folder) <project-name>` pill in the status bar. Click (or `Cmd/Ctrl+Shift+V P`, or **`VibeFlow: Switch Project…`**) to pick a project. Auto-detects the project from your workspace's git remote and prompts to switch when you open a folder that maps elsewhere.
-
 ### Worktrees
-A collapsible Worktrees section in Agent Fleet lists every git worktree with its branch, path, current marker, and dirty status. Right-click to **Open in New Window**, **Delete** (dirty-aware confirmation), or **Create Session Here** (opens the launch wizard pre-filled with that branch).
+A collapsible Worktrees section in Agent Fleet lists every git worktree with its branch, path, current marker, and dirty status.
+Right-click to **Open in New Window** or **Delete** (dirty-aware confirmation).
 
-### CLI auto-install & file decorations
-Settings → CLI Interface → **Install Latest** downloads the matching `vibeflow-cli` binary from GitHub Releases, verifies the checksum, and wires the path into `vibeflow.cli.binaryPath`. Separately, each file the active agent is touching gets a per-persona color badge in the Explorer (with a TTL sweep).
+### CLI install, updates & file decorations
+Settings → Connection → **VibeFlow CLI** → **Install Latest** downloads the matching `vibeflow-cli` binary from GitHub Releases, verifies the checksum, and wires the path into `vibeflow.cli.binaryPath`.
+The extension checks for newer CLI releases every 12 hours (`vibeflow.cli.updateCheckIntervalHours`) and tells you only when one exists.
+Separately, each file the active agent is touching gets a per-persona color badge in the Explorer (with a TTL sweep).
 
 ### MCP server registration & @vibeflow chat participant
 The extension registers VibeFlow as an MCP server via the VS Code MCP API so other Copilot-like tools can discover it, and contributes a **`@vibeflow`** chat participant with `/status`, `/create`, `/review`, `/summary`, `/launch`, `/respond`, `/compliance`. *(Cursor note: Cursor's built-in chat is a separate system and won't surface the `@vibeflow` participant or this MCP registration — Cursor uses its own MCP config. VibeFlow's own Session Chat panel works fully in Cursor regardless.)*
 
-## Session modes
+## Launching agents
 
-- **Vanilla** — per-action permission prompts (safe default).
-- **VibeFlow (YOLO)** — autonomous, skip-permissions (`--dangerously-skip-permissions` on Claude; `--yolo` on Codex/Gemini; `--yolo --approve-mcps` on Cursor). Consent modal once per session.
-- **Chat-first headless** — the agent runs in the background (stream-json subprocess, or optional `tmux` backing) instead of a foreground terminal; the chat panel is the only surface, with sub-millisecond streaming. Always implies YOLO.
-
-Providers: **Claude, Codex, Gemini, and Cursor**.
+Agents launch only through the [VibeFlow CLI](https://github.com/axiom-studio/vibeflow-cli).
+**`VibeFlow: Launch Session`**, `Cmd/Ctrl+Shift+V L`, and **Open CLI** in the Agent Fleet title bar all open it.
+Personas, provider (Claude, Codex, Gemini, Cursor, and others the CLI supports), branch, worktree, and permission mode are chosen in the CLI.
+The extension does not need its own provider tokens.
 
 ## Settings (all 14)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `vibeflow.serverUrl` | `https://cloud.axiomstudio.ai` | VibeFlow server URL (HTTPS required outside `localhost`/`127.0.0.1`/`[::1]`) |
-| `vibeflow.defaultProvider` | `claude` | Default AI provider the launch wizard pre-selects |
-| `vibeflow.cli.enabled` | `false` | Hand session management to the `vibeflow` CLI TUI |
-| `vibeflow.cli.binaryPath` | `""` | Absolute path to the `vibeflow` binary (auto-set by **Install Latest**) |
-| `vibeflow.session.terminalMode` | `hybrid` | Terminal visibility: `hybrid` / `all` / `none` |
+| `vibeflow.cli.binaryPath` | `""` | Absolute path to the `vibeflow` binary; empty = find it on `PATH` (auto-set by **Install Latest**) |
+| `vibeflow.cli.mcpName` | `""` | Passed to the CLI as `--mcp` when the extension opens it |
+| `vibeflow.cli.rootPath` | `""` | Passed to the CLI as `--root` when the extension opens it |
+| `vibeflow.cli.updateCheckIntervalHours` | `12` | How often to check for a newer CLI release; `0` disables |
 | `vibeflow.session.reattachMode` | `vanilla` | Permission mode on window-reload reattach: `vanilla` / `vibeflow` |
-| `vibeflow.session.headlessBacking` | `auto` | Chat-first backing: `auto` (tmux if available, else editor terminal) / `tmux` (Unix only; survives IDE restart) / `vscode` |
-| `vibeflow.chat.diffView` | `unified` | Inline diff layout in Session Chat: `unified` / `split` |
-| `vibeflow.polling.interval` | `30` | UI refresh interval, seconds (5–300) |
+| `vibeflow.polling.interval` | `30` | Background refresh interval, seconds |
+| `vibeflow.polling.liveInterval` | `5` | Live refresh interval (Activity Feed, open chats and panels), seconds |
 | `vibeflow.notifications.agentPrompts` | `true` | Toast when an agent needs your input |
 | `vibeflow.notifications.workItemComplete` | `true` | Toast when a work item reaches `done` |
-| `vibeflow.worktree.baseDir` | `.claude/worktrees` | Workspace-relative dir for cross-branch worktrees |
-| `vibeflow.worktree.autoCreate` | `false` | Auto-create a worktree when launching against a branch without one |
-| `vibeflow.worktree.cleanupOnKill` | `ask` | Cleanup policy on session kill: `ask` / `always` / `never` |
+| `vibeflow.chat.diffView` | `unified` | Inline diff layout in Session Chat: `unified` / `split` |
+| `vibeflow.chat.showTmuxAttachButton` | `true` | tmux attach button in the header of a tmux-backed chat-first session |
+| `vibeflow.cloudRunners.debug` | `false` | Log Cloud Runners API calls (never bodies or secrets) to an output channel |
+| `vibeflow.debug.polling` | `false` | Log poll activity to the "VibeFlow Polling" output channel |
 
 Full per-setting reference (whens, gotchas, enum semantics): [VS Code](docs/vscode-vibeflow/docs/settings-reference.md) · [Cursor](docs/cursor-vibeflow/docs/settings-reference.md).
 
@@ -142,11 +165,13 @@ Full per-setting reference (whens, gotchas, enum semantics): [VS Code](docs/vsco
 
 - **VS Code 1.93+** (the `engines.vscode` minimum). For **Cursor / forks**, a build whose bundled VS Code engine is ≥ 1.93 — check via *Cursor → About*; current releases satisfy this.
 - A VibeFlow account at [cloud.axiomstudio.ai](https://cloud.axiomstudio.ai) with an API key.
-- For each provider you launch: its CLI on `PATH` — one of `claude`, `codex`, `gemini`, or the Cursor `agent` binary.
+- The [VibeFlow CLI](https://github.com/axiom-studio/vibeflow-cli) (one click from Settings), plus each agent CLI you launch from it (for example `claude`, `codex`, `gemini`).
+- macOS or Linux, or Windows through **WSL** (the CLI runs agents in tmux).
 
 ## Security
 
-- API key + provider tokens stored in the editor's encrypted, per-machine **Secrets API** — never written to disk in plaintext, never logged, never committed.
+- The API key is stored in the editor's encrypted, per-machine **Secrets API**, never logged, never committed.
+  Settings → Connection also mirrors it into the CLI's own `config.yaml` (mode `0600`, written atomically, never alongside an insecure server URL) so the CLI shares your sign-in; after **Logout** the extension stops re-importing the CLI's token.
 - **HTTPS enforced** for `vibeflow.serverUrl` (HTTP allowed only for `localhost` / `127.0.0.1` / `[::1]`); validated at activation, on every REST request, and at MCP transport construction (regression-guarded by `scripts/check-security-guards.mjs`).
 - **`.mcp.json`** (which embeds the bearer token) is only written when `git check-ignore` confirms the workspace will exclude it; written with `mode 0o600`.
 - Worktree commands use `execFileSync` argv form (no shell), with a branch-name allowlist and `..`-traversal path confinement.
@@ -169,7 +194,7 @@ A complete user guide ships in the repo, in two parallel editions:
 - **VS Code edition** → [`docs/vscode-vibeflow/docs/`](docs/vscode-vibeflow/docs/index.md)
 - **Cursor edition** → [`docs/cursor-vibeflow/docs/`](docs/cursor-vibeflow/docs/index.md)
 
-Each is nine documents: getting started, a feature tour of every view/panel/command, end-to-end flow diagrams, the chat-first deep dive, the full settings reference, troubleshooting, glossary, and FAQ.
+Each covers getting started, a feature tour of every view/panel/command, end-to-end flow diagrams, the full settings reference, Cloud Runners, Git configuration, troubleshooting, glossary, and FAQ, plus the chat-first reference for existing chat-first sessions.
 
 ## Contributing
 
