@@ -7,6 +7,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createProcessTerminal } from '../sessions/terminalLaunch.js';
 import { cliNeedsWsl, showCliNeedsWsl } from './cliPlatform.js';
+import { cliControlSocket, requestCliNavigation, waitForCliNavigation, type CliNavigationTarget } from './cliNavigation.js';
 
 const TERMINAL_NAME = 'VibeFlow CLI';
 
@@ -225,7 +226,7 @@ export function hasCliLaunchOptions(options?: CliLaunchOptions): boolean {
  * Launch flags as argv — the executed form since #4995 (the TUI binary is
  * spawned directly as the terminal process; no shell parses these).
  */
-export function buildCliLaunchArgs(options: CliLaunchOptions = {}): string[] {
+export function buildCliLaunchArgs(options: CliLaunchOptions = {}, controlSocket?: string): string[] {
   const args: string[] = [];
   const mcpName = options.mcpName?.trim();
   const rootPath = options.rootPath?.trim();
@@ -235,6 +236,7 @@ export function buildCliLaunchArgs(options: CliLaunchOptions = {}): string[] {
   if (rootPath) {
     args.push('--root', rootPath);
   }
+  if (controlSocket) { args.push('--client', 'vscode', '--control-socket', controlSocket); }
   return args;
 }
 
@@ -247,8 +249,9 @@ export function buildCliLaunchCommand(
   binary: string,
   options: CliLaunchOptions = {},
   platform: NodeJS.Platform = process.platform,
+  controlSocket?: string,
 ): string {
-  return [binary, ...buildCliLaunchArgs(options)]
+  return [binary, ...buildCliLaunchArgs(options, controlSocket)]
     .map(arg => shellQuote(arg, platform))
     .join(' ');
 }
@@ -268,7 +271,16 @@ export function buildCliLaunchCommand(
  * exits the TUI; the PID lock at ~/.vibeflow-cli/<lock> releases on
  * exit so the next run starts fresh.
  */
+let openingCli: Promise<void> | undefined;
+let navigationQueue: Promise<void> = Promise.resolve();
+
 export async function openCli(workspaceRoot: string | undefined, launchOptions?: CliLaunchOptions): Promise<void> {
+  if (openingCli) { return openingCli; }
+  openingCli = openCliOnce(workspaceRoot, launchOptions);
+  try { await openingCli; } finally { openingCli = undefined; }
+}
+
+async function openCliOnce(workspaceRoot: string | undefined, launchOptions?: CliLaunchOptions): Promise<void> {
   // Every CLI launch route funnels through here (Open CLI, Launch Session,
   // its keybinding and the chat button), so the native-Windows guard lives
   // here rather than on one command (#4035, PR #4 review finding).
@@ -322,7 +334,7 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
       'Retry',
     );
     if (choice === 'Retry') {
-      return openCli(workspaceRoot, launchOptions); // re-checks the lock
+      return openCliOnce(workspaceRoot, launchOptions); // re-checks the lock
     }
     return;
   }
@@ -347,6 +359,17 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
     return;
   }
 
+  // Probe a capability, not a version number: local development builds may
+  // support navigation before a release is published. Old CLIs still open normally.
+  let supportsNavigation = false;
+  try {
+    const output = execFileSync(binary, ['integration-capabilities'], { timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    supportsNavigation = JSON.parse(output).vscode_navigation === 1;
+  } catch { /* Older CLI: navigation gives upgrade guidance on first use. */ }
+  const controlDir = supportsNavigation ? fs.mkdtempSync(path.join('/tmp', 'vf-vscode-')) : undefined;
+  if (controlDir) { fs.chmodSync(controlDir, 0o700); }
+  const controlSocket = controlDir ? path.join(controlDir, 'control.sock') : undefined;
+
   // Spawn in the editor area so it occupies the main pane. The left
   // sidebar (Agent Fleet, Work Items, Documents) stays visible — that's
   // the deliberate "CLI mode" layout: TUI as the workhorse, panels as
@@ -356,16 +379,24 @@ export async function openCli(workspaceRoot: string | undefined, launchOptions?:
   // (#3342 invariant) — the display string is the argv, shell-quoted for
   // readability; the spawn takes the argv itself. Since #4995 the TUI is
   // the terminal process (no shell), so nothing can interleave with it.
-  logCli(`launching in editor terminal (argv spawn, no shell; cwd: ${cwd}): ${buildCliLaunchCommand(binary, options)}`);
+  logCli(`launching in editor terminal (argv spawn, no shell; cwd: ${cwd}): ${buildCliLaunchCommand(binary, options, process.platform, controlSocket)}`);
 
   const terminal = createProcessTerminal({
     name: TERMINAL_NAME,
     binary,
-    args: buildCliLaunchArgs(options),
+    args: buildCliLaunchArgs(options, controlSocket),
     cwd,
     location: vscode.TerminalLocation.Editor,
     iconPath: new vscode.ThemeIcon('terminal'),
   });
+  if (controlDir) {
+    const closed = vscode.window.onDidCloseTerminal(t => {
+      if (t !== terminal) { return; }
+      closed.dispose();
+      // Only the per-terminal directory created above is removed.
+      void fs.promises.rm(controlDir, { recursive: true, force: true });
+    });
+  }
   terminal.show(false);
 }
 
@@ -385,4 +416,34 @@ function shellQuote(arg: string, platform: NodeJS.Platform): string {
 // "Open CLI".
 export function isVibeflowInstalled(): boolean {
   return resolveBinary() !== undefined;
+}
+
+/** Serialize rapid clicks and address only this window's owned terminal. */
+export function navigateCli(workspaceRoot: string | undefined, target: CliNavigationTarget): Promise<void> {
+  const task = navigationQueue.catch(() => {}).then(async () => {
+    if (!target || !['project', 'session'].includes(target.view) || !target.session?.startsWith('vibeflow_')) {
+      throw new Error('Select a running local agent or project in Agent Fleet.');
+    }
+    let terminal = vscode.window.terminals.find(t => t.name === TERMINAL_NAME && t.exitStatus === undefined);
+    if (!terminal) {
+      await openCli(workspaceRoot);
+      terminal = vscode.window.terminals.find(t => t.name === TERMINAL_NAME && t.exitStatus === undefined);
+    }
+    if (!terminal) { return; } // Launcher already explained install, WSL or the external-instance guard.
+    terminal.show(false);
+    const options = terminal.creationOptions as vscode.TerminalOptions;
+    const socket = cliControlSocket(options.shellArgs);
+    if (!socket) {
+      throw new Error('This CLI terminal does not support Agent Fleet navigation. Update VibeFlow CLI, close this terminal, and reopen it. Running agents remain in tmux.');
+    }
+    const ownedTerminal = terminal;
+    const ready = await waitForCliNavigation(socket, () => ownedTerminal.exitStatus !== undefined || !vscode.window.terminals.includes(ownedTerminal));
+    const expectedRoot = path.dirname(currentCliConfigPath());
+    if (path.resolve(ready.root) !== expectedRoot || ready.tmux_socket !== currentCliTmuxSocket()) {
+      throw new Error('This CLI terminal uses a different root or tmux socket. Close it and reopen the CLI to apply the current settings.');
+    }
+    await requestCliNavigation(socket, target);
+  });
+  navigationQueue = task;
+  return task;
 }

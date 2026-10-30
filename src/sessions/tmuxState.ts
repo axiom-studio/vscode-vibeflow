@@ -41,15 +41,22 @@ import { currentCliTmuxSocket } from '../commands/cliCommands.js';
 export function getLiveTmuxSessions(socket: string = currentCliTmuxSocket()): Set<string> {
   try {
     const out = execFileSync(
-      'tmux', ['-L', socket, 'list-sessions', '-F', '#{session_name}'],
+      'tmux', ['-L', socket, 'list-panes', '-a', '-F', '#{session_name}\t#{@vibeflow_session}\t#{pane_dead}'],
       {
         stdio: ['ignore', 'pipe', 'ignore'],
         timeout: 2000,
       },
     ).toString();
-    return new Set(
-      out.split('\n').map(s => s.trim()).filter(Boolean),
-    );
+    const live = new Set<string>();
+    for (const line of out.split('\n')) {
+      const [session, origin, dead] = line.split('\t');
+      if (dead === '1') { continue; }
+      if (session) { live.add(session); }
+      // The CLI's existing recovery identity follows the pane into a split
+      // workbench, where its original tmux session may no longer exist.
+      if (origin?.startsWith('vibeflow_')) { live.add(origin); }
+    }
+    return live;
   } catch {
     return new Set();
   }
@@ -84,11 +91,19 @@ export function buildTmuxName(provider: string, sessionId: string): string {
  */
 export function killTmuxSession(provider: string, sessionId: string, socket: string = currentCliTmuxSocket()): boolean {
   const name = buildTmuxName(provider, sessionId);
+  const options = { stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'], timeout: 2000 };
   try {
-    execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], {
-      stdio: ['ignore', 'ignore', 'ignore'],
-      timeout: 2000,
-    });
+    const rows = execFileSync('tmux', ['-L', socket, 'list-panes', '-a', '-F', '#{pane_id}\t#{session_name}\t#{@vibeflow_session}'], options).toString();
+    const movedPane = rows.split('\n').map(row => row.split('\t'))
+      .find(([, owner, origin]) => origin === name && owner !== name)?.[0];
+    if (movedPane && /^%\d+$/.test(movedPane)) {
+      // A Vera history pane or a user split can keep the original session
+      // alive. Stop the composed agent first, then its remaining own panes.
+      execFileSync('tmux', ['-L', socket, 'kill-pane', '-t', movedPane], options);
+      try { execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], options); } catch { /* Source session was consumed by composition. */ }
+    } else {
+      execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], options);
+    }
     return true;
   } catch {
     return false;

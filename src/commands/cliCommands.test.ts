@@ -86,6 +86,11 @@ describe('parseCliVersion', () => {
 });
 
 describe('buildCliLaunchArgs', () => {
+  it('opts into VS Code control only when the launcher supplies its private socket', () => {
+    expect(buildCliLaunchArgs({ rootPath: '/tmp/root' }, '/tmp/private/control.sock'))
+      .toEqual(['--root', '/tmp/root', '--client', 'vscode', '--control-socket', '/tmp/private/control.sock']);
+  });
+
   // Since #4995 this argv IS what executes — the TUI binary is spawned as
   // the terminal process; the string form below is display/log only.
   it('emits nothing for blank options and flag pairs for set ones — values verbatim, unquoted', () => {
