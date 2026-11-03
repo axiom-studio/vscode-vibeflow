@@ -349,6 +349,11 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "vibeflow.openFleetInCli",
+        "title": "VibeFlow: Open in CLI",
+        "icon": "$(terminal)"
+      },
+      {
         "command": "vibeflow.openSessionPanel",
         "title": "VibeFlow: View Session Details"
       },
@@ -437,8 +442,8 @@
       ],
       "view/item/context": [
         {
-          "command": "vibeflow.focusTerminal",
-          "when": "view == vibeflow.agentFleet && viewItem == activeSession",
+          "command": "vibeflow.openFleetInCli",
+          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession || viewItem == foreignSession || viewItem == cliLocalSession || viewItem == fleetProject)",
           "group": "session@0"
         },
         {
@@ -453,7 +458,7 @@
         },
         {
           "command": "vibeflow.openSessionPanel",
-          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession)",
+          "when": "view == vibeflow.agentFleet && (viewItem == activeSession || viewItem == inactiveSession || viewItem == foreignSession)",
           "group": "session@3"
         },
         {

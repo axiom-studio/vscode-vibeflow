@@ -31,7 +31,7 @@ import { PromptNotifier } from './notifications/PromptNotifier.js';
 import { registerChatParticipant } from './chat/participant.js';
 import { launchSession, runLaunchGuarded } from './commands/sessionCommands.js';
 import { killSession, killAndForgetSession, restartSession, focusTerminal, deleteSession, copySessionId } from './commands/sessionLifecycle.js';
-import { currentCliConfigPath, openCli, type CliLaunchOptions } from './commands/cliCommands.js';
+import { currentCliConfigPath, openCli, navigateCli, type CliLaunchOptions } from './commands/cliCommands.js';
 import { installCli } from './commands/cliInstaller.js';
 import { registerCliUpdateCheck, runCliUpdateCheck } from './commands/cliUpdateCheck.js';
 import { registerIdeUsageReporting } from './ide/ideUsageReporter.js';
@@ -941,6 +941,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await assetCache.clearAll();
       disconnect();
       vscode.window.showInformationMessage('VibeFlow: Logged out');
+    }),
+    vscode.commands.registerCommand('vibeflow.openFleetInCli', async (idOrNode?: string | { id?: string }) => {
+      const id = typeof idOrNode === 'string' ? idOrNode : idOrNode?.id;
+      const target = id ? sessionsProvider.getCliNavigation(id) : undefined;
+      if (!target) {
+        vscode.window.showInformationMessage('VibeFlow: this agent is no longer available locally. Refresh Agent Fleet.');
+        return;
+      }
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      await runLaunchGuarded('Open Agent Fleet in CLI', () => navigateCli(root, target), msg => vscode.window.showErrorMessage(msg));
     }),
     vscode.commands.registerCommand('vibeflow.openCli', async (launchOptions?: CliLaunchOptions) => {
       const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

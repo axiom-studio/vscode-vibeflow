@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { VibeFlowClient } from '../../api/client.js';
 import { currentCliConfigPath } from '../../commands/cliCommands.js';
+import type { CliNavigationTarget } from '../../commands/cliNavigation.js';
 import { type CliSessionMeta, groupFleetByProject, liveCliFleet, parseCliSessions } from './fleetModel.js';
 import type { VibeFlowSession } from '../../api/types.js';
 import type { PollingCoordinator, Disposer } from '../../core/PollingCoordinator.js';
@@ -101,6 +102,16 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   /** The CLI's own session store, for sessions the server has not seen. */
   private cliSessions: CliSessionMeta[] = [];
   private projectNames = new Map<number, string>();
+  private cliNavigation = new Map<string, CliNavigationTarget>();
+
+  getCliNavigation(id: string): CliNavigationTarget | undefined {
+    return this.cliNavigation.get(id);
+  }
+
+  private cliCommand(id: string, session: string, view: 'session' | 'project'): vscode.Command {
+    this.cliNavigation.set(id, { view, session });
+    return { command: 'vibeflow.openFleetInCli', title: view === 'project' ? 'Open Project Split View' : 'Open Agent in CLI', arguments: [id] };
+  }
   /**
    * Last tmux probe — `undefined` when CLI mode is off (tells deriveStatus
    * to fall back to backend-only logic). When CLI mode is on, this is
@@ -363,7 +374,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
     // Click a session node → open Session Panel (inspection view)
     // Pass only the string ID — non-serializable fields (ThemeColor, MarkdownString) break args
-    if (element.type === 'session') {
+    if (element.type === 'session' && !element.command) {
       // A session in another project needs that project's context (logs,
       // prompts); route it through a switch first (#4032).
       const otherProject = element.session && element.session.project_id !== this.projectId;
@@ -385,6 +396,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
   private buildTree(): SessionNode[] {
     this.sessionById.clear();
     this.worktreeById.clear();
+    this.cliNavigation.clear();
 
     const fleet = this.fleet();
     const hasAnyRow = fleet.sessions.length > 0 || fleet.localOnly.length > 0 || this.pendingSessions.size > 0;
@@ -426,8 +438,12 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
         ...(g.current ? [...this.pendingSessions.values()].map(p => this.buildPendingNode(p)) : []),
       ];
       const running = g.sessions.length + g.localOnly.length;
+      const anchor = children.map(child => this.cliNavigation.get(child.id)?.session).find(Boolean);
+      const id = `project-${g.key}`;
       return {
-        id: `project-${g.key}`,
+        id,
+        command: anchor ? this.cliCommand(id, anchor, 'project') : undefined,
+        tooltip: 'Open this project in the CLI split view. Use the arrow to expand or collapse its agents.',
         type: 'project' as const,
         label: g.projectName,
         description: [`${running} running`, g.current ? 'current' : ''].filter(Boolean).join(' · '),
@@ -450,6 +466,7 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
     tooltip.appendMarkdown('- Running in the CLI; VibeFlow has no session record for it yet.\n');
     return {
       id: `local-${meta.tmux_session || meta.name}`,
+      command: this.cliCommand(`local-${meta.tmux_session || meta.name}`, meta.tmux_session, 'session'),
       type: 'localSession',
       label: personaLabel,
       description: `${meta.branch} · running in CLI`,
@@ -573,9 +590,12 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
 
     const nodeId = `session-${session.session_id}`;
     this.sessionById.set(nodeId, session);
+    const local = this.cliSessions.find(m => this.liveTmuxSessions?.has(m.tmux_session)
+      && (m.vibeflow_session_id === session.session_id || m.name === session.session_id));
 
     return {
       id: nodeId,
+      command: local ? this.cliCommand(nodeId, local.tmux_session, 'session') : undefined,
       type: 'session',
       label: personaLabel,
       description,
@@ -587,8 +607,8 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionNode
       // could still have local resources (a backend record or a tmux
       // pane). Only the truly-dead `inactive` rows fall back to the
       // record-only delete menu.
-      // Another project's agent gets no project-scoped actions; clicking it
-      // switches projects first (vibeflow.openSessionInProject).
+      // Another project's agent gets local navigation; inspection still
+      // requires switching project through the separate details action.
       contextValue: session.project_id !== this.projectId
         ? 'foreignSession'
         : status === 'inactive' ? 'inactiveSession' : 'activeSession',
