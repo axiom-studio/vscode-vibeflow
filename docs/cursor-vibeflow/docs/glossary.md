@@ -9,27 +9,40 @@
 ## Core concepts
 
 ### Agent
-A long-running AI process that thinks and writes code on your behalf. VibeFlow runs **multiple** agents at once, each playing a different role (see *persona*).
+A long-running AI process that thinks and writes code on your behalf. VibeFlow runs **multiple** agents at once, each playing a different role (see *persona*). Agents run in the **VibeFlow CLI**.
 
 ### Persona
-The role an agent plays. VibeFlow ships with nine: **Developer** (Alex), **Architect** (Morgan), **Principal Engineer** (Kai), **Product Manager** (Aria), **Project Manager** (Parker), **UX Designer** (Dana), **QA Lead** (Quinn), **Security Lead** (Sophie), and **Customer** (Casey). You launch one agent *per persona*. They poll independently for work that matches their role.
+The role an agent plays. VibeFlow ships with nine team personas: **Developer** (Alex), **Architect** (Morgan), **Principal Engineer** (Kai), **Product Manager** (Aria), **Project Manager** (Parker), **UX Designer** (Dana), **QA Lead** (Quinn), **Security Lead** (Sophie), and **Customer** (Casey) — plus **Vera**, the Code Reviewer. You start one agent *per persona*. They poll independently for work that matches their role.
 
 > *Code agents* (Developer, Architect, Principal Engineer) write source code. *Advisory agents* (everyone else) write specs, reviews, and comments. They don't commit code.
 
 ### Session
-One running agent instance. A session has a **persona**, a **branch** (the git branch it operates on), and a **provider** (which model backs it). Sessions are what the **Agent Fleet** view lists.
+One running agent instance. A session has a **persona**, a **branch** (the git branch it operates on), and a **provider** (which model backs it). The **Agent Fleet** view lists the sessions the CLI is running.
 
 ### Provider
-The underlying AI provider behind an agent. Today VibeFlow supports **Claude** (Anthropic), **Codex** (OpenAI), **Gemini** (Google), **Cursor**, and **Qwen**. Each requires its own API key. You don't need all five; pick the one you have access to. The Cursor provider here is the agent's model backend (the `cursor` CLI) and is distinct from the Cursor editor you're running VibeFlow in.
+The AI model CLI behind an agent — for example **Claude** (Claude Code), **Codex** (OpenAI), or **Gemini** (Google). You pick it in the VibeFlow CLI when you start an agent, and the provider's own CLI handles its sign-in. The **Cursor** provider (the `cursor` CLI) is distinct from the Cursor editor you're running VibeFlow in.
 
 ### Project
-A VibeFlow project. Maps roughly to one of your code repositories. Created on the **VibeFlow Cloud** server. Identified by a name (e.g. `vscode-vibeflow`) plus a numeric ID. The extension auto-detects which project applies to your current workspace by reading the git remote URL.
+A VibeFlow project. Maps roughly to one of your code repositories. Created on the **VibeFlow Cloud** server. Identified by a name (e.g. `vscode-vibeflow`) plus a numeric ID. Pick it in the sidebar's project dropdown; the extension also auto-detects it from your workspace's git remote URL.
 
 ### MCP (Model Context Protocol)
-The protocol agents use to talk to the VibeFlow Cloud server. When an agent calls `list_features` or `create_todo`, it's making an MCP tool call under the hood. You almost never need to think about this. It's wired automatically when a session launches.
+The protocol agents use to talk to the VibeFlow Cloud server. When an agent calls `list_features` or `create_todo`, it's making an MCP tool call under the hood. The CLI wires this up for the agents it starts; **Settings → Connection → MCP for coding agents** writes the same config for coding agents you run yourself.
 
-### `.mcp.json`
-A file the extension writes into your workspace so the launched agent knows how to reach the VibeFlow Cloud server. It contains your API token, so it's git-ignored automatically and written with `mode 0o600`. If the workspace is a git repo and `.mcp.json` can't be ignored, the extension refuses to write it.
+---
+
+## The VibeFlow CLI
+
+### VibeFlow CLI (`vibeflow`)
+The terminal app that launches and runs your agents, each in its own tmux pane. It's the only launch path: **VibeFlow: Launch Session** and **Open CLI** open it in an editor-area terminal. Install it from **Settings → Connection → VibeFlow CLI → Install Latest**. Needs macOS, Linux, or Windows through **WSL**.
+
+### CLI root
+The directory the CLI keeps its state in: `config.yaml` (server URL, API key, default project) and `sessions.json` (the agents it runs). The default root is under your home directory; `vibeflow.cli.rootPath` points the extension at a custom one.
+
+### Connection mirror
+Saving the API key or a successful **Test Connection** in Settings → Connection writes the extension's server URL, API key, and current project into the CLI's `config.yaml`, so the CLI and the extension use the same account and project.
+
+### WSL
+Windows Subsystem for Linux. The CLI needs tmux, which native Windows lacks, so on Windows you run Cursor against a WSL folder (**Reopen Folder in WSL**) and install the CLI there.
 
 ---
 
@@ -65,56 +78,75 @@ Every work item carries a `target_branch` (defaults to `main`). Sessions filter 
 
 ---
 
-## Sessions & terminals
-
-### Terminal mode
-Where the agent's terminal output goes. Three values: **hybrid** (code agents visible, advisory agents hidden), **all** (every agent visible), **none** (every agent hidden). Default is **hybrid**.
-
-### Hybrid mode
-The default. Developer, Architect, and Principal Engineer terminals are visible in Cursor's terminal pane. Advisory agents (QA, Security, PM, etc.) run hidden in the background because their output is mostly diagnostic. You'll see their work via the chat panel and execution logs.
-
-### Chat-First Mode
-A session mode where you talk to the agent through the **Session Chat** panel instead of a terminal. The agent runs hidden in the background; the chat panel is the only UI. You must explicitly opt in at launch time (a consent modal appears) because chat-first uses **YOLO mode** under the hood.
+## Sessions
 
 ### YOLO mode
-"You Only Live Once." A session mode where the agent runs with `--dangerously-skip-permissions`. It executes file edits, shell commands, and git operations without asking for permission. Trade safety for speed. Required for chat-first; optional for hybrid. The first time you turn it on, a modal asks for explicit consent.
+"You Only Live Once." A permission mode where the agent executes file edits, shell commands, and git operations without asking. Trade safety for speed. Chosen in the CLI when you start an agent.
 
 ### Vanilla mode
-The opposite of YOLO. The agent asks permission for every action that could change the world. Slower but safe. Default for hybrid sessions.
+The opposite of YOLO. The agent asks permission for every action that could change the world. Slower but safe.
 
-### Headless backing
-Where a chat-first session physically runs when there's no visible terminal. Two options: **tmux** (the agent survives an IDE restart and can be attached to from any terminal) or **vscode** (the agent runs in a hidden editor terminal and dies if you close the window). Default is **auto**: tmux when it's installed, vscode otherwise.
+### Chat-First Mode
+An older session mode of the extension's own launcher, where the agent ran hidden and the **Session Chat** panel was its only input. New agents launch from the CLI; existing chat-first sessions keep working. See [chat-first-mode.md](chat-first-mode.md).
 
 ### Reattach
-When you reopen Cursor, the extension looks for `.vibeflow-session-{persona}` files in the workspace root, reads the session IDs they contain, asks the server "are these still alive?", and reconnects the UI to the still-alive ones. Killed sessions don't auto-reattach.
+When you reopen Cursor, the extension looks for `.vibeflow-session-{persona}` files in the workspace, asks the server which of those sessions are still alive, and offers to reconnect them. Killed sessions don't auto-reattach.
+
+### Stalled
+An Agent Fleet status: the agent's tmux pane is alive but it has stopped sending heartbeats — it left its polling loop. Restart it from the row's right-click menu.
 
 ---
 
 ## Views, panels, and commands
 
 ### View
-A panel in Cursor's sidebar. VibeFlow ships six: **Welcome**, **Agent Fleet**, **Work Items**, **Project Items**, **Documents** (all in the left activity bar's VibeFlow container), plus **Activity Feed** (in the right-side **VibeFlow Monitor** panel).
+A pane in Cursor's sidebar. VibeFlow's sidebar holds the **Project** dropdown, **Agent Fleet**, **Work Items**, **Browse**, **Pull Requests**, and **Documents** (plus a **Welcome** view before you're set up). The **Activity Feed** lives in the separate **VibeFlow Monitor** panel.
+
+### Project dropdown
+The first pane in the VibeFlow sidebar: your projects, with the current branch below. Switching projects rescopes every view and closes the previous project's VibeFlow panels.
+
+### Agent Fleet
+The view listing exactly the agents the VibeFlow CLI is running, across all projects, grouped by project with the current one first.
 
 ### Activity Bar
 Cursor's leftmost strip with the icons (Explorer, Search, Source Control…). VibeFlow adds a custom icon there.
 
 ### Activity Feed
-A real-time stream of what agents are doing: claims, status transitions, commits, prompts to you. Lives in the **VibeFlow Monitor** panel by default (right side of the workbench).
+A real-time stream of what agents are doing: claims, status transitions, commits, prompts to you. Lives in the **VibeFlow Monitor** panel (bottom panel by default).
 
 ### Session Chat panel
-An editor panel where you talk to one specific session. It opens in the main editor area, not a sidebar. Shows the conversation transcript, lets you send messages, render diffs, and click commit hashes to open the diff. The headline feature of *chat-first* mode.
+An editor panel where you talk to one specific agent. Shows the conversation transcript, lets you send messages, renders diffs, and makes commit hashes, file paths, and work-item references clickable.
 
 ### Work Item panel
 An editor panel showing details for one work item: description, execution log, comments, and governance actions (QA verify/reject, security approve/reject).
 
 ### Walkthrough
-Cursor's built-in 5-step onboarding tutorial. Opens automatically the first time you install the extension. Title: "Get Started with VibeFlow."
+Cursor's built-in onboarding tutorial. Opens automatically the first time you install the extension. Title: "Get Started with VibeFlow."
 
 ### Command Palette
-Cursor's `Cmd/Ctrl+Shift+P` menu. Every VibeFlow action is registered there with a `VibeFlow:` prefix. Type "VibeFlow:" and you'll see all 43 commands.
+Cursor's `Cmd/Ctrl+Shift+P` menu. Every VibeFlow action is registered there with a `VibeFlow:` prefix. Type "VibeFlow:" and you'll see all 53 commands.
 
 ### `@vibeflow` chat participant
-A chat participant registered through VS Code's Chat Participant API. A host extension that consumes that API (such as GitHub Copilot Chat) surfaces it: in that chat's input, type `@vibeflow` and you can run `/status`, `/create`, `/review`, `/summary`, `/launch`, `/respond`, or `/compliance` against your project without leaving the chat surface. Cursor's own built-in chat is a separate system and will not surface `@vibeflow`; it appears in Cursor only when a host extension implementing the VS Code Chat Participant API is installed. VibeFlow's own **Session Chat panel** is unaffected and works fully in Cursor.
+A chat participant registered through VS Code's Chat Participant API. A host extension that consumes that API (such as GitHub Copilot Chat) surfaces it: type `@vibeflow` and run `/status`, `/create`, `/review`, `/summary`, `/launch`, `/respond`, or `/compliance`. Cursor's own built-in chat is a separate system and will not surface `@vibeflow`. VibeFlow's own **Session Chat panel** is unaffected and works fully in Cursor.
+
+---
+
+## Pull requests and code review
+
+### Vera
+The **Code Reviewer** persona. Reviews pull requests in rounds and posts findings, blockers first. Shows in Agent Fleet as **Vera · Code Reviewer**; a review needs a Vera agent running in the CLI to pick it up.
+
+### Review state
+Vera's label for a PR — for example **Findings to address**, **Fixes queued**, or **Reviewed** — shown on the PR's row in the **Pull Requests** view, with the round (`round 2/3`) and unresolved blockers.
+
+### Finding
+One issue Vera raised on a PR, with trigger, impact, evidence, and a `file:line` that opens in the editor. **Blockers** must be resolved (fixed, or dismissed with evidence) before the review can pass.
+
+### Vera review panel
+The editor panel for one review: summary, the review cycle, findings, and controls (re-run, pause, continue, retry PR update, dismiss/reopen findings).
+
+### Review policy
+Per-repository settings for Vera: enabled, trigger (Manual / Once when ready / Every update), maximum rounds, skip drafts, whether coding agents may fix blockers, and questions per PR. Project owners and org admins edit it in Settings → **Project**.
 
 ---
 
@@ -137,23 +169,17 @@ A status-bar indicator showing how many items on your current branch have passed
 ## Git plumbing
 
 ### Worktree
-A separate working directory checked out to a different git branch, in the same repository. VibeFlow can create a worktree at `.claude/worktrees/<branch>` so a Developer agent can work on `feature/foo` while you work on `main` in your main checkout, with no `git stash` shuffling. Configurable via `vibeflow.worktree.*` settings.
-
-### `vibeflow-cli`
-A separate command-line tool (not the extension). It pre-existed the extension; the extension can optionally hand off session launching to the CLI via the `vibeflow.cli.enabled` setting. Most users don't need the CLI because the extension handles session lifecycle itself. The CLI exists for users who prefer a terminal-only workflow.
+A separate working directory checked out to a different git branch, in the same repository. The CLI can run an agent in a worktree so a Developer agent works on `feature/foo` while you work on `main`, with no `git stash` shuffling. Agent Fleet's **Worktrees** section lists them.
 
 ---
 
 ## Authentication
 
 ### API key
-The bearer token the extension uses to talk to the VibeFlow Cloud server. You set it once via the **VibeFlow: Setup** wizard or the **Settings → Connection** tab. Stored encrypted in Cursor's per-machine **Secrets API**. Never committed; never logged.
-
-### Provider key
-A separate token for the AI provider (Claude API key, OpenAI key, Gemini key, etc.). Stored alongside the VibeFlow API key in the Secrets API. The launch wizard prompts for whichever provider you pick for the session.
+The bearer token the extension uses to talk to the VibeFlow Cloud server. You set it once via the **VibeFlow: Setup** wizard or the **Settings → Connection** tab. Stored encrypted in Cursor's per-machine **Secrets API**, and mirrored into the CLI's `config.yaml` (see *Connection mirror*). Never committed; never logged.
 
 ### Secrets API
-Cursor's built-in encrypted storage (inherited from VS Code) for sensitive values. Per-machine, per-extension. VibeFlow uses it for both the VibeFlow API key and every provider key.
+Cursor's built-in encrypted storage for sensitive values. Per-machine, per-extension. VibeFlow stores the VibeFlow API key there.
 
 ### Setup wizard
 The 3-step onboarding flow (Server URL → API Key → Project) that runs the first time you install the extension. Re-runnable via **VibeFlow: Setup** in the Command Palette.
@@ -168,11 +194,14 @@ A message from an agent asking the user to make a decision. Appears as a notific
 ### Compliance finding
 A flagged item from the Security Lead persona tied to a specific compliance framework (SOC 2, ISO 27001, PCI-DSS, HIPAA, GDPR, FedRAMP, CMMC). Visible in the **Compliance** panel. Each finding links to the work item where it was found and the framework clause it relates to.
 
-### Stream-json
-A communication protocol between the extension and provider CLIs (Claude, Codex, Gemini, Cursor) in chat-first mode. Lets the panel show live agent output as the agent thinks. It's provider-agnostic: adapters in `src/sessions/providerAdapters/` translate each provider's stream format into a common shape.
+### Brainstorm
+A multi-persona brainstorm session: several agents review and refine a shared working-draft document over a few rounds before it's finalized. Brainstorms show up under the **Documents** view's **Brainstorms** category; selecting one opens its brainstorm document (the finalized write-up once the session is done, otherwise the live working draft).
 
-### MCP server (the .vsix kind)
-Distinct from the MCP *protocol*. VS Code exposes a separate, editor-level concept of an "MCP server" that other Copilot-like extensions can discover. The VibeFlow extension registers itself this way so other VS Code Chat-style tools in your IDE (Copilot, Continue, Cody) can call VibeFlow tools too. Cursor has its **own** MCP config system (e.g. `.cursor/mcp.json`), which is separate; VibeFlow does **not** auto-populate it. Don't confuse this with the `.mcp.json` the extension writes for the spawned agent CLI — that file is unaffected and works identically in Cursor.
+### Working indicator
+The right-side status-bar item (`$(sync~spin) Working …`) that shows when *your* agent sessions are actively working, with a count and elapsed time. It aggregates only your own sessions and fades out shortly after they go idle. Distinct from the in-chat **Working…** bubble, which is scoped to a single session's current turn.
+
+### MCP server (the editor kind)
+Distinct from the MCP *protocol*. VS Code exposes a separate concept of an "MCP server" that other Copilot-like extensions can discover. The VibeFlow extension registers itself as one so other AI tools in your IDE can call VibeFlow tools too. Cursor has its **own** MCP config (`~/.cursor/mcp.json`), which is separate; **Settings → Connection → MCP for coding agents** can write VibeFlow's entry there.
 
 ---
 
