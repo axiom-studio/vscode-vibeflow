@@ -1,0 +1,36 @@
+# Project tools and commands. See MISE.md for setup and prerequisites.
+[tools]
+"node" = "22.23.1"
+"npm:yarn" = "1.22.22"
+
+[tasks."deps"]
+description = "Install extension and webview dependencies"
+run = ["yarn install", "yarn --cwd webview-ui install"]
+
+[tasks."dev"]
+description = "Watch the extension bundle; use F5 in VS Code"
+run = "yarn dev"
+
+[tasks."webview"]
+description = "Start webview Vite server"
+run = "yarn watch:webview"
+
+[tasks."build"]
+description = "Build webview and extension"
+run = "yarn build"
+
+[tasks."test"]
+description = "Run extension and webview tests"
+run = ["yarn test", "yarn test:webview"]
+
+[tasks."check"]
+description = "Run all existing quality gates"
+run = "yarn run check"
+
+[tasks."package"]
+description = "Build a local VSIX"
+run = "yarn package"
+
+[tasks."versions"]
+description = "Show active Node and Yarn versions"
+run = "node --version && yarn --version"

@@ -58,3 +58,8 @@ TEST*.xml
 # Agent skills (locally installed)
 .agents/
 skills-lock.json
+
+# Personal mise overrides
+mise.local.toml
+mise.*.local.toml
+.mise-local/
