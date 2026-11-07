@@ -1,6 +1,6 @@
 # VibeFlow
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/AxiomStudio.vscode-vibeflow?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow)
+[![VS Code Marketplace](https://badgen.net/vs-marketplace/v/AxiomStudio.vscode-vibeflow)](https://marketplace.visualstudio.com/items?itemName=AxiomStudio.vscode-vibeflow)
 [![Open VSX](https://img.shields.io/open-vsx/v/AxiomStudio/vscode-vibeflow?label=Open%20VSX)](https://open-vsx.org/extension/AxiomStudio/vscode-vibeflow)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
